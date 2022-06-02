@@ -144,7 +144,7 @@ class Espresso(FileIOCalculator):
         if unuse_parameters:
             self.logger.debug('Warnning: parameter %s not used, please check.'%unuse_parameters)
         sorted_parameters['input_data']['CONTROL']['prefix'] = self.prefix
-        sorted_parameters['input_data']['CONTROL']['verbosity'] = 'high'
+#        sorted_parameters['input_data']['CONTROL']['verbosity'] = 'high'
         ase_parameters = sorted_parameters
         self.ase_parameters = ase_parameters
         # pprint(sorted_parameters)
