@@ -471,7 +471,10 @@ class Espresso(FileIOCalculator):
         with open(output, 'r') as f:
             lines = f.readlines()
             if len(lines) == 0: return 1, 'pwo file has nothing'
-            stime = lines[1].split('starts on')[1]
+#            stime = lines[1].split('starts on')[1]
+            for line in lines:
+                if line.rfind("starts on") > -1:
+                    stime = line.split("starts on")[1]
             nlines = len(lines)
             n = min([200, nlines])
             lastlines = lines[-n:-1]
