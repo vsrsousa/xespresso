@@ -6,7 +6,7 @@ import os
 from os import path
 import pickle
 import warnings
-from ase import constraints
+from ase import constraints as ase_constraints
 import numpy as np
 from ase.calculators.calculator import kpts2ndarray, kpts2sizeandoffsets
 from ase.constraints import FixAtoms, FixCartesian
@@ -14,7 +14,6 @@ from ase.data import chemical_symbols, atomic_numbers
 from ase.io.espresso import (
     read_espresso_in,
     construct_namelist,
-    grep_valence,
     SSSP_VALENCE,
     read_fortran_namelist,
 )
@@ -589,3 +588,35 @@ def get_constraint(constraint_idx):
     else:
         constraint = FixCartesian(a, mask)
     return constraint
+
+
+def grep_valence(pseudopotential):
+    """
+    Dado um arquivo de pseudopotencial UPF, encontra o número de elétrons de valência.
+
+    Parameters
+    ----------
+    pseudopotential: str
+        Caminho para o arquivo de pseudopotencial.
+
+    Returns
+    -------
+    valence: float
+        Número de elétrons de valência reportado no pseudopotencial.
+
+    Raises
+    ------
+    ValueError
+        Se o número de valência não puder ser encontrado no pseudopotencial.
+    """
+    with open(pseudopotential) as psfile:
+        for line in psfile:
+            if 'z valence' in line.lower():
+                return float(line.split()[0])
+            elif 'z_valence' in line.lower():
+                if line.split()[0] == '<PP_HEADER':
+                    line = list(filter(lambda x: 'z_valence' in x,
+                                       line.split(' ')))[0]
+                return float(line.split('=')[-1].strip().strip('"'))
+        else:
+            raise ValueError(f'Valence missing in {pseudopotential}')
