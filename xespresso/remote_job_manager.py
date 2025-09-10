@@ -239,7 +239,9 @@ class RemoteJobManager:
             return False, None
         
 #        output, error = self._execute_command(f"cd {remote_dir} && sbatch --parsable {job_file}")
-        output, error = self._execute_command(f"cd {remote_dir} && sbatch {job_file}")
+        output, error = self._execute_command(f"cd {remote_dir}")
+        output, error = self._execute_command("sbatch --parsable {job_file}")
+#        output, error = self._execute_command(f"cd {remote_dir} && sbatch {job_file}")
         
         if error:
             print(f"❌ Erro ao submeter job no Slurm: {error}")
