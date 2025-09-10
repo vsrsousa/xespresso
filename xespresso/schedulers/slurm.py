@@ -9,6 +9,8 @@ def generate(calc, queue, command, config_script):
     
     with open(job_file_path, "w") as fh:
         fh.writelines("#!/bin/bash\n")
+        fh.writelines("#SBATCH --no-requeue\n")
+        fh.writelines("#SBATCH --get-user-env\n")
         fh.writelines("#SBATCH --job-name=%s\n" % jobname)
         fh.writelines("#SBATCH --output=%s.out\n" % calc.prefix)
         fh.writelines("#SBATCH --error=%s.err\n" % calc.prefix)

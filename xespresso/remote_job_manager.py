@@ -287,7 +287,7 @@ class RemoteJobManager:
             return False
         
         # Executa em background
-        output, error = self._execute_command(f"cd {remote_dir} && nohup bash {job_file} > job.out 2> job.err &")
+        output, error = self._execute_command(f"cd {remote_dir} && nohup bash -c 'set -e; bash -l {job_file}' > job.out 2> job.err &")
         
         # Verifica se executou
         output, error = self._execute_command(f"ps aux | grep '{job_file}' | grep -v grep")

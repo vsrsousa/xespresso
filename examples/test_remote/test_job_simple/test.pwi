@@ -1,6 +1,0 @@
-&CONTROL
-    calculation='scf'
-/ 
-&SYSTEM
-    ibrav=2, celldm(1)=10.2, nat=2, ntyp=1
-/
