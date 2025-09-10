@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=test_slurm 
+#SBATCH --output=test_slurm.out
+#SBATCH --error=test_slurm.err
+#SBATCH --wait
+#SBATCH --scheduler=slurm
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --time=00:10:00
+
+export OMP_NUM_THREADS=1
+
+module purge
+module load quantum-espresso/7.4.1-intel-mkl-mpi
+ 
+srun --mpi=pmi2 pw.x  -in  test_slurm.pwi  >  test_slurm.pwo 
