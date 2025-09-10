@@ -1,17 +1,22 @@
-def generate(calc, queue, command):
-    job_path = f"{calc.directory}/.job_file"
+import os
+import logging
 
-    with open(job_path, "w") as fh:
-        fh.write("#!/bin/bash\n")
+# Logger específico para este módulo
+logger = logging.getLogger(__name__)
 
-        config_path = queue.get("config")
-        if config_path:
-            try:
-                with open(config_path) as script_file:
-                    fh.write(script_file.read() + "\n")
-            except FileNotFoundError:
-                pass
-
-        fh.write(f"{command}\n")
-
-    calc.command = "bash .job_file"
+def generate(calc, queue, command, config_script):
+    # Para execução direta, podemos precisar carregar os módulos primeiro
+    if config_script:
+        # Se houver configurações do xespressorc, criar um script wrapper
+        wrapper_path = os.path.join(calc.directory, "job_file")
+        with open(wrapper_path, "w") as fh:
+            fh.writelines("#!/bin/bash\n")
+            fh.writelines(config_script)
+            fh.writelines("\n%s\n" % command)
+        
+        os.chmod(wrapper_path, 0o755)  # Tornar executável
+        calc.command = f"bash {wrapper_path}"
+    else:
+        calc.command = command
+    
+    logger.debug("Direct command: %s" % calc.command)

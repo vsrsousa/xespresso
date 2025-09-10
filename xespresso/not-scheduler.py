@@ -4,26 +4,6 @@ from xespresso.schedulers import slurm, direct, pbs
 
 logger = logging.getLogger(__name__)
 
-# Definir as configurações globais aqui
-CONFIG_FILES = [os.path.join(os.environ["HOME"], ".xespressorc"), ".xespressorc"]
-
-def get_xespresso_config(queue):
-    """Lê as configurações do arquivo xespressorc"""
-    script = ""
-    
-    if "config" in queue:
-        cf = os.path.join(os.environ["HOME"], queue["config"])
-        if os.path.exists(cf):
-            with open(cf, "r") as file:
-                script = file.read()
-    else:
-        for cf in CONFIG_FILES:
-            if os.path.exists(cf):
-                with open(cf, "r") as file:
-                    script = file.read()
-                break
-    return script
-
 def set_queue(calc, package=None, parallel=None, queue=None, command=None):
     if queue is None:
         queue = calc.queue
@@ -52,20 +32,17 @@ def set_queue(calc, package=None, parallel=None, queue=None, command=None):
         command = command.replace("PREFIX", calc.prefix)
     if "PARALLEL" in command:
         command = command.replace("PARALLEL", parallel)
-    else:
-        # Se não tem placeholder PARALLEL, adicionar o runner no início
-        command = f"{parallel} {command}"
-        
+
     logger.debug("Espresso command: %s" % command)
 
     scheduler_type = queue.get("scheduler", "slurm").lower()
 
-    # Passar a função de configuração para os módulos
     if scheduler_type == "slurm":
-        slurm.generate(calc, queue, command, get_xespresso_config(queue))
+        slurm.generate(calc, queue, command)
     elif scheduler_type == "direct":
-        direct.generate(calc, queue, command, get_xespresso_config(queue))
+        direct.generate(calc, queue, command)
     elif scheduler_type == "pbs":
-        pbs.generate(calc, queue, command, get_xespresso_config(queue))
+        pbs.generate(calc, queue, command)
     else:
         raise ValueError(f"Tipo de scheduler não reconhecido: {scheduler_type}")
+

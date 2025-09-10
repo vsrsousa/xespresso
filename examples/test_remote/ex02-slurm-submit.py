@@ -16,7 +16,7 @@ calc = Espresso(label="test_slurm", queue=queue, parallel="srun --mpi=pmi2")
 calc.write_input(atoms)
 
 # Verifica se .job_file foi gerado corretamente
-job_path = os.path.join(calc.directory, ".job_file")
+job_path = os.path.join(calc.directory, "job_file")
 with open(job_path) as f:
     content = f.read()
     assert "#SBATCH" in content

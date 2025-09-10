@@ -1,0 +1,8 @@
+#!/bin/bash
+
+export OMP_NUM_THREADS=1
+
+module purge
+module load qe/7.4.1-intel_mpi_mkl_scalapack
+
+mpirun -np 32 pw.x  -in  test_direct.pwi  >  test_direct.pwo

@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -e  # Sai imediatamente se qualquer comando falhar
+
+module purge
+module load qe/7.4.1-intel_mpi_mkl_scalapack
+
+PSEUDO_DIR='/home/vinicius/scratch/vinicius/pseudos/pbe'
+
+export OMP_NUM_THREADS=1
+
+
+mpirun -np 4 pw.x  -in  scf.pwi  >  scf.pwo

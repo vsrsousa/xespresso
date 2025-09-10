@@ -1,10 +1,6 @@
 from xespresso import Espresso
 from xespresso.remote_job_manager import RemoteJobManager
 from ase.build import bulk
-import os
-
-home_dir=os.environ['HOME']
-print(home_dir)
 
 atoms = bulk("Si", "diamond", a=5.43)
 
@@ -23,7 +19,8 @@ ssh_config = {
     "host": "medusa.fis.uerj.br",
 #    "port": 222,
     "user": "vinicius",
-    "key_path": "/Users/vinicius/.ssh/aiida",
+#    "key_path": "/$HOME/.ssh/ssh_key",
+    "password": "AcimadeTudoRN@1981",
     "remote_base": "/home/{user}/scratch/xespresso"
 }
 

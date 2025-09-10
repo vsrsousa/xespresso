@@ -1,0 +1,2 @@
+#!/bin/bash
+pw.x  mpirun -np 32  -in  test_direct.pwi  >  test_direct.pwo
