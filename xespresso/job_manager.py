@@ -36,6 +36,7 @@ class RemoteJobManager:
                  key_filename: Optional[str] = None,
                  remote_dir: Optional[str] = None,
                  working_dir: Optional[str] = None,
+                 port: Optional[int] = 22,
                  **scheduler_kwargs):
         """
         Initialize remote job manager
@@ -43,6 +44,7 @@ class RemoteJobManager:
         Args:
             scheduler_type: Type of scheduler ('slurm', 'pbs', 'ssh_direct', 'remote_slurm', 'local')
             hostname: Remote hostname (required for remote schedulers)
+            port: ssh remote port (required for remote schedulers, using default value: 22)
             username: Remote username (required for remote schedulers)
             password: SSH password (optional if using key-based auth)
             key_filename: Path to SSH private key
@@ -52,6 +54,7 @@ class RemoteJobManager:
         """
         self.scheduler_type = scheduler_type.lower()
         self.hostname = hostname
+        self.port = port
         self.username = username
         self.password = password
         self.key_filename = key_filename
@@ -79,6 +82,7 @@ class RemoteJobManager:
             
             remote_kwargs = {
                 'hostname': self.hostname,
+                'port': self.port,
                 'username': self.username,
                 'password': self.password,
                 'key_filename': self.key_filename,

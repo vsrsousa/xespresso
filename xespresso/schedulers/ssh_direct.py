@@ -16,9 +16,11 @@ class SSHDirectScheduler(BaseScheduler):
                  password: Optional[str] = None,
                  key_filename: Optional[str] = None,
                  remote_dir: Optional[str] = None,
+                 port: Optional[int] = 22,
                  **kwargs):
         super().__init__(**kwargs)
         self.hostname = hostname
+        self.port = port
         self.username = username
         self.password = password
         self.key_filename = key_filename
@@ -34,12 +36,14 @@ class SSHDirectScheduler(BaseScheduler):
         if self.key_filename:
             self.ssh_client.connect(
                 self.hostname, 
+                self.port,
                 username=self.username, 
                 key_filename=self.key_filename
             )
         else:
             self.ssh_client.connect(
-                self.hostname, 
+                self.hostname,
+                self.port,
                 username=self.username, 
                 password=self.password
             )
