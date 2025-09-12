@@ -1,5 +1,6 @@
 import os
 import json
+import shutil
 from xespresso import Espresso
 from xespresso.scheduler import set_queue
 from xespresso.remote_runner import RemoteRunner
@@ -51,6 +52,7 @@ class RemoteEspresso(Espresso):
         Steps:
         - Writes input files locally
         - Generates job script using set_queue()
+        - Copies .upf files into job folder if needed
         - Transfers files to remote host
         - Submits job remotely
         - Retrieves results
@@ -58,6 +60,8 @@ class RemoteEspresso(Espresso):
         """
         if atoms is not None:
             self.atoms = atoms
+
+        self._prepare_pseudos()
 
         # Generate input files (.pwi, .asei)
         self.write_input(self.atoms)
@@ -74,6 +78,43 @@ class RemoteEspresso(Espresso):
         # Read results and return energy
         self.read_results()
         return self.results.get("energy", 0.0)
+
+    def _prepare_pseudos(self):
+        """
+        Ensures pseudopotentials are present in the job directory.
+        If running remotely, copies .upf files from local pseudo_dir to job folder.
+        Raises an error if pseudopotentials are missing or files not found.
+        If pseudopotentials are not explicitly set, attempts to auto-detect from atoms.
+        """
+        if not hasattr(self, "pseudo_dir") or not self.pseudo_dir:
+            raise ValueError("❌ No pseudo_dir defined. Please set it using calc.set(pseudo_dir='...')")
+
+        # Auto-detect pseudopotentials if not explicitly set
+        if not hasattr(self, "pseudopotentials") or not self.pseudopotentials:
+            if not hasattr(self, "atoms") or self.atoms is None:
+                raise ValueError("❌ Cannot auto-detect pseudopotentials: atoms not defined.")
+
+            elements = set(atom.symbol for atom in self.atoms)
+            available_files = [f for f in os.listdir(self.pseudo_dir) if f.lower().endswith(".upf")]
+            auto_pseudos = {}
+
+            for el in elements:
+                matches = [f for f in available_files if f.lower().startswith(el.lower())]
+                if matches:
+                    auto_pseudos[el] = matches[0]  # Use the first match
+                else:
+                    raise FileNotFoundError(f"❌ No pseudopotential file found for element '{el}' in {self.pseudo_dir}")
+
+            self.pseudopotentials = auto_pseudos
+
+        # Copy .upf files into job folder if running remotely
+        if self.remote_runner:
+            for element, filename in self.pseudopotentials.items():
+                src = os.path.join(self.pseudo_dir, filename)
+                dst = os.path.join(self.directory, filename)
+                if not os.path.exists(src):
+                    raise FileNotFoundError(f"❌ Pseudopotential file not found: {src}")
+                shutil.copy(src, dst)
 
     def test_local_submission_setup(self, verbose=True):
         """
@@ -103,23 +144,6 @@ class RemoteEspresso(Espresso):
             return False
 
     @classmethod
-    def from_profile(cls, profile_name, atoms=None, remote_subdir=None, config_path="~/.xespresso_config.json", **kwargs):
-        """
-        Instantiates RemoteEspresso using a named remote profile from a config file.
-
-        Args:
-            profile_name (str): Name of the remote profile (e.g. 'slurm_cluster').
-            atoms (Atoms): Atomic structure to simulate.
-            remote_subdir (str): Remote job directory name.
-            config_path (str): Path to the JSON config file.
-
-        Returns:
-            RemoteEspresso: Configured instance ready for remote execution.
-        """
-        runner = cls._load_remote_runner(profile_name, config_path)
-        return cls(atoms=atoms, remote_runner=runner, remote_subdir=remote_subdir, **kwargs)
-
-    @classmethod
     def from_config(cls, atoms=None, remote_subdir=None, profile="default", **kwargs):
         """
         Automatically loads remote configuration from ~/.xespresso_config.json.
@@ -146,31 +170,3 @@ class RemoteEspresso(Espresso):
 
         runner = RemoteRunner(**remote_config)
         return cls(atoms=atoms, remote_runner=runner, remote_subdir=remote_subdir, **kwargs)
-
-
-    @staticmethod
-    def _load_remote_runner(profile_name, config_path="~/.xespresso_config.json"):
-        """
-        Loads a RemoteRunner instance from a named profile in the config file.
-
-        Args:
-            profile_name (str): Profile key in the config file.
-            config_path (str): Path to the JSON config file.
-
-        Returns:
-            RemoteRunner: Configured runner for the selected profile.
-
-        Raises:
-            ValueError: If the profile is not found in the config.
-        """
-        path = os.path.expanduser(config_path)
-        with open(path) as f:
-            config = json.load(f)
-
-        profiles = config.get("remotes", {})
-        profile = profiles.get(profile_name)
-
-        if not profile:
-            raise ValueError(f"Remote profile '{profile_name}' not found in config.")
-
-        return RemoteRunner(**profile)
