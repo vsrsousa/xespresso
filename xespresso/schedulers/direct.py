@@ -1,22 +1,29 @@
 import os
-import logging
+from .base import SchedulerBase
 
-# Logger específico para este módulo
-logger = logging.getLogger(__name__)
+class DirectSSHScheduler(SchedulerBase):
+    def generate_script(self):
+        job_path = os.path.join(self.calc.directory, "run.sh")
 
-def generate(calc, queue, command, config_script):
-    # Para execução direta, podemos precisar carregar os módulos primeiro
-    if config_script:
-        # Se houver configurações do xespressorc, criar um script wrapper
-        wrapper_path = os.path.join(calc.directory, "job_file")
-        with open(wrapper_path, "w") as fh:
-            fh.writelines("#!/bin/bash\n")
-            fh.writelines(config_script)
-            fh.writelines("\n%s\n" % command)
-        
-        os.chmod(wrapper_path, 0o755)  # Tornar executável
-        calc.command = f"bash {wrapper_path}"
-    else:
-        calc.command = command
-    
-    logger.debug("Direct command: %s" % calc.command)
+        with open(job_path, "w") as fh:
+            fh.write("#!/bin/bash\n")
+
+            if "config" in self.queue:
+                config_path = os.path.join(os.environ["HOME"], self.queue["config"])
+                if os.path.exists(config_path):
+                    with open(config_path, "r") as f:
+                        fh.write(f.read() + "\n")
+
+            if "prepend_text" in self.queue:
+                for line in self.queue["prepend_text"].splitlines():
+                    fh.write(f"{line}\n")
+
+            fh.write(f"{self.command}\n")
+
+            if "append_text" in self.queue:
+                for line in self.queue["append_text"].splitlines():
+                    fh.write(f"{line}\n")
+
+    def get_submission_command(self):
+        return "bash run.sh"
+

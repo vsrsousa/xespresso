@@ -110,7 +110,11 @@ class Espresso(FileIOCalculator):
         **kwargs
     ):
 
-        print("{0:=^60}".format(package))
+#        print("{0:=^60}".format(package))
+        if package is not None:
+            print("{0:=^60}".format(package))
+        else:
+            print("= No package specified =".center(60, "="))
         if debug:
             logger.setLevel(debug)
         self.set_label(label, prefix)

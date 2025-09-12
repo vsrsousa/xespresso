@@ -1,5 +1,10 @@
 import os
 import paramiko
+import socket
+import time
+import logging
+
+logging.basicConfig(filename="remote_runner.log", level=logging.INFO)
 
 class RemoteRunner:
     def __init__(self, hostname, username, remote_base_dir, module_command, port=22, password=None, key_path=None):
@@ -11,25 +16,78 @@ class RemoteRunner:
         self.password = password
         self.key_path = key_path
 
-    def _connect(self):
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        if self.key_path:
-            key = paramiko.RSAKey.from_private_key_file(self.key_path)
-            client.connect(
-                hostname=self.hostname,
-                port=self.port,
-                username=self.username,
-                pkey=key
-            )
-        else:
-            client.connect(
-                hostname=self.hostname,
-                port=self.port,
-                username=self.username,
-                password=self.password
-            )
-        return client
+    def _connect(self, retries=3, delay=5, timeout=10):
+        """
+        Establishes an SSH connection to the remote host with retry and timeout support.
+        Tries key-based authentication first, then falls back to password if key fails.
+
+        Args:
+            retries (int): Number of connection attempts before failing.
+            delay (int): Delay in seconds between retries.
+            timeout (int): Timeout in seconds for each connection attempt.
+
+        Returns:
+            paramiko.SSHClient: Connected SSH client.
+
+        Raises:
+            ConnectionError: If all connection attempts fail.
+        """
+        import socket
+        import time
+        import paramiko
+        import logging
+
+        logging.basicConfig(filename="remote_runner.log", level=logging.INFO)
+
+        for attempt in range(1, retries + 1):
+            logging.info(f"🔌 Attempt {attempt}: Connecting to {self.hostname}:{self.port} as {self.username}")
+            print(f"🔌 Attempt {attempt}: Connecting to {self.hostname}:{self.port} as {self.username}")
+            try:
+                socket.create_connection((self.hostname, self.port), timeout=timeout).close()
+
+                client = paramiko.SSHClient()
+                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+                if self.key_path:
+                    try:
+                        key_path_expanded = os.path.expanduser(self.key_path)
+                        client.connect(
+                            hostname=self.hostname,
+                            port=self.port,
+                            username=self.username,
+                            key_filename=key_path_expanded,
+                            timeout=timeout
+                        )
+                        return client
+                    except FileNotFoundError as e:
+                        logging.warning(f"⚠️ Key file not found: {e}")
+                        print(f"⚠️ Key file not found: {e}")
+                    except paramiko.ssh_exception.SSHException as e:
+                        logging.warning(f"⚠️ Key-based authentication failed: {e}")
+                        print(f"⚠️ Key-based authentication failed: {e}")
+
+                if self.password:
+                    try:
+                        client.connect(
+                            hostname=self.hostname,
+                            port=self.port,
+                            username=self.username,
+                            password=self.password,
+                            timeout=timeout
+                        )
+                        return client
+                    except paramiko.ssh_exception.SSHException as e:
+                        logging.warning(f"⚠️ Password-based authentication failed: {e}")
+                        print(f"⚠️ Password-based authentication failed: {e}")
+
+                raise ConnectionError("Authentication failed with both key and password.")
+
+            except Exception as e:
+                logging.warning(f"⚠️ Connection attempt {attempt} failed: {e}")
+                print(f"⚠️ Connection attempt {attempt} failed: {e}")
+                time.sleep(delay)
+
+        raise ConnectionError(f"❌ Failed to connect to {self.hostname} after {retries} attempts.")
 
     def run_command(self, command):
         """
@@ -62,23 +120,47 @@ class RemoteRunner:
         client.close()
         print(f"✅ Files transferred to {remote_dir}")
 
-    def submit_remote_job(self, remote_subdir):
+
+    def submit_remote_job(self, remote_subdir, calc=None):
         """
-        Submits a remote job using sbatch.
+        Submits a remote job to the target machine using the appropriate scheduler.
+
+        This method assumes that the job script (e.g., .job_file or run.sh) has already been
+        generated and that the correct submission command is stored in `calc.command`.
+
+        The submission command is executed remotely via SSH, and the output is returned.
 
         Args:
-            remote_subdir (str): Subdirectory name inside remote_base_dir.
+            remote_subdir (str): Subdirectory name inside `remote_base_dir` where the job files are located.
+            calc (object, optional): Calculator object with a `.command` attribute containing the submission command.
+                                     If not provided, defaults to 'sbatch .job_file'.
+
+        Returns:
+            str: Output from the remote job submission command (typically job ID or confirmation message).
+
+        Raises:
+            RuntimeError: If the remote command produces an error.
         """
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
         client = self._connect()
-        command = f"cd {remote_dir} && {self.module_command} && sbatch .job_file"
-        stdin, stdout, stderr = client.exec_command(command)
-        output = stdout.read().decode()
-        error = stderr.read().decode()
+
+        # Use the scheduler-defined command if available
+        if calc and hasattr(calc, "command"):
+            job_command = calc.command
+        else:
+            job_command = "sbatch .job_file"
+
+        full_command = f"cd {remote_dir} && {self.module_command} && {job_command}"
+
+        stdin, stdout, stderr = client.exec_command(full_command)
+        output = stdout.read().decode().strip()
+        error = stderr.read().decode().strip()
         client.close()
+
         if error:
-            raise RuntimeError(f"Error submitting job: {error}")
-        print(f"🚀 Job submitted: {output.strip()}")
+            raise RuntimeError(f"❌ Error submitting job:\n{error}")
+
+        print(f"🚀 Job submitted successfully:\n{output.strip()}")
         return output.strip()
 
     def retrieve_results(self, remote_subdir, local_dir):

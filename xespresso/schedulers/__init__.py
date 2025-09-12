@@ -1,21 +1,13 @@
-"""
-Schedulers module for xespresso - Handles job submission to various schedulers
-"""
-
-from .base import BaseScheduler
 from .slurm import SlurmScheduler
-from .pbs import PBSScheduler
-from .local import LocalScheduler
-from .ssh_direct import SSHDirectScheduler
-from .remote import RemoteSlurmScheduler
-from .factory import get_scheduler
+from .direct import DirectSSHScheduler
 
-__all__ = [
-    'BaseScheduler',
-    'SlurmScheduler', 
-    'PBSScheduler',
-    'LocalScheduler',
-    'SSHDirectScheduler',
-    'RemoteSlurmScheduler',
-    'get_scheduler'
-]
+def get_scheduler(calc, command, queue):
+    scheduler_type = queue.get("scheduler", "slurm").lower()
+
+    if scheduler_type == "slurm":
+        return SlurmScheduler(calc, command, queue)
+    elif scheduler_type == "direct":
+        return DirectSSHScheduler(calc, command, queue)
+    else:
+        raise ValueError(f"Unsupported scheduler type: {scheduler_type}")
+
