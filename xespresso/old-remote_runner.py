@@ -1,8 +1,9 @@
-import os
 import paramiko
+import os
 
 class RemoteRunner:
-    def __init__(self, hostname, username, remote_base_dir, module_command, port=22, password=None, key_path=None):
+    def __init__(self, hostname, username, remote_base_dir, module_command,
+                 port=22, password=None, key_path=None):
         self.hostname = hostname
         self.username = username
         self.remote_base_dir = remote_base_dir
@@ -14,6 +15,7 @@ class RemoteRunner:
     def _connect(self):
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
         if self.key_path:
             key = paramiko.RSAKey.from_private_key_file(self.key_path)
             client.connect(
@@ -29,46 +31,35 @@ class RemoteRunner:
                 username=self.username,
                 password=self.password
             )
-        return client
 
-    def run_command(self, command):
-        """
-        Executes a remote command via SSH and returns the full output (stdout + stderr).
-        """
-        client = self._connect()
-        stdin, stdout, stderr = client.exec_command(command)
-        output = stdout.read().decode()
-        error = stderr.read().decode()
-        client.close()
-        return output + error
+        return client
 
     def transfer_inputs(self, local_dir, remote_subdir):
         """
-        Transfers input files to the remote server, ensuring the target directory exists.
+        Transfere os arquivos de entrada para o servidor remoto,
+        garantindo que o diretório remoto exista.
 
         Args:
-            local_dir (str): Local path containing input files.
-            remote_subdir (str): Subdirectory name inside remote_base_dir.
+            local_dir (str): Caminho local contendo os arquivos de entrada.
+            remote_subdir (str): Nome do subdiretório remoto dentro de remote_base_dir.
         """
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
         client = self._connect()
+
+        # Garante que o diretório remoto exista (criação recursiva)
         client.exec_command(f"mkdir -p {remote_dir}")
+
         sftp = client.open_sftp()
         for filename in os.listdir(local_dir):
             local_path = os.path.join(local_dir, filename)
             remote_path = os.path.join(remote_dir, filename)
             sftp.put(local_path, remote_path)
+
         sftp.close()
         client.close()
-        print(f"✅ Files transferred to {remote_dir}")
+        print(f"✅ Arquivos transferidos para {remote_dir}")
 
     def submit_remote_job(self, remote_subdir):
-        """
-        Submits a remote job using sbatch.
-
-        Args:
-            remote_subdir (str): Subdirectory name inside remote_base_dir.
-        """
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
         client = self._connect()
         command = f"cd {remote_dir} && {self.module_command} && sbatch .job_file"
@@ -76,103 +67,58 @@ class RemoteRunner:
         output = stdout.read().decode()
         error = stderr.read().decode()
         client.close()
+
         if error:
-            raise RuntimeError(f"Error submitting job: {error}")
-        print(f"🚀 Job submitted: {output.strip()}")
+            raise RuntimeError(f"Erro ao submeter job: {error}")
+        print(f"🚀 Job submetido: {output.strip()}")
         return output.strip()
 
     def retrieve_results(self, remote_subdir, local_dir):
-        """
-        Retrieves output files from the remote server.
-
-        Args:
-            remote_subdir (str): Subdirectory name inside remote_base_dir.
-            local_dir (str): Local directory to store retrieved files.
-        """
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
         client = self._connect()
         sftp = client.open_sftp()
+
         for filename in sftp.listdir(remote_dir):
             if filename.endswith(".out") or filename.endswith(".err"):
                 remote_path = os.path.join(remote_dir, filename)
                 local_path = os.path.join(local_dir, filename)
                 sftp.get(remote_path, local_path)
+
         sftp.close()
         client.close()
-        print(f"📥 Results retrieved to {local_dir}")
+        print(f"📥 Resultados recuperados para {local_dir}")
 
     def test_connection(self):
-        """
-        Tests SSH connectivity to the remote server.
-        """
         try:
             client = self._connect()
             client.close()
-            print(f"✅ SSH connection successful to {self.hostname}:{self.port} as {self.username}")
+            print(f"✅ Conexão SSH bem-sucedida com {self.hostname}:{self.port} como {self.username}")
         except Exception as e:
-            print(f"❌ SSH connection failed: {e}")
+            print(f"❌ Falha na conexão SSH: {e}")
 
     def check_quantum_espresso(self):
-        """
-        Checks if Quantum ESPRESSO is available on the remote server.
-        """
         try:
             client = self._connect()
+            # Usa o comando definido pelo usuário para carregar o módulo
             command = f"source /etc/profile && {self.module_command} && which pw.x"
             stdin, stdout, stderr = client.exec_command(command)
             output = stdout.read().decode().strip()
             error = stderr.read().decode().strip()
             client.close()
+
             if output:
-                print(f"✅ Quantum ESPRESSO detected: {output}")
+                print(f"✅ Quantum ESPRESSO detectado: {output}")
                 return output
             else:
-                print("⚠️ Quantum ESPRESSO not found. The 'pw.x' executable is not in PATH.")
+                print("⚠️ Quantum ESPRESSO não encontrado. O executável 'pw.x' não está no PATH.")
                 if error:
-                    print(f"🔍 System message:\n{error}")
+                    print(f"🔍 Mensagem do sistema:\n{error}")
                 return None
         except Exception as e:
-            print(f"❌ Failed to check Quantum ESPRESSO: {e}")
+            print(f"❌ Falha ao verificar Quantum ESPRESSO: {e}")
             return None
 
-    def check_qe_version_remote(self, min_version="6.5"):
-        """
-        Checks the version of Quantum ESPRESSO on the remote server.
-
-        Args:
-            min_version (str): Minimum required version (e.g., "6.5").
-
-        Returns:
-            bool: True if version is compatible, False otherwise.
-        """
-        try:
-            client = self._connect()
-            command = f"source /etc/profile && {self.module_command} && pw.x < /dev/null"
-            stdin, stdout, stderr = client.exec_command(command)
-            output = stdout.read().decode()
-            error = stderr.read().decode()
-            client.close()
-
-            full_output = output + error
-            for line in full_output.splitlines():
-                if "Program PWSCF" in line:
-                    version = line.split("v.")[1].split()[0]
-                    def parse(v): return tuple(map(int, v.split(".")))
-                    if parse(version) >= parse(min_version):
-                        print(f"✅ Remote QE version {version} is compatible (minimum required: {min_version})")
-                        return True
-                    else:
-                        raise EnvironmentError(f"⚠️ Remote QE version {version} is below required minimum ({min_version})")
-
-            raise EnvironmentError("❌ Unable to detect QE version on remote server.")
-        except Exception as e:
-            print(f"❌ Failed to check QE version remotely: {e}")
-            return False
-
     def list_available_modules(self):
-        """
-        Lists available modules on the remote server.
-        """
         try:
             client = self._connect()
             command = "source /etc/profile && module avail"
@@ -180,23 +126,24 @@ class RemoteRunner:
             output = stdout.read().decode()
             error = stderr.read().decode()
             client.close()
-            full_output = output + error
-            print("📦 Available modules:\n")
+
+            full_output = output + error  # Junta stdout e stderr
+            print("📦 Módulos disponíveis:\n")
             print(full_output)
             return full_output
         except Exception as e:
-            print(f"❌ Failed to list available modules: {e}")
+            print(f"❌ Falha ao listar módulos disponíveis: {e}")
             return None
 
     def list_remote_files(self, remote_subdir):
         """
-        Lists files in the specified remote directory.
+        Lista os arquivos presentes no diretório remoto especificado.
 
         Args:
-            remote_subdir (str): Subdirectory name inside remote_base_dir.
+            remote_subdir (str): Nome do subdiretório remoto dentro de remote_base_dir.
 
         Returns:
-            str: Output of 'ls -lh' or error message.
+            str: Saída do comando 'ls -lh' com os arquivos listados, ou mensagem de erro.
         """
         try:
             client = self._connect()
@@ -206,11 +153,15 @@ class RemoteRunner:
             output = stdout.read().decode()
             error = stderr.read().decode()
             client.close()
+
             if error:
-                print(f"⚠️ Error listing remote files:\n{error}")
+                print(f"⚠️ Erro ao listar arquivos remotos:\n{error}")
             else:
-                print(f"📂 Files on server ({remote_path}):\n{output}")
+                print(f"📂 Arquivos no servidor ({remote_path}):\n{output}")
             return output
         except Exception as e:
-            print(f"❌ Failed to list remote files: {e}")
+            print(f"❌ Falha ao listar arquivos remotos: {e}")
             return None
+
+
+
