@@ -220,7 +220,7 @@ class RemoteRunner:
 
         # Transfer top-level files
         for filename in os.listdir(local_dir):
-            local_path = os.pathjoin(local_dir, filename)
+            local_path = os.path.join(local_dir, filename)
             remote_path = os.path.join(remote_dir, filename)
 
             if os.path.isfile(local_path):
