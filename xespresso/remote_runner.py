@@ -485,7 +485,27 @@ class RemoteRunner:
         Close the persistent SSH connection and SFTP session.
         
         This method should be called when the RemoteRunner is no longer needed
-        to ensure proper cleanup of network resources.
+        to ensure proper cleanup of network resources. It safely closes both
+        the SFTP and SSH connections, handling any potential exceptions.
         
         Example:
             >>> runner.close()
+        """
+        try:
+            if self.sftp:
+                self.sftp.close()
+                self.sftp = None
+                print("🔌 SFTP connection closed")
+        except Exception as e:
+            print(f"⚠️ Error closing SFTP connection: {e}")
+        
+        try:
+            if self.client:
+                self.client.close()
+                self.client = None
+                print("🔌 SSH connection closed")
+        except Exception as e:
+            print(f"⚠️ Error closing SSH connection: {e}")
+        
+        self.is_connected = False
+        print("✅ All connections closed successfully")
