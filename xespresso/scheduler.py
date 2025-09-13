@@ -1,31 +1,22 @@
-import os
-import logging
-
-logger = logging.getLogger(__name__)
-
-
-config_files = [os.path.join(os.environ["HOME"], ".xespressorc"), ".xespressorc"]
-
+from xespresso.schedulers.factory import get_scheduler
 
 def set_queue(calc, package=None, parallel=None, queue=None, command=None):
     """
-    If queue, change command to "sbatch .job_file".
-    The queue information are written into '.job_file'
+    Configures the calculator for job submission.
+    If a scheduler is defined in the queue, generates a job script and sets the submission command.
+    Otherwise, sets the command directly for manual/local execution.
     """
-    if queue is None:
-        queue = calc.queue
-    else:
-        calc.queue = queue
-    if package is None:
-        package = calc.package
-    else:
-        calc.package = package
-    if parallel is None:
-        parallel = calc.parallel
-    else:
-        calc.parallel = parallel
-    if command is None:
-        command = os.environ.get("ASE_ESPRESSO_COMMAND")
+    import os
+    import logging
+    logger = logging.getLogger(__name__)
+
+    queue = queue or calc.queue
+    calc.queue = queue
+    package = package or calc.package
+    parallel = parallel or calc.parallel
+    command = command or os.environ.get("ASE_ESPRESSO_COMMAND", "")
+
+    # Replace placeholders
     if "PACKAGE" in command:
         if "pw" in package:
             command = command.replace("PACKAGE", package, 1)
@@ -36,34 +27,17 @@ def set_queue(calc, package=None, parallel=None, queue=None, command=None):
         command = command.replace("PREFIX", calc.prefix)
     if "PARALLEL" in command:
         command = command.replace("PARALLEL", parallel)
-    logger.debug("Espresso command: %s" % (command))
-    if queue:
-        script = ""
-        if "config" in queue:
-            cf = os.path.join(os.environ["HOME"], queue["config"])
-            file = open(cf, "r")
-            script = file.read()
-            # del queue['config']
-        else:
-            for cf in config_files:
-                if os.path.exists(cf):
-                    file = open(cf, "r")
-                    script = file.read()
-        jobname = calc.prefix
-        with open("%s/.job_file" % calc.directory, "w") as fh:
-            fh.writelines("#!/bin/bash\n")
-            fh.writelines("#SBATCH --job-name=%s \n" % jobname)
-            fh.writelines("#SBATCH --output=%s.out\n" % calc.prefix)
-            fh.writelines("#SBATCH --error=%s.err\n" % calc.prefix)
-            fh.writelines("#SBATCH --wait\n")
-            for key, value in queue.items():
-                if key == "config":
-                    continue
-                if value:
-                    fh.writelines("#SBATCH --%s=%s\n" % (key, value))
-            fh.writelines("%s \n" % script)
-            fh.writelines("%s \n" % command)
-        calc.command = "sbatch {0}".format(".job_file")
-    else:
+
+    logger.debug(f"Espresso command: {command}")
+
+    # ✅ Only proceed with scheduler logic if queue is defined
+    if not queue or "scheduler" not in queue:
         calc.command = command
-    logger.debug("Queue command: %s" % (calc.command))
+        logger.debug(f"No scheduler defined. Using direct command: {command}")
+        return
+
+    scheduler = get_scheduler(calc, queue, command)
+    scheduler.write_script()
+    calc.command = scheduler.submit_command()
+
+    logger.debug(f"Queue command: {calc.command}")
