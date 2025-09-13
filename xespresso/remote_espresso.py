@@ -67,10 +67,10 @@ class RemoteEspresso(Espresso):
         if atoms is not None:
             self.atoms = atoms
 
-        # ✅ Early check: if nothing changed, reuse results
-        if not self.check_state(self.atoms):
-            self.read_results()
-            return self.results["energy"]
+#        # ✅ Early check: if nothing changed, reuse results
+#        if not self.check_state(self.atoms):
+#            self.read_results()
+#            return self.results["energy"]
             
         # Proceed with full workflow
         self._prepare_pseudos()
