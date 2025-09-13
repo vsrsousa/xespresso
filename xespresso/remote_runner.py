@@ -7,7 +7,48 @@ import logging
 logging.basicConfig(filename="remote_runner.log", level=logging.INFO)
 
 class RemoteRunner:
+    """
+    A class to manage persistent SSH connections and remote job execution.
+    
+    This class provides methods to connect to remote servers, transfer files,
+    execute commands, submit computational jobs, and retrieve results while
+    maintaining a persistent SSH connection for improved performance.
+    
+    Attributes:
+        hostname (str): Remote server hostname or IP address.
+        username (str): SSH username for authentication.
+        remote_base_dir (str): Base directory on remote server for job files.
+        module_command (str): Command to load required modules (e.g., "module load quantum-espresso").
+        port (int): SSH port number (default: 22).
+        password (str): SSH password for authentication (optional if using key-based auth).
+        key_path (str): Path to SSH private key file (optional if using password auth).
+        client (paramiko.SSHClient): Persistent SSH client instance.
+        sftp (paramiko.SFTPClient): Persistent SFTP client instance.
+        is_connected (bool): Connection status indicator.
+    """
+    
     def __init__(self, hostname, username, remote_base_dir, module_command, port=22, password=None, key_path=None):
+        """
+        Initialize the RemoteRunner with connection parameters.
+        
+        Args:
+            hostname (str): Remote server hostname or IP address.
+            username (str): SSH username for authentication.
+            remote_base_dir (str): Base directory on remote server where job directories will be created.
+            module_command (str): Command to load required environment modules.
+            port (int, optional): SSH port number. Defaults to 22.
+            password (str, optional): SSH password for authentication. Required if not using key-based auth.
+            key_path (str, optional): Path to SSH private key file. Required if not using password auth.
+            
+        Example:
+            >>> runner = RemoteRunner(
+            ...     hostname="cluster.university.edu",
+            ...     username="johndoe",
+            ...     remote_base_dir="/scratch/johndoe/jobs",
+            ...     module_command="module load quantum-espresso/6.8",
+            ...     key_path="~/.ssh/id_rsa"
+            ... )
+        """
         self.hostname = hostname
         self.username = username
         self.remote_base_dir = remote_base_dir
@@ -15,39 +56,58 @@ class RemoteRunner:
         self.port = port
         self.password = password
         self.key_path = key_path
+        self.client = None
+        self.sftp = None
+        self.is_connected = False
 
     def _connect(self, retries=3, delay=5, timeout=10):
         """
-        Establishes an SSH connection to the remote host with retry and timeout support.
-        Tries key-based authentication first, then falls back to password if key fails.
-
+        Establish and maintain a persistent SSH connection to the remote host.
+        
+        This method implements a robust connection strategy with retry logic and
+        connection health checking. It attempts key-based authentication first,
+        then falls back to password authentication if key-based auth fails.
+        
         Args:
-            retries (int): Number of connection attempts before failing.
-            delay (int): Delay in seconds between retries.
-            timeout (int): Timeout in seconds for each connection attempt.
-
+            retries (int, optional): Number of connection attempts before failing. Defaults to 3.
+            delay (int, optional): Delay in seconds between retry attempts. Defaults to 5.
+            timeout (int, optional): Connection timeout in seconds for each attempt. Defaults to 10.
+            
         Returns:
-            paramiko.SSHClient: Connected SSH client.
-
+            paramiko.SSHClient: Connected and authenticated SSH client instance.
+            
         Raises:
-            ConnectionError: If all connection attempts fail.
+            ConnectionError: If all connection attempts fail or authentication is unsuccessful.
+            
+        Note:
+            The connection is maintained persistently and reused for subsequent operations.
         """
-        import socket
-        import time
-        import paramiko
-        import logging
-
-        logging.basicConfig(filename="remote_runner.log", level=logging.INFO)
+        # Check if existing connection is still alive
+        if self.is_connected and self.client:
+            try:
+                self.client.exec_command("echo 'connection test'", timeout=5)
+                return self.client
+            except:
+                # Connection is dead, reset and reconnect
+                self.is_connected = False
+                if self.client:
+                    self.client.close()
+                if self.sftp:
+                    self.sftp.close()
+                self.client = None
+                self.sftp = None
 
         for attempt in range(1, retries + 1):
             logging.info(f"🔌 Attempt {attempt}: Connecting to {self.hostname}:{self.port} as {self.username}")
             print(f"🔌 Attempt {attempt}: Connecting to {self.hostname}:{self.port} as {self.username}")
             try:
+                # Test network connectivity first
                 socket.create_connection((self.hostname, self.port), timeout=timeout).close()
 
                 client = paramiko.SSHClient()
                 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
+                # Try key-based authentication first
                 if self.key_path:
                     try:
                         key_path_expanded = os.path.expanduser(self.key_path)
@@ -58,6 +118,8 @@ class RemoteRunner:
                             key_filename=key_path_expanded,
                             timeout=timeout
                         )
+                        self.client = client
+                        self.is_connected = True
                         return client
                     except FileNotFoundError as e:
                         logging.warning(f"⚠️ Key file not found: {e}")
@@ -66,6 +128,7 @@ class RemoteRunner:
                         logging.warning(f"⚠️ Key-based authentication failed: {e}")
                         print(f"⚠️ Key-based authentication failed: {e}")
 
+                # Fall back to password authentication
                 if self.password:
                     try:
                         client.connect(
@@ -75,6 +138,8 @@ class RemoteRunner:
                             password=self.password,
                             timeout=timeout
                         )
+                        self.client = client
+                        self.is_connected = True
                         return client
                     except paramiko.ssh_exception.SSHException as e:
                         logging.warning(f"⚠️ Password-based authentication failed: {e}")
@@ -89,41 +154,73 @@ class RemoteRunner:
 
         raise ConnectionError(f"❌ Failed to connect to {self.hostname} after {retries} attempts.")
 
+    def _get_sftp(self):
+        """
+        Get or create an SFTP client using the persistent SSH connection.
+        
+        Returns:
+            paramiko.SFTPClient: Connected SFTP client for file operations.
+            
+        Raises:
+            ConnectionError: If SSH connection is not established or fails.
+        """
+        if not self.sftp or not self.sftp.sock or not self.sftp.sock.getpeername():
+            self._connect()
+            self.sftp = self.client.open_sftp()
+        return self.sftp
+
     def run_command(self, command):
         """
-        Executes a remote command via SSH and returns the full output (stdout + stderr).
+        Execute a remote command via SSH and return the combined output.
+        
+        Args:
+            command (str): The shell command to execute on the remote server.
+            
+        Returns:
+            str: Combined stdout and stderr output from the command execution.
+            
+        Example:
+            >>> output = runner.run_command("ls -la /tmp")
+            >>> print(output)
         """
         client = self._connect()
         stdin, stdout, stderr = client.exec_command(command)
         output = stdout.read().decode()
         error = stderr.read().decode()
-        client.close()
         return output + error
 
     def transfer_inputs(self, local_dir, remote_subdir):
         """
-        Transfers input files from the local job directory to the remote server.
-
-        This method ensures that all top-level files in the local job directory are copied
-        to the corresponding remote job directory. If a 'pseudos/' subfolder exists locally,
-        it will be created remotely and its contents (typically .UPF files) will be transferred
-        as well. This is essential for Quantum ESPRESSO jobs that rely on local pseudopotentials.
-
+        Transfer input files from local directory to remote server.
+        
+        Copies all top-level files from the local directory to the remote
+        subdirectory. If a 'pseudos/' subfolder exists locally, it will be
+        created remotely and its contents (typically .UPF files) will be
+        transferred as well for Quantum ESPRESSO pseudopotentials.
+        
         Args:
-            local_dir (str): Path to the local job directory containing input files.
-            remote_subdir (str): Name of the subdirectory inside `remote_base_dir` where files will be placed.
-
+            local_dir (str): Path to the local directory containing input files.
+            remote_subdir (str): Name of the subdirectory within remote_base_dir
+                                where files will be placed.
+                                
         Raises:
-            ConnectionError: If SSH connection or file transfer fails.
+            FileNotFoundError: If local_dir does not exist.
+            ConnectionError: If SSH/SFTP connection fails during transfer.
+            
+        Example:
+            >>> runner.transfer_inputs(
+            ...     local_dir="/home/user/job_123",
+            ...     remote_subdir="job_123"
+            ... )
         """
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
         client = self._connect()
         client.exec_command(f"mkdir -p {remote_dir}")
-        sftp = client.open_sftp()
+        sftp = self._get_sftp()
 
         # Transfer top-level files
         for filename in os.listdir(local_dir):
-            local_path = os.path.join(local_dir, filename)
+            local_path = os.pathjoin(local_dir, filename)
             remote_path = os.path.join(remote_dir, filename)
 
             if os.path.isfile(local_path):
@@ -147,29 +244,32 @@ class RemoteRunner:
                     sftp.put(local_path, remote_path)
                     logging.info(f"📤 Transferred pseudo: {filename} → {remote_path}")
 
-        sftp.close()
-        client.close()
         print(f"✅ Files transferred to {remote_dir}")
 
     def submit_remote_job(self, remote_subdir, calc=None):
         """
-        Submits a remote job to the target machine using the appropriate scheduler.
-
-        This method assumes that the job script (e.g., .job_file or run.sh) has already been
-        generated and that the correct submission command is stored in `calc.command`.
-
-        The submission command is executed remotely via SSH, and the output is returned.
-
+        Submit a computational job to the remote cluster's job scheduler.
+        
+        This method assumes the job script has been generated and is present
+        in the remote directory. It executes the appropriate scheduler command
+        (e.g., sbatch, qsub) to submit the job.
+        
         Args:
-            remote_subdir (str): Subdirectory name inside `remote_base_dir` where the job files are located.
-            calc (object, optional): Calculator object with a `.command` attribute containing the submission command.
-                                     If not provided, defaults to 'sbatch .job_file'.
-
+            remote_subdir (str): Subdirectory name within remote_base_dir where
+                                job files are located.
+            calc (object, optional): Calculator object with a `.command` attribute
+                                    containing the submission command. If not provided,
+                                    defaults to 'sbatch .job_file'.
+                                    
         Returns:
-            str: Output from the remote job submission command (typically job ID or confirmation message).
-
+            str: Output from the job submission command (typically job ID or status message).
+            
         Raises:
-            RuntimeError: If the remote command produces an error.
+            RuntimeError: If the job submission command fails or returns an error.
+            
+        Example:
+            >>> job_id = runner.submit_remote_job("job_123", calc=qe_calculator)
+            >>> print(f"Job submitted with ID: {job_id}")
         """
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
         client = self._connect()
@@ -185,10 +285,6 @@ class RemoteRunner:
         stdin, stdout, stderr = client.exec_command(full_command)
         output = stdout.read().decode().strip()
         error = stderr.read().decode().strip()
-        client.close()
-
-#        if error:
-#            raise RuntimeError(f"❌ Error submitting job:\n{error}")
 
         if error and not error.strip().startswith("Loading"):
             raise RuntimeError(f"❌ Error submitting job:\n{error}")
@@ -201,19 +297,25 @@ class RemoteRunner:
 
     def retrieve_results(self, remote_subdir, local_dir):
         """
-        Retrieves output files from the remote server.
-
-        This method pulls all relevant files from the remote job directory,
-        including Quantum ESPRESSO output files (.pwo), SLURM logs (.out, .err),
-        and any other result files you may want to parse locally.
-
+        Retrieve output files from the remote server to local directory.
+        
+        Downloads relevant output files including Quantum ESPRESSO output files
+        (.pwo), scheduler logs (.out, .err), and other result files for local
+        parsing and analysis.
+        
         Args:
-            remote_subdir (str): Subdirectory name inside remote_base_dir.
-            local_dir (str): Local directory to store retrieved files.
+            remote_subdir (str): Subdirectory name within remote_base_dir containing
+                                the job output files.
+            local_dir (str): Local directory where files will be downloaded.
+                            
+        Example:
+            >>> runner.retrieve_results(
+            ...     remote_subdir="job_123",
+            ...     local_dir="/home/user/job_123_results"
+            ... )
         """
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
-        client = self._connect()
-        sftp = client.open_sftp()
+        sftp = self._get_sftp()
 
         for filename in sftp.listdir(remote_dir):
             if filename.endswith(".out") or filename.endswith(".err") or filename.endswith(".pwo"):
@@ -222,24 +324,46 @@ class RemoteRunner:
                 sftp.get(remote_path, local_path)
                 logging.info(f"📥 Retrieved: {filename} → {local_path}")
 
-        sftp.close()
-        client.close()
         print(f"📥 Results retrieved to {local_dir}")
 
     def test_connection(self):
         """
-        Tests SSH connectivity to the remote server.
+        Test SSH connectivity to the remote server.
+        
+        Performs a basic connection test to verify SSH access and authentication.
+        
+        Returns:
+            bool: True if connection is successful, False otherwise.
+            
+        Example:
+            >>> if runner.test_connection():
+            ...     print("Connection successful")
+            ... else:
+            ...     print("Connection failed")
         """
         try:
             client = self._connect()
             client.close()
             print(f"✅ SSH connection successful to {self.hostname}:{self.port} as {self.username}")
+            return True
         except Exception as e:
             print(f"❌ SSH connection failed: {e}")
+            return False
 
     def check_quantum_espresso(self):
         """
-        Checks if Quantum ESPRESSO is available on the remote server.
+        Check if Quantum ESPRESSO is available on the remote server.
+        
+        Verifies that the 'pw.x' executable is accessible in the PATH after
+        loading the required modules.
+        
+        Returns:
+            str or None: Path to pw.x executable if found, None otherwise.
+            
+        Example:
+            >>> qe_path = runner.check_quantum_espresso()
+            >>> if qe_path:
+            ...     print(f"QE found at: {qe_path}")
         """
         try:
             client = self._connect()
@@ -247,7 +371,6 @@ class RemoteRunner:
             stdin, stdout, stderr = client.exec_command(command)
             output = stdout.read().decode().strip()
             error = stderr.read().decode().strip()
-            client.close()
             if output:
                 print(f"✅ Quantum ESPRESSO detected: {output}")
                 return output
@@ -262,13 +385,22 @@ class RemoteRunner:
 
     def check_qe_version_remote(self, min_version="6.5"):
         """
-        Checks the version of Quantum ESPRESSO on the remote server.
-
+        Check the version of Quantum ESPRESSO on the remote server.
+        
         Args:
-            min_version (str): Minimum required version (e.g., "6.5").
-
+            min_version (str, optional): Minimum required version in format "X.Y".
+                                        Defaults to "6.5".
+                                        
         Returns:
             bool: True if version is compatible, False otherwise.
+            
+        Raises:
+            EnvironmentError: If QE version is below minimum requirement or
+                             version detection fails.
+                             
+        Example:
+            >>> if runner.check_qe_version_remote("6.5"):
+            ...     print("QE version is compatible")
         """
         try:
             client = self._connect()
@@ -276,7 +408,6 @@ class RemoteRunner:
             stdin, stdout, stderr = client.exec_command(command)
             output = stdout.read().decode()
             error = stderr.read().decode()
-            client.close()
 
             full_output = output + error
             for line in full_output.splitlines():
@@ -296,7 +427,14 @@ class RemoteRunner:
 
     def list_available_modules(self):
         """
-        Lists available modules on the remote server.
+        List available environment modules on the remote server.
+        
+        Returns:
+            str: Output of the 'module avail' command, or None if failed.
+            
+        Example:
+            >>> modules = runner.list_available_modules()
+            >>> print(modules)
         """
         try:
             client = self._connect()
@@ -304,7 +442,6 @@ class RemoteRunner:
             stdin, stdout, stderr = client.exec_command(command)
             output = stdout.read().decode()
             error = stderr.read().decode()
-            client.close()
             full_output = output + error
             print("📦 Available modules:\n")
             print(full_output)
@@ -315,13 +452,17 @@ class RemoteRunner:
 
     def list_remote_files(self, remote_subdir):
         """
-        Lists files in the specified remote directory.
-
+        List files in the specified remote directory.
+        
         Args:
-            remote_subdir (str): Subdirectory name inside remote_base_dir.
-
+            remote_subdir (str): Subdirectory name within remote_base_dir to list.
+            
         Returns:
-            str: Output of 'ls -lh' or error message.
+            str: Output of 'ls -lh' command, or None if failed.
+            
+        Example:
+            >>> files = runner.list_remote_files("job_123")
+            >>> print(files)
         """
         try:
             client = self._connect()
@@ -330,7 +471,6 @@ class RemoteRunner:
             stdin, stdout, stderr = client.exec_command(command)
             output = stdout.read().decode()
             error = stderr.read().decode()
-            client.close()
             if error:
                 print(f"⚠️ Error listing remote files:\n{error}")
             else:
@@ -339,3 +479,13 @@ class RemoteRunner:
         except Exception as e:
             print(f"❌ Failed to list remote files: {e}")
             return None
+
+    def close(self):
+        """
+        Close the persistent SSH connection and SFTP session.
+        
+        This method should be called when the RemoteRunner is no longer needed
+        to ensure proper cleanup of network resources.
+        
+        Example:
+            >>> runner.close()
