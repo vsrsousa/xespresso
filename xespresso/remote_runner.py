@@ -102,24 +102,54 @@ class RemoteRunner:
 
     def transfer_inputs(self, local_dir, remote_subdir):
         """
-        Transfers input files to the remote server, ensuring the target directory exists.
+        Transfers input files from the local job directory to the remote server.
+
+        This method ensures that all top-level files in the local job directory are copied
+        to the corresponding remote job directory. If a 'pseudos/' subfolder exists locally,
+        it will be created remotely and its contents (typically .UPF files) will be transferred
+        as well. This is essential for Quantum ESPRESSO jobs that rely on local pseudopotentials.
 
         Args:
-            local_dir (str): Local path containing input files.
-            remote_subdir (str): Subdirectory name inside remote_base_dir.
+            local_dir (str): Path to the local job directory containing input files.
+            remote_subdir (str): Name of the subdirectory inside `remote_base_dir` where files will be placed.
+
+        Raises:
+            ConnectionError: If SSH connection or file transfer fails.
         """
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
         client = self._connect()
         client.exec_command(f"mkdir -p {remote_dir}")
         sftp = client.open_sftp()
+
+        # Transfer top-level files
         for filename in os.listdir(local_dir):
             local_path = os.path.join(local_dir, filename)
             remote_path = os.path.join(remote_dir, filename)
-            sftp.put(local_path, remote_path)
+
+            if os.path.isfile(local_path):
+                sftp.put(local_path, remote_path)
+
+        # Transfer pseudos folder if it exists
+        pseudos_local = os.path.join(local_dir, "pseudos")
+        pseudos_remote = os.path.join(remote_dir, "pseudos")
+
+        if os.path.isdir(pseudos_local):
+            try:
+                sftp.mkdir(pseudos_remote)
+            except IOError:
+                pass  # Folder may already exist
+
+            for filename in os.listdir(pseudos_local):
+                local_path = os.path.join(pseudos_local, filename)
+                remote_path = os.path.join(pseudos_remote, filename)
+
+                if os.path.isfile(local_path):
+                    sftp.put(local_path, remote_path)
+                    logging.info(f"📤 Transferred pseudo: {filename} → {remote_path}")
+
         sftp.close()
         client.close()
         print(f"✅ Files transferred to {remote_dir}")
-
 
     def submit_remote_job(self, remote_subdir, calc=None):
         """
@@ -150,15 +180,21 @@ class RemoteRunner:
         else:
             job_command = "sbatch .job_file"
 
-        full_command = f"cd {remote_dir} && {self.module_command} && {job_command}"
+        full_command = f"cd {remote_dir} && source /etc/profile && {self.module_command} && {job_command}"
 
         stdin, stdout, stderr = client.exec_command(full_command)
         output = stdout.read().decode().strip()
         error = stderr.read().decode().strip()
         client.close()
 
-        if error:
+#        if error:
+#            raise RuntimeError(f"❌ Error submitting job:\n{error}")
+
+        if error and not error.strip().startswith("Loading"):
             raise RuntimeError(f"❌ Error submitting job:\n{error}")
+
+        logging.info(f"📤 Job submission stdout:\n{output}")
+        logging.info(f"📤 Job submission stderr:\n{error}")
 
         print(f"🚀 Job submitted successfully:\n{output.strip()}")
         return output.strip()
@@ -167,6 +203,10 @@ class RemoteRunner:
         """
         Retrieves output files from the remote server.
 
+        This method pulls all relevant files from the remote job directory,
+        including Quantum ESPRESSO output files (.pwo), SLURM logs (.out, .err),
+        and any other result files you may want to parse locally.
+
         Args:
             remote_subdir (str): Subdirectory name inside remote_base_dir.
             local_dir (str): Local directory to store retrieved files.
@@ -174,11 +214,14 @@ class RemoteRunner:
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
         client = self._connect()
         sftp = client.open_sftp()
+
         for filename in sftp.listdir(remote_dir):
-            if filename.endswith(".out") or filename.endswith(".err"):
+            if filename.endswith(".out") or filename.endswith(".err") or filename.endswith(".pwo"):
                 remote_path = os.path.join(remote_dir, filename)
                 local_path = os.path.join(local_dir, filename)
                 sftp.get(remote_path, local_path)
+                logging.info(f"📥 Retrieved: {filename} → {local_path}")
+
         sftp.close()
         client.close()
         print(f"📥 Results retrieved to {local_dir}")
