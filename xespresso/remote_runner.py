@@ -271,6 +271,16 @@ class RemoteRunner:
             >>> job_id = runner.submit_remote_job("job_123", calc=qe_calculator)
             >>> print(f"Job submitted with ID: {job_id}")
         """
+
+        """
+        Submit job only if previous run is not converged.
+        """
+        if calc:
+            converged, _ = calc.read_convergence()
+            if converged == 0:
+                print(f"✅ Job already converged — skipping submission for {calc.label}")
+                return "Skipped"
+                
         remote_dir = os.path.join(self.remote_base_dir, remote_subdir)
         client = self._connect()
 
