@@ -6,8 +6,8 @@ class BashScheduler(Scheduler):
     Scheduler for direct bash execution (no job manager).
 
     This class generates a simple bash script that runs the resolved execution
-    command directly. It includes any environment setup script loaded by the base
-    Scheduler class. Useful for local runs or environments without a job scheduler.
+    command directly. It includes any environment setup script loaded by the
+    base Scheduler class. Useful for local runs or environments without a job scheduler.
 
     Attributes:
         Inherited from Scheduler:
@@ -17,24 +17,28 @@ class BashScheduler(Scheduler):
             job_file (str): Name of the job script file.
             script_dir (str): Directory where the job script is written.
             config_script (str): Optional environment setup script content.
+            post_script (str): Optional post-execution commands.
 
     Methods:
-        write_script():
-            Writes a bash script (.job_file) with environment setup and execution command.
-
-        submit_command():
-            Returns the bash execution command (e.g., 'bash .job_file').
+        write_script(): Writes a bash script (.job_file) with structured layout.
+        submit_command(): Returns the bash execution command (e.g., 'bash .job_file').
     """
 
     def write_script(self):
-        lines = ["#!/bin/bash"]
+        lines = ["#!/bin/bash", ""]  # Shebang + blank line
 
-        # Add environment setup script if available
+        # Prepend block (includes modules and config)
         if self.config_script:
             lines.append(self.config_script)
+            lines.append("")  # Blank line after config
 
-        # Add the execution command
+        # Main execution command
         lines.append(self.command)
+        lines.append("")  # Blank line after command
+
+        # Post-execution block
+        if self.post_script:
+            lines.append(self.post_script)
 
         # Write to job file
         with open(os.path.join(self.script_dir, self.job_file), "w") as f:
