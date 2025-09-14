@@ -70,11 +70,11 @@ def set_queue(calc, package=None, parallel=None, queue=None, command=None):
         msg = f"Failed to initialize scheduler '{queue.get('scheduler')}': {e}"
         raise ValueError(msg) if VERBOSE_ERRORS else ValueError(msg) from None
 
-    # Write job script and execute
+    # Write job script only — defer execution to ASE
     scheduler.write_script()
-    stdout, stderr = scheduler.run()
 
-    # Store command string for logging/profiling
+    # Store scheduler and command for later use
+    calc.scheduler = scheduler
     calc.command = scheduler.submit_command()
     if hasattr(calc, "profile"):
         calc.profile.command = calc.command
