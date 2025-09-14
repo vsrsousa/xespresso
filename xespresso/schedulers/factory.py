@@ -1,5 +1,5 @@
 from .slurm import SlurmScheduler
-from .bash import BashScheduler
+from .direct import DirectScheduler
 
 def get_scheduler(calc, queue, command):
     """
@@ -11,7 +11,7 @@ def get_scheduler(calc, queue, command):
 
     Supported schedulers:
         - "slurm": Uses SlurmScheduler (submits via sbatch)
-        - "bash": Uses BashScheduler (runs via bash script)
+        - "direct": Uses DirectScheduler (runs via bash script)
 
     Args:
         calc (Calculator): The calculator instance to be scheduled.
@@ -28,7 +28,7 @@ def get_scheduler(calc, queue, command):
 
     if scheduler_type == "slurm":
         return SlurmScheduler(calc, queue, command)
-    elif scheduler_type == "bash":
-        return BashScheduler(calc, queue, command)
+    elif scheduler_type == "direct":
+        return DirectScheduler(calc, queue, command)
     else:
         raise ValueError(f"Unsupported scheduler: {scheduler_type}")

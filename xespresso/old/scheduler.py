@@ -6,29 +6,30 @@ from xespresso.utils.slurm import check_slurm_available
 
 def set_queue(calc, package=None, parallel=None, queue=None, command=None):
     """
-    Configures the calculator for job submission in xespresso.
+    Configures the calculator for job submission.
 
-    This function prepares the job execution environment by:
-        - Replacing placeholders in the command string using calc attributes.
-        - Defaulting to local execution with the 'direct' scheduler if none is specified.
-        - Initializing the appropriate scheduler via get_scheduler().
-        - Writing the job script using scheduler.write_script().
-        - Executing the job using scheduler.run(), which supports local or remote execution.
-        - Storing the final command string in calc.command and optionally in calc.profile.
+    If a scheduler is defined in the queue, generates a job script and sets the submission command.
+    Otherwise, sets the command directly for manual/local execution.
 
-    SLURM availability is validated only for local jobs using the SLURM scheduler.
+    Behavior:
+    - Replaces placeholders in the command string using calc attributes.
+    - If SLURM is selected, validates SLURM availability using check_slurm_available().
+    - Supports other scheduler types via get_scheduler().
+    - Verbosity is controlled by the global flag VERBOSE_ERRORS, set via the environment variable
+      XESPRESSO_VERBOSE_ERRORS.
 
     Args:
         calc: ASE calculator object.
         package (str, optional): Executable name (e.g., 'pw').
         parallel (str, optional): Parallel execution command (e.g., 'mpirun -np 4').
         queue (dict, optional): Scheduler configuration dictionary.
-        command (str, optional): Command template string with placeholders.
+        command (str, optional): Command template string.
 
     Raises:
-        RuntimeError: If SLURM is selected for local execution but not available.
+        RuntimeError: If SLURM is selected but not available.
         ValueError: If scheduler initialization fails.
     """
+
     logger = logging.getLogger(__name__)
     queue = queue or calc.queue
     calc.queue = queue
@@ -44,39 +45,39 @@ def set_queue(calc, package=None, parallel=None, queue=None, command=None):
     if "PARALLEL" in command:
         command = command.replace("PARALLEL", parallel)
 
+    print("Command after set_queue:", calc.command)
     logger.debug(f"Espresso command: {command}")
 
-    # Default to local direct scheduler if none is defined
+    # No scheduler defined — use direct command
     if not queue or "scheduler" not in queue:
-        queue = {
-            "execution": "local",
-            "scheduler": "direct"
-        }
-        calc.queue = queue
-        logger.debug("No scheduler defined. Defaulting to local direct execution.")
+        calc.command = command
+        if hasattr(calc, "profile"):
+            calc.profile.command = command
+        print(f"No scheduler defined. Using direct command: {command}")
+        print(f"Ase profile command: {calc.profile.command}")
+        logger.debug(f"No scheduler defined. Using direct command: {command}")
+        return
 
-    # Validate SLURM only for local execution
-    if queue.get("scheduler") == "slurm" and queue.get("execution", "local") == "local":
+    # Validate SLURM if selected
+    if queue.get("scheduler") == "slurm":
         try:
             check_slurm_available()
         except RuntimeError as e:
-            msg = f"SLURM scheduler is not available locally: {e}"
+            msg = f"SLURM scheduler is not available: {e}"
             raise RuntimeError(msg) if VERBOSE_ERRORS else RuntimeError(msg) from None
 
-    # Initialize scheduler
+    # Initialize scheduler (supports slurm, bash, etc.)
     try:
         scheduler = get_scheduler(calc, queue, command)
     except Exception as e:
         msg = f"Failed to initialize scheduler '{queue.get('scheduler')}': {e}"
         raise ValueError(msg) if VERBOSE_ERRORS else ValueError(msg) from None
 
-    # Write job script and execute
     scheduler.write_script()
-    stdout, stderr = scheduler.run()
-
-    # Store command string for logging/profiling
     calc.command = scheduler.submit_command()
     if hasattr(calc, "profile"):
         calc.profile.command = calc.command
 
-    logger.debug(f"Scheduler executed with command: {calc.command}")
+    print(f"Using scheduler {scheduler} to run as {command}")
+    print(f"Ase profile command: {calc.profile.command}")
+    logger.debug(f"Queue command: {calc.command}")
