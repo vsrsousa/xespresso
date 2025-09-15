@@ -102,7 +102,8 @@ class RemoteExecutionMixin:
                 if hasattr(self, "logger"):
                     self.logger.warning(f"Missing pseudopotential: {pseudo_file} for {symbol}")
 
-        self.calc.parameters["pseudo_dir"] = "./pseudo"
+        self.calc.parameters["input_data"]["CONTROL"]["pseudo_dir"] = "./pseudo"
+        self.calc.write_input(self.calc.atoms)
 
     def run(self):
         if self.queue.get("execution") != "remote":

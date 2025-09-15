@@ -12,7 +12,6 @@ class RemoteAuth:
     - Persistent SSH and SFTP sessions
     - Remote command execution
     - File transfer (send/retrieve)
-    - Remote SHA256 checksum validation
 
     Args:
         username (str): SSH login username.
@@ -105,27 +104,6 @@ class RemoteAuth:
             self.sftp.get(remote_path, local_path)
         except Exception as e:
             msg = f"Failed to retrieve file '{remote_path}' to '{local_path}': {e}"
-            raise RuntimeError(msg) if VERBOSE_ERRORS else RuntimeError(msg) from None
-
-    def sha256(self, remote_path):
-        """
-        Computes SHA256 checksum of a file on the remote host.
-
-        Args:
-            remote_path (str): Path to the file on the remote machine.
-
-        Returns:
-            str: SHA256 hash string (hex), or raises RuntimeError if failed.
-        """
-        try:
-            self.connect()
-            cmd = f"sha256sum {remote_path}"
-            stdout, stderr = self.run_command(cmd)
-            if stderr:
-                raise RuntimeError(f"Remote error: {stderr.strip()}")
-            return stdout.strip().split()[0]
-        except Exception as e:
-            msg = f"Failed to compute SHA256 for '{remote_path}': {e}"
             raise RuntimeError(msg) if VERBOSE_ERRORS else RuntimeError(msg) from None
 
     def close(self):

@@ -59,6 +59,7 @@ class Scheduler:
 
         if "prepend" in self.queue:
             lines.append(self.queue["prepend"])
+        lines.append("")
 
         if self.queue.get("use_modules", False):
             modules = self.queue.get("modules", [])
@@ -66,6 +67,7 @@ class Scheduler:
                 lines.append("module purge")
                 for mod in modules:
                     lines.append(f"module load {mod}")
+        lines.append("")
 
         config_name = self.queue.get("xespressorc")
         if config_name:

@@ -1,55 +1,57 @@
 from .base import Scheduler
+from .remote_mixin import RemoteExecutionMixin
 import os
 
-class SlurmScheduler(Scheduler):
+class SlurmScheduler(RemoteExecutionMixin, Scheduler):
     """
-    Scheduler for SLURM-based job submission systems.
+    SLURM-compatible job scheduler with remote execution support.
 
-    This class generates a SLURM-compatible job script using parameters from the
-    `queue` dictionary and the resolved execution `command`. It includes SBATCH
-    directives, environment setup, and optional post-execution commands.
+    Inherits from:
+        - Scheduler: Abstract base class for job script generation and submission.
+        - RemoteExecutionMixin: Adds remote SSH execution, file transfer, and pseudopotential syncing.
 
-    Supported keys in `queue`:
-        - "job_name", "output", "error": Standard SLURM directives
-        - Any other key (except "scheduler", "config") is treated as a SBATCH option
-        - "prepend": Shell commands to run before the main job
-        - "modules": List of modules to load (if "use_modules" is True)
-        - "use_modules": Boolean flag to enable module loading
-        - "postpend": Shell commands to run after the main job
-        - "xespressorc": Optional filename of a shell config file in $HOME
+    Features:
+        - Generates SLURM job scripts using queue parameters.
+        - Supports remote execution via SSH.
+        - Loads environment modules and shell setup from `config_script`.
+        - Appends cleanup or post-processing commands via `post_script`.
+        - Submits jobs using `sbatch`.
 
-    Methods:
-        write_script(): Writes a SLURM job script (.job_file) with structured layout.
-        submit_command(): Returns the SLURM submission command (e.g., 'sbatch .job_file').
+    Attributes:
+        calc (Calculator): The calculator instance (e.g., Espresso).
+        queue (dict): Scheduler and remote execution configuration.
+        command (str): The command to run (e.g., 'pw.x -in scf.pwi').
+        job_file (str): Name of the job script file.
+        script_dir (str): Directory where the job script is saved.
+        config_script (str): Pre-execution shell setup block.
+        post_script (str): Post-execution shell block.
     """
 
     def write_script(self):
+        """
+        Generates a SLURM job script and writes it to disk.
+
+        The script includes:
+            - SBATCH directives from queue["resources"]
+            - Environment setup via config_script
+            - Execution command
+            - Optional post-processing via post_script
+        """
         lines = ["#!/bin/bash", ""]
 
-        # Unified SBATCH directive block
+        # SLURM directives
         sbatch_keys = {
             "job-name": self.queue.get("job_name", self.calc.prefix),
             "output": self.queue.get("output", f"{self.calc.prefix}.out"),
-            "error": self.queue.get("error", f"{self.calc.prefix}.err"),
-            "wait": None  # --wait is a flag, no value needed
+            "error": self.queue.get("error", f"{self.calc.prefix}.err")
         }
 
-        # Add core directives
         for key, value in sbatch_keys.items():
-            if value is not None:
-                lines.append(f"#SBATCH --{key}={value}")
-            else:
-                lines.append(f"#SBATCH --{key}")
+            lines.append(f"#SBATCH --{key}={value}")
 
-        # Add user-defined SBATCH directives
-        for key, value in self.queue.items():
-            if key in [
-                "scheduler", "config", "prepend", "modules", "use_modules",
-                "postpend", "xespressorc", "job_name", "output", "error"
-            ]:
-                continue
-            if value:
-                lines.append(f"#SBATCH --{key}={value}")
+        # Additional SBATCH options
+        for key, value in self.queue.get("resources", {}).items():
+            lines.append(f"#SBATCH --{key}={value}")
 
         lines.append("")  # Blank line after SBATCH block
 
@@ -71,4 +73,10 @@ class SlurmScheduler(Scheduler):
             f.write("\n".join(lines))
 
     def submit_command(self):
+        """
+        Returns the SLURM submission command.
+
+        Returns:
+            str: Command to submit the job script via sbatch.
+        """
         return f"sbatch {self.job_file}"

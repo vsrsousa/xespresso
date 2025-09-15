@@ -91,12 +91,14 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
         if method == "key":
             queue["remote_auth"] = {
                 "method": "key",
-                "ssh_key": auth.get("ssh_key", "~/.ssh/id_rsa")
+                "ssh_key": auth.get("ssh_key", "~/.ssh/id_rsa"),
+                "port": auth.get("port", 22)
             }
         elif method == "password":
             queue["remote_auth"] = {
                 "method": "password",
-                "password": auth.get("password", "")
+                "password": auth.get("password", ""),
+                "port": auth.get("port", 22)
             }
         else:
             raise ValueError(f"Unsupported auth method: {method}")
