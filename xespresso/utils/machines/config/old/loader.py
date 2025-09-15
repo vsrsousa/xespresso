@@ -1,46 +1,41 @@
 """
-loader.py
+machine_config.py
 
-Utility for loading machine configurations for xespresso workflows.
+Utility for managing machine configurations for xespresso workflows.
 
 This module supports:
 - Parsing machine profiles from a JSON config file
+- Interactive creation of new machine profiles
 - Local and remote execution modes
 - Key-based and password-based SSH authentication
 - Optional job resources, environment setup, and cleanup commands
-- Normalization of script blocks (prepend/postpend) to ensure compatibility
 
 Default config path: ~/.xespresso/machines.json
 Default machine name: "local_desktop"
 
 Example usage:
-    from xespresso.utils.machines.config.loader import load_machine
-    queue = load_machine()  # Loads default machine
+    from xespresso.utils.machine_config import parse_machine_config, create_machine_config
+
+    queue = parse_machine_config()  # Load default machine
+    if queue is None:
+        create_machine_config()     # Create config interactively
+        queue = parse_machine_config()
 """
 
 import os
 import json
 from xespresso.utils import warnings as warnings
 
-# Apply custom warning formatting globally
 warnings.apply_custom_format()
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.xespresso/machines.json")
 DEFAULT_MACHINE_NAME = "local_desktop"
 
-def normalize_script_block(block):
-    """
-    Ensures that script blocks (prepend/postpend) are returned as strings.
-    Accepts either a string or a list of strings.
-    """
-    if isinstance(block, list):
-        return "\n".join(block)
-    return block or ""
-
 def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
-                 machine_name: str = DEFAULT_MACHINE_NAME) -> dict | None:
+		   machine_name: str = DEFAULT_MACHINE_NAME) -> dict | None:
     """
     Loads and parses a machine configuration block into a queue dictionary.
+    Returns None if the config file is missing.
 
     Parameters:
     - config_path (str): Path to the JSON config file
@@ -48,14 +43,14 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
 
     Returns:
     - queue (dict): Parsed configuration for scheduler and remote execution
-    - None: If config file is missing or malformed
+    - None: If config file is missing
     """
     if not os.path.exists(config_path):
         warnings.warn(
             f"Machine config file not found at {config_path}.\n"
-            f"To create one, run:\n"
-            f"  from xespresso.utils.machines.config.creator import create_machine\n"
-            f"  create_machine(path='{config_path}')\n"
+            f"To create one, make sure to import and call:\n"
+            f"    from xespresso.utils.machine.config.creator import create_machine\n"
+            f"    create_machine(path='{config_path}')\n"
             f"Returning None."
         )
         return None
@@ -72,10 +67,10 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
         "execution": machine.get("execution", "local"),
         "scheduler": machine.get("scheduler", "direct"),
         "use_modules": machine.get("use_modules", False),
-        "modules": machine.get("modules", []),  # Always a list
+        "modules": machine.get("modules", []),
         "resources": machine.get("resources", {}),
-        "prepend": normalize_script_block(machine.get("prepend")),
-        "postpend": normalize_script_block(machine.get("postpend"))
+        "prepend": machine.get("prepend", []),
+        "postpend": machine.get("postpend", [])
     }
 
     if queue["execution"] == "local":
@@ -87,7 +82,6 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
 
         auth = machine.get("auth", {})
         method = auth.get("method", "key")
-
         if method == "key":
             queue["remote_auth"] = {
                 "method": "key",

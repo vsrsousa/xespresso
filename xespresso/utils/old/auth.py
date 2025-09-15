@@ -6,12 +6,8 @@ class RemoteAuth:
     """
     Manages persistent SSH authentication and file transfer for remote execution.
 
-    Supports:
-    - Password and key-based login
-    - Custom SSH port (default: 22)
-    - Persistent SSH and SFTP sessions
-    - Remote command execution
-    - File transfer (send/retrieve)
+    Supports password and key-based login. Maintains a live SSH and SFTP session
+    throughout the job lifecycle.
 
     Args:
         username (str): SSH login username.
@@ -20,12 +16,11 @@ class RemoteAuth:
             - method: "password" or "key"
             - password: (if method == "password")
             - ssh_key: path to private key (if method == "key")
-            - port: optional SSH port (default: 22)
     """
+
     def __init__(self, username, host, auth_config):
         self.username = username
         self.host = host
-        self.port = auth_config.get("port", 22)
         self.method = auth_config.get("method", "key")
         self.password = auth_config.get("password")
         self.ssh_key = os.path.expanduser(auth_config.get("ssh_key", "~/.ssh/id_rsa"))
@@ -40,22 +35,12 @@ class RemoteAuth:
             self.client = paramiko.SSHClient()
             self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             if self.method == "password":
-                self.client.connect(
-                    hostname=self.host,
-                    port=self.port,
-                    username=self.username,
-                    password=self.password
-                )
+                self.client.connect(hostname=self.host, username=self.username, password=self.password)
             else:
-                self.client.connect(
-                    hostname=self.host,
-                    port=self.port,
-                    username=self.username,
-                    key_filename=self.ssh_key
-                )
+                self.client.connect(hostname=self.host, username=self.username, key_filename=self.ssh_key)
             self.sftp = self.client.open_sftp()
         except Exception as e:
-            msg = f"Failed to connect to {self.username}@{self.host}:{self.port}: {e}"
+            msg = f"Failed to connect to {self.username}@{self.host}: {e}"
             raise RuntimeError(msg) if VERBOSE_ERRORS else RuntimeError(msg) from None
 
     def run_command(self, command):
