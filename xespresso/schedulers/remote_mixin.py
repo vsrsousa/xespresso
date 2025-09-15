@@ -106,6 +106,22 @@ class RemoteExecutionMixin:
         self.calc.write_input(self.calc.atoms)
 
     def run(self):
+        """
+        Executes the calculation remotely if 'execution' is set to 'remote' in the queue.
+
+        Behavior:
+            - For remote execution:
+                - Sets up SSH connection and remote working directory
+                - Transfers input and job script files
+                - Submits job using the scheduler's submit_command()
+                - If scheduler is SLURM, waits for job completion via squeue polling
+                - Retrieves output file only after job finishes
+            - For direct/local execution:
+                - Falls back to the base Scheduler.run() method
+
+        Returns:
+            tuple: (stdout, stderr) from the job submission command
+        """
         if self.queue.get("execution") != "remote":
             return super().run()
 
@@ -127,7 +143,26 @@ class RemoteExecutionMixin:
         if hasattr(self, "logger"):
             self.logger.info(f"Submitting job via: {self.submit_command()}")
 
-        stdout, stderr = self.remote.run_command(f"cd {self.remote_path} && {self.submit_command()}")
+        env_setup = "source /etc/profile" if self.queue.get("scheduler") == "slurm" else ""
+        command = f"cd {self.remote_path} && {env_setup} && {self.submit_command()}"
+        stdout, stderr = self.remote.run_command(command)
+
+        # If SLURM, extract job ID and wait for completion
+        if self.queue.get("scheduler") == "slurm":
+            import re, time
+
+            match = re.search(r"Submitted batch job (\\d+)", stdout)
+            job_id = match.group(1) if match else None
+
+            if job_id:
+                if hasattr(self, "logger"):
+                    self.logger.info(f"Waiting for SLURM job {job_id} to complete...")
+
+                while True:
+                    status = self.remote.run_command(f"squeue -j {job_id}")
+                    if job_id not in status:
+                        break
+                    time.sleep(10)
 
         self.remote.retrieve_file(f"{self.remote_path}/{output_file}", local_output)
 
