@@ -35,7 +35,7 @@ def check_slurm_available():
     if shutil.which("sbatch") is None:
         msg = (
             "SLURM scheduler requested but 'sbatch' command not found.\n"
-            "Please install SLURM or use 'bash' as the scheduler for local execution."
+            "Please install SLURM or use 'direct' as the scheduler for local execution."
         )
         raise RuntimeError(msg) if VERBOSE_ERRORS else RuntimeError(msg) from None
 

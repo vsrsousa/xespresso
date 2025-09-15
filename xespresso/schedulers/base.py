@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 class Scheduler:
     """
@@ -112,5 +113,6 @@ class Scheduler:
         Returns:
             tuple: (stdout, stderr) if applicable, else (None, None)
         """
-        os.system(self.submit_command())
+#        os.system(self.submit_command())
+        subprocess.run(self.submit_command(), shell=True, cwd=self.script_dir, check=True)
         return None, None
