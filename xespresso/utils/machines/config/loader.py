@@ -24,6 +24,9 @@ Example usage:
 
 import os
 import json
+from xespresso.utils import warnings as warnings
+
+warnings.apply_custom_format()
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.xespresso/machines.json")
 DEFAULT_MACHINE_NAME = "local_desktop"
