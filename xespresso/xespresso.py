@@ -138,6 +138,15 @@ class Espresso(FileIOCalculator):
 
         # self.discard_results_on_any_change = False
 
+    def execute(self):
+        """
+        Executes the job using the scheduler.
+        This overrides ASE's default profile-based execution.
+        It preserves ASE's caching logic and supports remote execution.
+        """
+        logger.info("Executing job via scheduler...")
+        self.scheduler.run()
+
     def find_pseudopotentials(self, pseudo_group="SSSP_1.1.2_PBE_efficiency"):
         """Get pseudo potential by family name.
 
