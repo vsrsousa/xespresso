@@ -1,4 +1,5 @@
 import os
+import subprocess
 import paramiko
 from xespresso.config import VERBOSE_ERRORS
 
@@ -138,3 +139,51 @@ class RemoteAuth:
         except Exception as e:
             msg = f"Failed to close remote session: {e}"
             raise RuntimeError(msg) if VERBOSE_ERRORS else RuntimeError(msg) from None
+
+# 🔧 Auxiliar functions
+
+def generate_ssh_key(private_key_path: str):
+    """
+    Generates a new RSA SSH key pair at the specified path.
+
+    Args:
+        private_key_path (str): Path to the private key file (e.g. ~/.ssh/id_rsa).
+    """
+    private_key_path = os.path.expanduser(private_key_path)
+    subprocess.run(["ssh-keygen", "-t", "rsa", "-b", "4096", "-f", private_key_path], check=True)
+    print(f"✅ SSH key pair created at {private_key_path} and {private_key_path}.pub")
+
+def install_ssh_key(username: str, host: str, public_key_path: str, port: int = 22):
+    """
+    Installs the public SSH key on the remote server using ssh-copy-id.
+
+    Args:
+        username (str): SSH username.
+        host (str): Remote host IP or domain.
+        public_key_path (str): Path to the public key file.
+        port (int): SSH port number.
+    """
+    public_key_path = os.path.expanduser(public_key_path)
+    subprocess.run(["ssh-copy-id", "-p", str(port), "-i", public_key_path, f"{username}@{host}"], check=True)
+    print(f"🔐 SSH key installed on {username}@{host}:{port}")
+
+
+def test_ssh_connection(username: str, host: str, key_path: str = None, port: int = 22):
+    """
+    Tests SSH connectivity to the remote host.
+
+    Args:
+        username (str): SSH username.
+        host (str): Remote host IP or domain.
+        key_path (str, optional): Path to the private key file.
+        port (int): SSH port number.
+    """
+    key_path = os.path.expanduser(key_path) if key_path else None
+    cmd = ["ssh", "-p", str(port)]
+    if key_path:
+        cmd += ["-i", key_path]
+    cmd += [f"{username}@{host}", "echo 'Connection successful'"]
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError:
+        print("❌ SSH connection failed.")
