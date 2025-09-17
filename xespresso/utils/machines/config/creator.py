@@ -1,63 +1,78 @@
 """
-machine_config.py
+creator.py
 
-Utility for managing machine configurations for xespresso workflows.
+Utility for interactively creating machine configurations for xespresso workflows.
 
 This module supports:
-- Parsing machine profiles from a JSON config file
 - Interactive creation of new machine profiles
 - Local and remote execution modes
-- Key-based and password-based SSH authentication
-- Optional job resources, environment setup, and cleanup commands
+- Key-based SSH authentication (password-based authentication is no longer supported)
+- Optional job resources for Slurm schedulers
+- SSH key validation, generation, installation, and connectivity testing
+- Logging and warnings for traceability and user feedback
 
 Default config path: ~/.xespresso/machines.json
 Default machine name: "local_desktop"
 
 Example usage:
-    from xespresso.utils.machine_config import parse_machine_config, create_machine_config
-
-    queue = parse_machine_config()  # Load default machine
-    if queue is None:
-        create_machine_config()     # Create config interactively
-        queue = parse_machine_config()
+from xespresso.utils.machines.config.creator import create_machine
+create_machine()  # Launch interactive setup
 """
 
 import os
 import json
+from xespresso.utils.auth import (
+    generate_ssh_key,
+    install_ssh_key,
+    test_ssh_connection
+)
 from xespresso.utils import warnings as warnings
+from xespresso.utils.logging import get_logger
 
-warnings.apply_custom_format()
+logger = get_logger()
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.xespresso/machines.json")
-DEFAULT_MACHINE_NAME = "local_desktop"
 
 def create_machine(path: str = DEFAULT_CONFIG_PATH):
     """
-    Interactively adds a new machine to the config file.
-    If the file exists, it appends to the 'machines' block.
-    If not, it creates a new config file.
+    Interactively adds a new machine configuration to the xespresso config file.
+
+    This function prompts the user for machine details such as execution mode,
+    scheduler type, working directory, SSH credentials (key-based only),
+    and optional job resources. If the config file already exists, the new
+    machine is appended to the 'machines' block. If the machine name already
+    exists, the user is prompted to confirm overwriting.
 
     Parameters:
-    - path (str): Path to the config file
+    - path (str): Path to the config file. Defaults to ~/.xespresso/machines.json.
     """
-    print("⚙️ Let's add a new machine configuration.")
-
+    warnings.apply_custom_format()
+    logger.info("Starting interactive machine configuration.")
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
-    # Load existing config if present
+    config = {"machines": {}}
     if os.path.exists(path):
-        with open(path) as f:
-            config = json.load(f)
-    else:
-        config = {"machines": {}}
+        try:
+            with open(path) as f:
+                config = json.load(f)
+            logger.info(f"Loaded existing config from {path}")
+        except Exception as e:
+            logger.error(f"Failed to load config: {e}")
+            return
 
     machine_name = input("Machine name (e.g. local_desktop, cluster_a): ").strip()
     if not machine_name:
+        logger.warning("Machine name was left empty.")
         print("❌ Machine name cannot be empty.")
         return
 
     if machine_name in config["machines"]:
-        print(f"⚠️ Machine '{machine_name}' already exists. Overwriting...")
+        print(f"⚠️ Machine '{machine_name}' already exists.")
+        confirm = input("Do you want to overwrite it? [y/N]: ").strip().lower()
+        if confirm != "y":
+            print("❌ Aborted. No changes made.")
+            logger.info("User aborted overwrite.")
+            return
 
     execution = input("Execution mode [local/remote]: ").strip().lower() or "local"
     scheduler = input("Scheduler [direct/slurm]: ").strip() or "direct"
@@ -76,19 +91,52 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
 
     if execution == "remote":
         machine["host"] = input("Remote host (e.g. hpc.example.com): ").strip()
+        machine["port"] = int(input("SSH port [22]: ").strip() or "22")
         machine["username"] = input("SSH username: ").strip()
-        method = input("Auth method [key/password]: ").strip().lower() or "key"
-        if method == "key":
-            ssh_key = input("Path to SSH key [~/.ssh/id_rsa]: ").strip() or "~/.ssh/id_rsa"
-            machine["auth"] = {"method": "key", "ssh_key": ssh_key}
-        elif method == "password":
-            password = input("SSH password: ").strip()
-            machine["auth"] = {"method": "password", "password": password}
-        else:
-            print("❌ Unsupported auth method.")
-            return
 
-        # Prompt for resources
+        ssh_key = input("Path to SSH key [~/.ssh/id_rsa.pub]: ").strip() or "~/.ssh/id_rsa.pub"
+        ssh_key = os.path.expanduser(ssh_key)
+
+        if not os.path.isfile(ssh_key):
+            logger.warning(f"SSH key not found at {ssh_key}")
+            print(f"⚠️ SSH key '{ssh_key}' not found.")
+            create_key = input("Do you want to generate a new SSH key pair now? [y/N]: ").strip().lower()
+            if create_key == "y":
+                try:
+                    generate_ssh_key(ssh_key.replace(".pub", ""))
+                    logger.info(f"SSH key generated at {ssh_key.replace('.pub', '')}")
+                    print("✅ Key created. You may now install it on the remote server.")
+                    test = input("Test SSH connectivity before installing key? [y/N]: ").strip().lower()
+                    if test == "y":
+                        test_ssh_connection(machine["username"], machine["host"], None, machine["port"])
+                    install = input("Install this key on the remote server now? [y/N]: ").strip().lower()
+                    if install == "y":
+                        install_ssh_key(machine["username"], machine["host"], ssh_key, machine["port"])
+                except Exception as e:
+                    logger.error(f"Failed to generate SSH key: {e}")
+                    print("❌ Failed to generate SSH key.")
+            else:
+                print("ℹ️ You will need to create and install this key manually before accessing the remote machine.")
+                logger.info("User declined to generate SSH key.")
+                test = input("Do you want to test SSH connectivity now (may require password)? [y/N]: ").strip().lower()
+                if test == "y":
+                    test_ssh_connection(machine["username"], machine["host"], None, machine["port"])
+        else:
+            machine["auth"] = {"method": "key", "ssh_key": ssh_key}
+            logger.info(f"Using existing SSH key: {ssh_key}")
+            test = input("Test SSH connectivity before installing key? [y/N]: ").strip().lower()
+            if test == "y":
+                test_ssh_connection(machine["username"], machine["host"], ssh_key.replace(".pub", ""), machine["port"])
+            install = input("Install this key on the remote server now? [y/N]: ").strip().lower()
+            if install == "y":
+                install_ssh_key(machine["username"], machine["host"], ssh_key, machine["port"])
+            final_test = input("Test SSH connectivity now? [y/N]: ").strip().lower()
+            if final_test == "y":
+                test_ssh_connection(machine["username"], machine["host"], ssh_key.replace(".pub", ""), machine["port"])
+
+        machine["auth"] = {"method": "key", "ssh_key": ssh_key}
+
+    if scheduler == "slurm":
         print("🧮 Define job resources (press Enter to skip any):")
         nodes = input("Number of nodes: ").strip()
         ntasks_per_node = input("Tasks per node: ").strip()
@@ -102,12 +150,16 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
             "partition": partition if partition else None
         }
 
-        # Remove empty values
         machine["resources"] = {k: v for k, v in machine["resources"].items() if v is not None}
+        logger.info(f"Resources defined: {machine['resources']}")
 
     config["machines"][machine_name] = machine
 
-    with open(path, "w") as f:
-        json.dump(config, f, indent=2)
-
-    print(f"✅ Machine '{machine_name}' saved to {path}")
+    try:
+        with open(path, "w") as f:
+            json.dump(config, f, indent=2)
+        print(f"✅ Machine '{machine_name}' saved to {path}")
+        logger.info(f"Machine '{machine_name}' saved successfully.")
+    except Exception as e:
+        print("❌ Failed to save machine configuration.")
+        logger.error(f"Failed to write config file: {e}")
