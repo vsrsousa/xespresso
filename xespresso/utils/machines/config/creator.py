@@ -9,6 +9,7 @@ This module supports:
 - Key-based SSH authentication (password-based authentication is no longer supported)
 - Optional job resources for Slurm schedulers
 - SSH key validation, generation, installation, and connectivity testing
+- Launcher command definition with support for {nprocs} placeholder
 - Logging and warnings for traceability and user feedback
 
 Default config path: ~/.xespresso/machines.json
@@ -30,7 +31,6 @@ from xespresso.utils import warnings as warnings
 from xespresso.utils.logging import get_logger
 
 logger = get_logger()
-
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.xespresso/machines.json")
 
 def create_machine(path: str = DEFAULT_CONFIG_PATH):
@@ -39,9 +39,9 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
 
     This function prompts the user for machine details such as execution mode,
     scheduler type, working directory, SSH credentials (key-based only),
-    and optional job resources. If the config file already exists, the new
-    machine is appended to the 'machines' block. If the machine name already
-    exists, the user is prompted to confirm overwriting.
+    job resources, and launcher command. If the config file already exists,
+    the new machine is appended to the 'machines' block. If the machine name
+    already exists, the user is prompted to confirm overwriting.
 
     Parameters:
     - path (str): Path to the config file. Defaults to ~/.xespresso/machines.json.
@@ -152,6 +152,35 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
 
         machine["resources"] = {k: v for k, v in machine["resources"].items() if v is not None}
         logger.info(f"Resources defined: {machine['resources']}")
+
+    # 🧠 Define nprocs
+    resources = machine.get("resources", {})
+    if execution == "remote":
+        nodes = resources.get("nodes", 1)
+        ntasks = resources.get("ntasks-per-node", 1)
+        nprocs = nodes * ntasks
+    else:
+        try:
+            nprocs_input = input("Number of processes for local execution [1]: ").strip()
+            nprocs = int(nprocs_input) if nprocs_input else 1
+        except ValueError:
+            print("⚠️ Invalid input. Using default nprocs = 1.")
+            nprocs = 1
+
+    machine["nprocs"] = nprocs
+
+    # 🧭 Define launcher
+    print("🧭 Define the launcher command used to run Quantum ESPRESSO.")
+    print("You may use the placeholder {nprocs}, which will be replaced at runtime.")
+    print("Examples:")
+    print(" - mpirun -np {nprocs}          (direct or manual MPI)")
+    print(" - srun --mpi=pmi2              (Slurm with Intel MPI)")
+    print("Note: For Slurm with Intel MPI, use 'srun --mpi=pmi2' without {nprocs}.")
+    print("Slurm will handle process allocation based on job resources.")
+    default_launcher = "mpirun -np {nprocs}"
+    launcher = input(f"Launcher command [{default_launcher}]: ").strip() or default_launcher
+    machine["launcher"] = launcher
+    logger.info(f"Launcher set to: {launcher}")
 
     config["machines"][machine_name] = machine
 
