@@ -117,9 +117,13 @@ def edit_machine(machine_name: str, path: str = DEFAULT_CONFIG_PATH):
     use_modules = input(f"Use modules? [y/N] [{'y' if machine.get('use_modules', False) else 'N'}]: ").strip().lower()
     machine["use_modules"] = use_modules == "y"
 
-    modules_default = machine.get("modules", [])
-    modules_input = input(f"Modules to load (comma-separated) [{', '.join(modules_default)}]: ").strip()
-    machine["modules"] = [m.strip() for m in modules_input.split(",")] if modules_input else modules_default
+    if machine["use_modules"]:
+        modules_default = machine.get("modules", [])
+        modules_input = input(f"Modules to load (comma-separated) [{', '.join(modules_default)}]: ").strip()
+        machine["modules"] = [m.strip() for m in modules_input.split(",")] if modules_input else modules_default
+    else:
+        # Mantém a lista existente, mesmo que não seja usada no job_file
+        logger.info("Modules disabled — keeping existing module list.")
 
     # Prepend / Postpend
     prepend_default = machine.get("prepend", [])
