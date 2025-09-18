@@ -1,21 +1,18 @@
 """
 creator.py
 
-Utility for interactively creating machine configurations for xespresso workflows.
+Utility for interactively creating or editing machine configurations for xespresso workflows.
 
 This module supports:
-- Interactive creation of new machine profiles
+- Creating new machine profiles
+- Editing existing profiles via edit_machine()
 - Local and remote execution modes
-- Key-based SSH authentication (password-based authentication is no longer supported)
-- Optional job resources for Slurm schedulers
-- SSH key validation, generation, installation, and connectivity testing
-- Launcher command definition with support for {nprocs} placeholder
-- Logging and warnings for traceability and user feedback
+- Key-based SSH authentication only
+- Optional job resources for Slurm
+- Launcher command with {nprocs} placeholder
+- Logging and warnings for traceability
 
-Default config path: ~/.xespresso/machines.json
-Default machine name: "local_desktop"
-
-Example usage:
+Usage:
 from xespresso.utils.machines.config.creator import create_machine
 create_machine()  # Launch interactive setup
 """
@@ -27,6 +24,7 @@ from xespresso.utils.auth import (
     install_ssh_key,
     test_ssh_connection
 )
+from xespresso.utils.machines.config.edit import edit_machine
 from xespresso.utils import warnings as warnings
 from xespresso.utils.logging import get_logger
 
@@ -56,10 +54,19 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
 
     if machine_name in config["machines"]:
         print(f"⚠️ Machine '{machine_name}' already exists.")
-        confirm = input("Do you want to overwrite it? [y/N]: ").strip().lower()
-        if confirm != "y":
-            print("❌ Aborted. No changes made.")
-            logger.info("User aborted overwrite.")
+        print("Options:")
+        print(" [1] Overwrite from scratch")
+        print(" [2] Edit existing configuration")
+        choice = input("Choose an option [1/2]: ").strip()
+
+        if choice == "2":
+            edit_machine(machine_name, path)
+            return
+        elif choice == "1":
+            print("🔄 Proceeding to overwrite from scratch.")
+        else:
+            print("❌ Invalid choice. No changes made.")
+            logger.warning(f"Invalid overwrite option selected: '{choice}'")
             return
 
     execution = input("Execution mode [local/remote]: ").strip().lower() or "local"
@@ -164,10 +171,9 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
     print("🧭 Define the launcher command used to run Quantum ESPRESSO.")
     print("You may use the placeholder {nprocs}, which will be replaced at runtime.")
     print("Examples:")
-    print('  "mpirun -np {nprocs}"          (direct or manual MPI)')
-    print('  "srun --mpi=pmi2"              (Slurm with Intel MPI)')
+    print(" - mpirun -np {nprocs}          (direct or manual MPI)")
+    print(" - srun --mpi=pmi2              (Slurm with Intel MPI)")
     print("Note: For Slurm with Intel MPI, use 'srun --mpi=pmi2' without {nprocs}.")
-    print("Slurm will handle process allocation based on job resources.")
     default_launcher = "mpirun -np {nprocs}"
     launcher = input(f"Launcher command [{default_launcher}]: ").strip() or default_launcher
     machine["launcher"] = launcher
