@@ -34,18 +34,6 @@ logger = get_logger()
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.xespresso/machines.json")
 
 def create_machine(path: str = DEFAULT_CONFIG_PATH):
-    """
-    Interactively adds a new machine configuration to the xespresso config file.
-
-    This function prompts the user for machine details such as execution mode,
-    scheduler type, working directory, SSH credentials (key-based only),
-    job resources, and launcher command. If the config file already exists,
-    the new machine is appended to the 'machines' block. If the machine name
-    already exists, the user is prompted to confirm overwriting.
-
-    Parameters:
-    - path (str): Path to the config file. Defaults to ~/.xespresso/machines.json.
-    """
     warnings.apply_custom_format()
     logger.info("Starting interactive machine configuration.")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -124,15 +112,20 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
         else:
             machine["auth"] = {"method": "key", "ssh_key": ssh_key}
             logger.info(f"Using existing SSH key: {ssh_key}")
-            test = input("Test SSH connectivity before installing key? [y/N]: ").strip().lower()
+            test = input("Test SSH connectivity with this key? [y/N]: ").strip().lower()
             if test == "y":
-                test_ssh_connection(machine["username"], machine["host"], ssh_key.replace(".pub", ""), machine["port"])
-            install = input("Install this key on the remote server now? [y/N]: ").strip().lower()
-            if install == "y":
-                install_ssh_key(machine["username"], machine["host"], ssh_key, machine["port"])
-            final_test = input("Test SSH connectivity now? [y/N]: ").strip().lower()
-            if final_test == "y":
-                test_ssh_connection(machine["username"], machine["host"], ssh_key.replace(".pub", ""), machine["port"])
+                success = test_ssh_connection(machine["username"], machine["host"], ssh_key.replace(".pub", ""), machine["port"])
+                if success:
+                    print("✅ SSH key is already installed and working.")
+                    logger.info("SSH key validated successfully.")
+                else:
+                    print("⚠️ SSH connection failed. You may need to install the key.")
+                    install = input("Install this key on the remote server now? [y/N]: ").strip().lower()
+                    if install == "y":
+                        install_ssh_key(machine["username"], machine["host"], ssh_key, machine["port"])
+                        retest = input("Test SSH connectivity again? [y/N]: ").strip().lower()
+                        if retest == "y":
+                            test_ssh_connection(machine["username"], machine["host"], ssh_key.replace(".pub", ""), machine["port"])
 
         machine["auth"] = {"method": "key", "ssh_key": ssh_key}
 
@@ -153,7 +146,6 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
         machine["resources"] = {k: v for k, v in machine["resources"].items() if v is not None}
         logger.info(f"Resources defined: {machine['resources']}")
 
-    # 🧠 Define nprocs
     resources = machine.get("resources", {})
     if execution == "remote":
         nodes = resources.get("nodes", 1)
@@ -169,12 +161,11 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
 
     machine["nprocs"] = nprocs
 
-    # 🧭 Define launcher
     print("🧭 Define the launcher command used to run Quantum ESPRESSO.")
     print("You may use the placeholder {nprocs}, which will be replaced at runtime.")
     print("Examples:")
-    print(" - mpirun -np {nprocs}          (direct or manual MPI)")
-    print(" - srun --mpi=pmi2              (Slurm with Intel MPI)")
+    print('  "mpirun -np {nprocs}"          (direct or manual MPI)')
+    print('  "srun --mpi=pmi2"              (Slurm with Intel MPI)')
     print("Note: For Slurm with Intel MPI, use 'srun --mpi=pmi2' without {nprocs}.")
     print("Slurm will handle process allocation based on job resources.")
     default_launcher = "mpirun -np {nprocs}"
