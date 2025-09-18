@@ -188,6 +188,8 @@ def test_ssh_connection(username: str, host: str, key_path: str = None, port: in
     try:
         subprocess.run(cmd, check=True)
         logger.info(f"SSH connection to {username}@{host}:{port} successful")
+        return True
     except subprocess.CalledProcessError:
         print("❌ SSH connection failed.")
         logger.warning(f"SSH connection to {username}@{host}:{port} failed")
+        return False
