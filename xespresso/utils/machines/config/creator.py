@@ -24,7 +24,7 @@ from xespresso.utils.auth import (
     install_ssh_key,
     test_ssh_connection
 )
-from xespresso.utils.machines.config.edit import edit_machine
+from xespresso.utils.machines.config.editor import edit_machine
 from xespresso.utils import warnings as warnings
 from xespresso.utils.logging import get_logger
 
