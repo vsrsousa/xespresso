@@ -97,7 +97,9 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH, machine_name: str = DEF
         "modules": machine.get("modules", []),
         "resources": machine.get("resources", {}),
         "prepend": normalize_script_block(machine.get("prepend")),
-        "postpend": normalize_script_block(machine.get("postpend"))
+        "postpend": normalize_script_block(machine.get("postpend")),
+        "launcher": machine.get("launcher", "mpirun -np {nprocs}"),
+        "nprocs": machine.get("nprocs", 1)
     }
 
     if queue["execution"] == "local":
