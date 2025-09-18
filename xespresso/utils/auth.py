@@ -181,7 +181,7 @@ def test_ssh_connection(username: str, host: str, key_path: str = None, port: in
         port (int): SSH port number.
     """
     key_path = os.path.expanduser(key_path) if key_path else None
-    cmd = ["ssh", "-p", str(port)]
+    cmd = ["ssh", "-p", str(port), "-o", "PasswordAuthentication=no"]
     if key_path:
         cmd += ["-i", key_path]
     cmd += [f"{username}@{host}", "echo 'Connection successful'"]
