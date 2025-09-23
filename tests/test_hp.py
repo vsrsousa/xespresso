@@ -1,6 +1,7 @@
-from _common_helpers import set_envs
+from _common_helpers import set_envs, skip_if_no_espresso
 
 
+@skip_if_no_espresso
 def test_hp():
     from ase.build import bulk
     from xespresso import Espresso

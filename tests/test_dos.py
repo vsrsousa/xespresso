@@ -1,7 +1,8 @@
-from _common_helpers import set_envs
+from _common_helpers import set_envs, skip_if_no_espresso
 import numpy as np
 
 
+@skip_if_no_espresso
 def test_dos():
     from ase.build import molecule
     from xespresso import Espresso
@@ -54,6 +55,7 @@ def test_dos():
     dos.run()
 
 
+@skip_if_no_espresso
 def test_dos_analysis():
     from xespresso.dos import DOS
     import matplotlib.pyplot as plt

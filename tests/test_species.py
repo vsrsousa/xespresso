@@ -1,6 +1,7 @@
-from _common_helpers import set_envs
+from _common_helpers import set_envs, skip_if_no_espresso
 
 
+@skip_if_no_espresso
 def test_spin(bulk_h):
     from xespresso import Espresso
     import numpy as np
@@ -38,6 +39,7 @@ def test_spin(bulk_h):
     assert np.isclose(e, -27.57523)
 
 
+@skip_if_no_espresso
 def test_dft_u():
     """_Example using 1) AFM 2) DFT+U"""
     from ase.build import bulk
