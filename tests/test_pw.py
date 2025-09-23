@@ -1,7 +1,8 @@
-from _common_helpers import set_envs
+from _common_helpers import set_envs, skip_if_no_espresso
 import numpy as np
 
 
+@skip_if_no_espresso
 def test_scf():
     from ase.build import molecule
     from xespresso import Espresso
@@ -28,6 +29,7 @@ def test_scf():
     assert np.isclose(e, -31.4454)
 
 
+@skip_if_no_espresso
 def test_relax():
     from ase.build import molecule
     from xespresso import Espresso

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+
+
+
+pw.x  -in al-fcc111.pwi > al-fcc111.pwo

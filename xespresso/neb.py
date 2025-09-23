@@ -165,7 +165,7 @@ class NEBEspresso(Espresso):
         for x, y in lines:
             ax.plot(x, y, "-g")
         ax.plot(Sfit, Efit, "k-")
-        ax.set_xlabel("Reaction path [$\AA$]")
+        ax.set_xlabel(r"Reaction path [$\AA$]")
         ax.set_ylabel("Energy profile [eV]")
         Ef = max(Efit) - E[0]
         Er = max(Efit) - E[-1]
@@ -173,9 +173,9 @@ class NEBEspresso(Espresso):
         self.Er = Er
         dE = E[-1] - E[0]
         ax.set_title(
-            "$E_\mathrm{f} \\approx$ %.3f eV; "
-            "$E_\mathrm{r} \\approx$ %.3f eV; "
-            "$\\Delta E$ = %.3f eV" % (Ef, Er, dE)
+            r"$E_\mathrm{f} \approx$ %.3f eV; "
+            r"$E_\mathrm{r} \approx$ %.3f eV; "
+            r"$\Delta E$ = %.3f eV" % (Ef, Er, dE)
         )
         return fig
 

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+
+
+
+projwfc.x  -in co.projwfci > co.projwfco
