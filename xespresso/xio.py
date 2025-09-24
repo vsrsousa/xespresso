@@ -421,7 +421,7 @@ def read_espresso_input(fileobj, neb=False):
     """Parse a Quantum ESPRESSO input files, '.in', '.pwi'."""
     atoms = read_espresso_in(fileobj)
     if isinstance(fileobj, str):
-        fileobj = open(fileobj, "rU")
+        fileobj = open(fileobj, "r")
     # parse namelist section and extract remaining lines
     data, card_lines = read_fortran_namelist(fileobj)
     input_data = {}
@@ -442,7 +442,7 @@ def read_espresso_input(fileobj, neb=False):
     # calc = Espresso(pseudopotentials=pseudopotentials,
     #                 input_data = input_data,
     #                 kpts=kpts)
-    return atoms, input_data, pseudopotentials, kpts, constraints
+    return atoms, input_data, pseudopotentials, kpts
 
 
 def sort_qe_input(parameters, package="PW"):
