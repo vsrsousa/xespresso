@@ -1,3 +1,7 @@
+from _common_helpers import skip_if_no_espresso
+
+
+@skip_if_no_espresso
 def test_projwfc():
     from xespresso.post.projwfc import EspressoProjwfc
 
@@ -7,6 +11,7 @@ def test_projwfc():
     projwfc.run()
 
 
+@skip_if_no_espresso
 def test_pdos_analysis():
     from xespresso.dos import DOS
     import matplotlib.pyplot as plt

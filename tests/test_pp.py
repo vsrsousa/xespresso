@@ -1,7 +1,8 @@
-from _common_helpers import set_envs
+from _common_helpers import set_envs, skip_if_no_espresso
 import numpy as np
 
 
+@skip_if_no_espresso
 def test_pp():
     from ase.build import fcc111
     from xespresso import Espresso

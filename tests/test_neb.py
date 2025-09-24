@@ -1,9 +1,10 @@
 """
 H2 + H --> H + H2
 """
-from _common_helpers import set_envs
+from _common_helpers import set_envs, skip_if_no_espresso
 
 
+@skip_if_no_espresso
 def test_neb():
     from ase.atoms import Atoms
     from ase.constraints import FixAtoms

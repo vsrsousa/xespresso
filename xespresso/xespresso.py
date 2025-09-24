@@ -614,7 +614,7 @@ class Espresso(FileIOCalculator):
         else:
             ax.plot(xaxis, axy)
             ax.plot([min(xaxis), max(xaxis)], [ef, ef], "k:")
-        ax.set_xlabel("Position along z-axis ($\AA$)")
+        ax.set_xlabel(r"Position along z-axis ($\AA$)")
         ax.set_ylabel("Potential (eV)")
         if output:
             plt.savefig("%s" % output)
