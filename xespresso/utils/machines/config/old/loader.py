@@ -7,7 +7,7 @@ This module supports:
 - Parsing machine profiles from a JSON config file
 - Interactive creation of new machine profiles
 - Local and remote execution modes
-- Key-based and password-based SSH authentication
+- Key-based SSH authentication only (password-based authentication is no longer supported)
 - Optional job resources, environment setup, and cleanup commands
 
 Default config path: ~/.xespresso/machines.json
@@ -49,7 +49,7 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
         warnings.warn(
             f"Machine config file not found at {config_path}.\n"
             f"To create one, make sure to import and call:\n"
-            f"    from xespresso.utils.machine.config.creator import create_machine\n"
+            f"    from xespresso.utils.machines.config.creator import create_machine\n"
             f"    create_machine(path='{config_path}')\n"
             f"Returning None."
         )
@@ -70,7 +70,9 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
         "modules": machine.get("modules", []),
         "resources": machine.get("resources", {}),
         "prepend": machine.get("prepend", []),
-        "postpend": machine.get("postpend", [])
+        "postpend": machine.get("postpend", []),
+        "launcher": machine.get("launcher", "mpirun -np {nprocs}"),
+        "nprocs": machine.get("nprocs", 1)
     }
 
     if queue["execution"] == "local":
@@ -82,18 +84,15 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
 
         auth = machine.get("auth", {})
         method = auth.get("method", "key")
-        if method == "key":
-            queue["remote_auth"] = {
-                "method": "key",
-                "ssh_key": auth.get("ssh_key", "~/.ssh/id_rsa")
-            }
-        elif method == "password":
-            queue["remote_auth"] = {
-                "method": "password",
-                "password": auth.get("password", "")
-            }
-        else:
-            raise ValueError(f"Unsupported auth method: {method}")
+        
+        if method != "key":
+            raise ValueError(f"Unsupported authentication method: {method}")
+        
+        queue["remote_auth"] = {
+            "method": "key",
+            "ssh_key": auth.get("ssh_key", "~/.ssh/id_rsa"),
+            "port": auth.get("port", 22)
+        }
 
         queue["remote_dir"] = machine["workdir"]
 
