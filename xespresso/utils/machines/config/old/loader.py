@@ -31,6 +31,15 @@ warnings.apply_custom_format()
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.xespresso/machines.json")
 DEFAULT_MACHINE_NAME = "local_desktop"
 
+def normalize_script_block(block):
+    """
+    Ensures that script blocks (prepend/postpend) are returned as strings.
+    Accepts either a string or a list of strings.
+    """
+    if isinstance(block, list):
+        return "\n".join(block)
+    return block or ""
+
 def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
 		   machine_name: str = DEFAULT_MACHINE_NAME) -> dict | None:
     """
@@ -69,8 +78,8 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
         "use_modules": machine.get("use_modules", False),
         "modules": machine.get("modules", []),
         "resources": machine.get("resources", {}),
-        "prepend": machine.get("prepend", []),
-        "postpend": machine.get("postpend", []),
+        "prepend": normalize_script_block(machine.get("prepend")),
+        "postpend": normalize_script_block(machine.get("postpend")),
         "launcher": machine.get("launcher", "mpirun -np {nprocs}"),
         "nprocs": machine.get("nprocs", 1)
     }
