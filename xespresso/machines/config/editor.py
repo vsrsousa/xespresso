@@ -1,5 +1,5 @@
 """
-edit.py
+editor.py
 
 Utility for interactively editing existing machine configurations for xespresso.
 
@@ -11,17 +11,23 @@ This module supports:
 - Logging and warnings for traceability
 
 Usage:
-from xespresso.utils.machines.config.edit import edit_machine
+from xespresso.machines.config.editor import edit_machine
 edit_machine("cluster_a")  # Edit an existing machine
 """
 
 import os
 import json
-from xespresso.utils import warnings as warnings
-from xespresso.utils.logging import get_logger
-
-logger = get_logger()
-warnings.apply_custom_format()
+try:
+    from xespresso.utils import warnings as warnings
+    from xespresso.utils.logging import get_logger
+    logger = get_logger()
+    warnings.apply_custom_format()
+except ImportError:
+    # Fallback to standard Python warnings and logging
+    import warnings
+    import logging
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=logging.INFO)
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.xespresso/machines.json")
 

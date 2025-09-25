@@ -24,11 +24,17 @@ does not interact directly with the user.
 
 import os
 import json
-from xespresso.utils import warnings as warnings
-from xespresso.utils.logging import get_logger
-
-logger = get_logger()
-warnings.apply_custom_format()
+try:
+    from xespresso.utils import warnings as warnings
+    from xespresso.utils.logging import get_logger
+    logger = get_logger()
+    warnings.apply_custom_format()
+except ImportError:
+    # Fallback to standard Python warnings and logging
+    import warnings
+    import logging
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=logging.INFO)
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
 

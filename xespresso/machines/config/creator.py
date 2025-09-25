@@ -14,21 +14,31 @@ Supports:
 - Logging and warnings for traceability
 
 Usage:
-from xespresso.utils.machines.config.creator import create_machine
+from xespresso.machines.config.creator import create_machine
 create_machine()  # Launch interactive setup
 create_machine(preset_path="/path/to/preset.json")  # Load preset automatically
 """
 
 import os
 import json
-from xespresso.utils.auth import generate_ssh_key, install_ssh_key, test_ssh_connection
-from xespresso.utils.machines.config.editor import edit_machine
-from xespresso.utils.machines.config.presets import list_presets, load_preset
-from xespresso.utils import warnings as warnings
-from xespresso.utils.logging import get_logger
-
-logger = get_logger()
-warnings.apply_custom_format()
+try:
+    from xespresso.utils.auth import generate_ssh_key, install_ssh_key, test_ssh_connection
+    AUTH_AVAILABLE = True
+except ImportError:
+    AUTH_AVAILABLE = False
+from .editor import edit_machine
+from .presets import list_presets, load_preset
+try:
+    from xespresso.utils import warnings as warnings
+    from xespresso.utils.logging import get_logger
+    logger = get_logger()
+    warnings.apply_custom_format()
+except ImportError:
+    # Fallback to standard Python warnings and logging
+    import warnings
+    import logging
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=logging.INFO)
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.xespresso/machines.json")
 
@@ -137,32 +147,38 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH, preset_path: str = None):
         if not os.path.isfile(ssh_key):
             logger.warning(f"SSH key not found at {ssh_key}")
             print(f"⚠️ SSH key '{ssh_key}' not found.")
-            create_key = input("Generate new SSH key pair now? [y/N]: ").strip().lower()
-            if create_key == "y":
-                try:
-                    generate_ssh_key(ssh_key.replace(".pub", ""))
-                    logger.info(f"SSH key generated at {ssh_key.replace('.pub', '')}")
-                    print("✅ Key created.")
-                    install = input("Install this key on the remote server now? [y/N]: ").strip().lower()
-                    if install == "y":
-                        install_ssh_key(machine["username"], machine["host"], ssh_key, machine["port"])
-                except Exception as e:
-                    logger.error(f"Failed to generate SSH key: {e}")
-                    print("❌ Failed to generate SSH key.")
+            if AUTH_AVAILABLE:
+                create_key = input("Generate new SSH key pair now? [y/N]: ").strip().lower()
+                if create_key == "y":
+                    try:
+                        generate_ssh_key(ssh_key.replace(".pub", ""))
+                        logger.info(f"SSH key generated at {ssh_key.replace('.pub', '')}")
+                        print("✅ Key created.")
+                        install = input("Install this key on the remote server now? [y/N]: ").strip().lower()
+                        if install == "y":
+                            install_ssh_key(machine["username"], machine["host"], ssh_key, machine["port"])
+                    except Exception as e:
+                        logger.error(f"Failed to generate SSH key: {e}")
+                        print("❌ Failed to generate SSH key.")
+            else:
+                print("⚠️ SSH key management not available. Please generate manually.")
         else:
             machine["auth"] = {"method": "key", "ssh_key": ssh_key}
             logger.info(f"Using existing SSH key: {ssh_key}")
-            test = input("Test SSH connectivity with this key? [y/N]: ").strip().lower()
-            if test == "y":
-                success = test_ssh_connection(machine["username"], machine["host"], ssh_key.replace(".pub", ""), machine["port"])
-                if success:
-                    print("✅ SSH key is already installed and working.")
-                    logger.info("SSH key validated successfully.")
-                else:
-                    print("⚠️ SSH connection failed. You may need to install the key.")
-                    install = input("Install this key on the remote server now? [y/N]: ").strip().lower()
-                    if install == "y":
-                        install_ssh_key(machine["username"], machine["host"], ssh_key, machine["port"])
+            if AUTH_AVAILABLE:
+                test = input("Test SSH connectivity with this key? [y/N]: ").strip().lower()
+                if test == "y":
+                    success = test_ssh_connection(machine["username"], machine["host"], ssh_key.replace(".pub", ""), machine["port"])
+                    if success:
+                        print("✅ SSH key is already installed and working.")
+                        logger.info("SSH key validated successfully.")
+                    else:
+                        print("⚠️ SSH connection failed. You may need to install the key.")
+                        install = input("Install this key on the remote server now? [y/N]: ").strip().lower()
+                        if install == "y":
+                            install_ssh_key(machine["username"], machine["host"], ssh_key, machine["port"])
+            else:
+                print("⚠️ SSH testing not available. Please test manually.")
 
         machine["auth"] = {"method": "key", "ssh_key": ssh_key}
 
