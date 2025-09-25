@@ -16,7 +16,7 @@ Default config path: ~/.xespresso/machines.json
 Default machine name: "local_desktop"
 
 Example usage:
-from xespresso.utils.machines.config.loader import load_machine
+from xespresso.machines.config.loader import load_machine
 queue = load_machine()  # Loads default machine
 """
 
@@ -57,7 +57,7 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH, machine_name: str = DEF
         warnings.warn(
             f"Machine config file not found at {config_path}.\n"
             f"To create one, run:\n"
-            f" from xespresso.utils.machines.config.creator import create_machine\n"
+            f" from xespresso.machines.config.creator import create_machine\n"
             f" create_machine(path='{config_path}')\n"
             f"Returning None."
         )
