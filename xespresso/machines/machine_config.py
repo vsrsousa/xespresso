@@ -14,12 +14,12 @@ Default config path: ~/.xespresso/machines.json
 Default machine name: "local_desktop"
 
 Example usage:
-    from xespresso.utils.machine_config import parse_machine_config, create_machine_config
+    from xespresso.machines.machine_config import load_machine, create_machine
 
-    queue = parse_machine_config()  # Load default machine
+    queue = load_machine()  # Load default machine
     if queue is None:
-        create_machine_config()     # Create config interactively
-        queue = parse_machine_config()
+        create_machine()     # Create config interactively
+        queue = load_machine()
 """
 
 import os
@@ -52,7 +52,7 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
         warnings.warn(
             f"Machine config file not found at {config_path}.\n"
             f"To create one, make sure to import and call:\n"
-            f"    from xespresso.utils.machine_config import create_machine\n"
+            f"    from xespresso.machines.machine_config import create_machine\n"
             f"    create_machine(path='{config_path}')\n"
             f"Returning None."
         )
@@ -68,7 +68,7 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
 
     queue = {
         "execution": machine.get("execution", "local"),
-        "scheduler": machine.get("scheduler", "bash"),
+        "scheduler": machine.get("scheduler", "direct"),
         "use_modules": machine.get("use_modules", False),
         "modules": machine.get("modules", []),
         "resources": machine.get("resources", {}),
@@ -131,7 +131,7 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
         print(f"⚠️ Machine '{machine_name}' already exists. Overwriting...")
 
     execution = input("Execution mode [local/remote]: ").strip().lower() or "local"
-    scheduler = input("Scheduler [bash/slurm/pbs]: ").strip() or "bash"
+    scheduler = input("Scheduler [direct/slurm]: ").strip() or "direct"
     workdir = input("Workdir path on machine: ").strip() or "./qe_local"
 
     machine = {
