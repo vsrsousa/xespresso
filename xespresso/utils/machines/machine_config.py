@@ -7,7 +7,7 @@ This module supports:
 - Parsing machine profiles from a JSON config file
 - Interactive creation of new machine profiles
 - Local and remote execution modes
-- Key-based and password-based SSH authentication
+- Key-based SSH authentication only (password-based authentication is no longer supported)
 - Optional job resources, environment setup, and cleanup commands
 
 Default config path: ~/.xespresso/machines.json
@@ -33,6 +33,15 @@ warnings.formatwarning = custom_warning_format
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.xespresso/machines.json")
 DEFAULT_MACHINE_NAME = "local_desktop"
+
+def normalize_script_block(block):
+    """
+    Ensures that script blocks (prepend/postpend) are returned as strings.
+    Accepts either a string or a list of strings.
+    """
+    if isinstance(block, list):
+        return "\n".join(block)
+    return block or ""
 
 def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
 		   machine_name: str = DEFAULT_MACHINE_NAME) -> dict | None:
@@ -68,12 +77,14 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
 
     queue = {
         "execution": machine.get("execution", "local"),
-        "scheduler": machine.get("scheduler", "bash"),
+        "scheduler": machine.get("scheduler", "direct"),
         "use_modules": machine.get("use_modules", False),
         "modules": machine.get("modules", []),
         "resources": machine.get("resources", {}),
-        "prepend": machine.get("prepend", []),
-        "postpend": machine.get("postpend", [])
+        "prepend": normalize_script_block(machine.get("prepend")),
+        "postpend": normalize_script_block(machine.get("postpend")),
+        "launcher": machine.get("launcher", "mpirun -np {nprocs}"),
+        "nprocs": machine.get("nprocs", 1)
     }
 
     if queue["execution"] == "local":
@@ -85,18 +96,15 @@ def load_machine(config_path: str = DEFAULT_CONFIG_PATH,
 
         auth = machine.get("auth", {})
         method = auth.get("method", "key")
-        if method == "key":
-            queue["remote_auth"] = {
-                "method": "key",
-                "ssh_key": auth.get("ssh_key", "~/.ssh/id_rsa")
-            }
-        elif method == "password":
-            queue["remote_auth"] = {
-                "method": "password",
-                "password": auth.get("password", "")
-            }
-        else:
-            raise ValueError(f"Unsupported auth method: {method}")
+        
+        if method != "key":
+            raise ValueError(f"Unsupported authentication method: {method}")
+        
+        queue["remote_auth"] = {
+            "method": "key",
+            "ssh_key": auth.get("ssh_key", "~/.ssh/id_rsa"),
+            "port": auth.get("port", 22)
+        }
 
         queue["remote_dir"] = machine["workdir"]
 
@@ -148,15 +156,17 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH):
     if execution == "remote":
         machine["host"] = input("Remote host (e.g. hpc.example.com): ").strip()
         machine["username"] = input("SSH username: ").strip()
-        method = input("Auth method [key/password]: ").strip().lower() or "key"
+        method = input("Auth method [key]: ").strip().lower() or "key"
         if method == "key":
             ssh_key = input("Path to SSH key [~/.ssh/id_rsa]: ").strip() or "~/.ssh/id_rsa"
-            machine["auth"] = {"method": "key", "ssh_key": ssh_key}
-        elif method == "password":
-            password = input("SSH password: ").strip()
-            machine["auth"] = {"method": "password", "password": password}
+            port = input("SSH port [22]: ").strip()
+            machine["auth"] = {
+                "method": "key", 
+                "ssh_key": ssh_key,
+                "port": int(port) if port else 22
+            }
         else:
-            print("❌ Unsupported auth method.")
+            print("❌ Only key-based authentication is supported.")
             return
 
         # Prompt for resources
