@@ -14,7 +14,7 @@ Supports:
 - Logging and warnings for traceability
 
 Usage:
-from xespresso.utils.machines.config.creator import create_machine
+from xespresso.machines.config.creator import create_machine
 create_machine()  # Launch interactive setup
 create_machine(preset_path="/path/to/preset.json")  # Load preset automatically
 """
@@ -22,8 +22,8 @@ create_machine(preset_path="/path/to/preset.json")  # Load preset automatically
 import os
 import json
 from xespresso.utils.auth import generate_ssh_key, install_ssh_key, test_ssh_connection
-from xespresso.utils.machines.config.editor import edit_machine
-from xespresso.utils.machines.config.presets import list_presets, load_preset
+from xespresso.machines.config.editor import edit_machine
+from xespresso.machines.config.presets import list_presets, load_preset
 from xespresso.utils import warnings as warnings
 from xespresso.utils.logging import get_logger
 

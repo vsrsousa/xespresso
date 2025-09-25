@@ -1,5 +1,5 @@
 """
-edit.py
+editor.py
 
 Utility for interactively editing existing machine configurations for xespresso.
 
@@ -11,7 +11,7 @@ This module supports:
 - Logging and warnings for traceability
 
 Usage:
-from xespresso.utils.machines.config.edit import edit_machine
+from xespresso.machines.config.editor import edit_machine
 edit_machine("cluster_a")  # Edit an existing machine
 """
 
