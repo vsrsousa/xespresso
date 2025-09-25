@@ -24,7 +24,7 @@ def get_scheduler(calc, queue, command):
     Raises:
         ValueError: If the scheduler type is unsupported or missing.
     """
-    scheduler_type = queue.get("scheduler", "slurm").lower()
+    scheduler_type = queue.get("scheduler", "direct").lower()
 
     if scheduler_type == "slurm":
         return SlurmScheduler(calc, queue, command)
