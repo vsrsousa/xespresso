@@ -143,8 +143,15 @@ class RemoteExecutionMixin:
         if hasattr(self, "logger"):
             self.logger.info(f"Submitting job via: {self.submit_command()}")
 
-        env_setup = "source /etc/profile" if self.queue.get("scheduler") == "slurm" else ""
+#        env_setup = "source /etc/profile" if self.queue.get("scheduler") == "slurm" else ""
+        env_setup = "source /etc/profile"
         command = f"cd {self.remote_path} && {env_setup} && {self.submit_command()}"
+#        if self.queue.get("scheduler") == "slurm":
+#            env_setup = "source /etc/profile"
+#            command = f"cd {self.remote_path} && {env_setup} && {self.submit_command()}"
+#        else:
+#            command = f"cd {self.remote_path} && {self.submit_command()}"
+
         stdout, stderr = self.remote.run_command(command)
 
         # If SLURM, extract job ID and wait for completion

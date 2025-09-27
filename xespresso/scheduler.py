@@ -37,6 +37,8 @@ def set_queue(calc, package=None, parallel=None, queue=None, command=None):
     command = command or os.environ.get("ASE_ESPRESSO_COMMAND", "")
 
     # Replace placeholders
+    if "LAUNCHER" in command:
+        command = command.replace("LAUNCHER", queue.get("launcher", ""))
     if "PACKAGE" in command:
         command = command.replace("PACKAGE", package)
     if "PREFIX" in command:

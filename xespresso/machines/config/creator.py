@@ -163,7 +163,7 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH, preset_path: str = None):
             else:
                 print("⚠️ SSH key management not available. Please generate manually.")
         else:
-            machine["auth"] = {"method": "key", "ssh_key": ssh_key}
+            machine["auth"] = {"method": "key", "ssh_key": ssh_key, "port": machine["port"]}
             logger.info(f"Using existing SSH key: {ssh_key}")
             if AUTH_AVAILABLE:
                 test = input("Test SSH connectivity with this key? [y/N]: ").strip().lower()
@@ -180,7 +180,7 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH, preset_path: str = None):
             else:
                 print("⚠️ SSH testing not available. Please test manually.")
 
-        machine["auth"] = {"method": "key", "ssh_key": ssh_key}
+        machine["auth"] = {"method": "key", "ssh_key": ssh_key, "port": machine["port"]}
 
     if machine["scheduler"] == "slurm":
         print("🧮 Define job resources (press Enter to skip any):")
