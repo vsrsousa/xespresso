@@ -1,0 +1,38 @@
+&CONTROL
+   verbosity        = 'high'
+   prefix           = 'co'
+/
+&SYSTEM
+   ecutwfc          = 30
+   occupations      = 'smearing'
+   degauss          = 0.03
+   ntyp             = 2
+   nat              = 2
+   ibrav            = 0
+/
+&ELECTRONS
+/
+&IONS
+/
+&CELL
+/
+&FCP
+/
+&RISM
+/
+
+ATOMIC_SPECIES
+O 15.999 O.pbe-n-rrkjus_psl.1.0.0.UPF
+C 12.011 C.pbe-n-rrkjus_psl.1.0.0.UPF
+
+K_POINTS automatic
+1 1 1  0 0 0
+
+CELL_PARAMETERS angstrom
+6.00000000000000 0.00000000000000 0.00000000000000
+0.00000000000000 6.00000000000000 0.00000000000000
+0.00000000000000 0.00000000000000 7.15034000000000
+
+ATOMIC_POSITIONS angstrom
+O 3.0000000000 3.0000000000 4.1503400000 
+C 3.0000000000 3.0000000000 3.0000000000 
