@@ -132,3 +132,6 @@ examples/scf/*
 examples/images/*
 tests/calculations/*
 tests/images/*
+
+# Espresso calculation directories
+calculations/
