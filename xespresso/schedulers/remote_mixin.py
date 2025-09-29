@@ -1,5 +1,6 @@
 import os
 import hashlib
+import time
 from xespresso.utils.auth import RemoteAuth
 from xespresso.utils import warnings as warnings  # Custom warning system
 
@@ -156,27 +157,105 @@ class RemoteExecutionMixin:
 
         # If SLURM, extract job ID and wait for completion
         if self.queue.get("scheduler") == "slurm":
-            import re, time
+            import re
 
-            match = re.search(r"Submitted batch job (\\d+)", stdout)
+            match = re.search(r"Submitted batch job (\d+)", stdout)
             job_id = match.group(1) if match else None
 
             if job_id:
+                self._wait_for_slurm_completion(job_id)
+            else:
                 if hasattr(self, "logger"):
-                    self.logger.info(f"Waiting for SLURM job {job_id} to complete...")
+                    self.logger.warning("Could not extract job ID from sbatch output")
 
-                while True:
-                    status = self.remote.run_command(f"squeue -j {job_id}")
-                    if job_id not in status:
-                        break
-                    time.sleep(10)
-
-        self.remote.retrieve_file(f"{self.remote_path}/{output_file}", local_output)
+        # Verify output file exists before attempting retrieval
+        self._verify_and_retrieve_output_file(output_file, local_output)
 
         return stdout, stderr
 
+    def _wait_for_slurm_completion(self, job_id):
+        """
+        Wait for SLURM job completion with timeout and proper status checking.
+        
+        Args:
+            job_id (str): The SLURM job ID to monitor
+        """
+        if hasattr(self, "logger"):
+            self.logger.info(f"Waiting for SLURM job {job_id} to complete...")
+
+        # Wait for job completion with timeout and better status checking
+        timeout = self.queue.get("job_timeout", 3600)  # Default 1 hour timeout
+        start_time = time.time()
+        
+        while True:
+            if time.time() - start_time > timeout:
+                error_msg = f"Job {job_id} timed out after {timeout} seconds"
+                if hasattr(self, "logger"):
+                    self.logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            
+            status_stdout, status_stderr = self.remote.run_command(f"squeue -j {job_id} -h -o '%T'")
+            
+            # If squeue returns no output, job is no longer in queue (completed or failed)
+            if not status_stdout.strip():
+                # Check if job completed successfully using sacct
+                sacct_stdout, sacct_stderr = self.remote.run_command(f"sacct -j {job_id} -n -o State --parsable2")
+                if sacct_stdout.strip():
+                    job_state = sacct_stdout.strip().split('\n')[0]
+                    if hasattr(self, "logger"):
+                        self.logger.info(f"Job {job_id} finished with state: {job_state}")
+                    
+                    if job_state not in ["COMPLETED", "COMPLETING"]:
+                        error_msg = f"Job {job_id} failed with state: {job_state}"
+                        if hasattr(self, "logger"):
+                            self.logger.error(error_msg)
+                        raise RuntimeError(error_msg)
+                break
+            
+            time.sleep(10)
+
+    def _verify_and_retrieve_output_file(self, output_file, local_output, max_retries=3):
+        """
+        Verifies that the output file exists on the remote system and retrieves it with retry logic.
+        
+        Args:
+            output_file (str): Name of the output file
+            local_output (str): Local path where the output file should be saved
+            max_retries (int): Maximum number of retry attempts for file retrieval
+        """
+        remote_output_path = f"{self.remote_path}/{output_file}"
+        
+        # Check if output file exists on remote system
+        check_cmd = f"[ -f {remote_output_path} ] && echo 'exists' || echo 'missing'"
+        stdout, stderr = self.remote.run_command(check_cmd)
+        
+        if "missing" in stdout:
+            error_msg = f"Output file {remote_output_path} does not exist on remote system"
+            if hasattr(self, "logger"):
+                self.logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+        
+        # Retrieve file with retry logic
+        for attempt in range(max_retries):
+            try:
+                self.remote.retrieve_file(remote_output_path, local_output)
+                if hasattr(self, "logger"):
+                    self.logger.info(f"Successfully retrieved {output_file} to {local_output}")
+                return
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    if hasattr(self, "logger"):
+                        self.logger.warning(f"Attempt {attempt + 1} failed to retrieve {output_file}: {e}. Retrying...")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    error_msg = f"Failed to retrieve {output_file} after {max_retries} attempts: {e}"
+                    if hasattr(self, "logger"):
+                        self.logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+
     @classmethod
     def close_all_connections(cls):
+        """Closes all remote connections and clears the session cache."""
         for remote in cls._remote_sessions.values():
             remote.close()
         cls._remote_sessions.clear()
