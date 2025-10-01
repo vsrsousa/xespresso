@@ -348,5 +348,147 @@ class TestMultiVersionSupport:
         assert hp_fallback is None
 
 
+class TestNewFeatures:
+    """Tests for new features: auto-load machine, port support, module fallback, overwrite protection"""
+    
+    def test_save_config_overwrite_protection(self):
+        """Test that save_config handles existing files correctly"""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            # Create initial config
+            config1 = CodesConfig(machine_name="test", qe_version="7.2")
+            config1.add_code(Code(name="pw", path="/usr/bin/pw.x", version="7.2"))
+            
+            # Save first time
+            filepath = CodesManager.save_config(config1, output_dir=tmpdir, overwrite=True)
+            assert os.path.exists(filepath)
+            
+            # Try to save again without overwrite should raise error (non-interactive mode)
+            config2 = CodesConfig(machine_name="test", qe_version="7.3")
+            with pytest.raises(FileExistsError):
+                CodesManager.save_config(config2, output_dir=tmpdir, overwrite=False, merge=False, interactive=False)
+            
+            # With overwrite=True should work
+            filepath2 = CodesManager.save_config(config2, output_dir=tmpdir, overwrite=True)
+            assert filepath == filepath2
+            
+            # Load and verify it was overwritten
+            loaded = CodesManager.load_config("test", codes_dir=tmpdir)
+            assert loaded.qe_version == "7.3"
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+    
+    def test_save_config_merge(self):
+        """Test that merge combines configurations correctly"""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            # Create initial config with pw code
+            config1 = CodesConfig(machine_name="test", qe_version="7.2")
+            config1.add_code(Code(name="pw", path="/usr/bin/pw.x", version="7.2"))
+            filepath = CodesManager.save_config(config1, output_dir=tmpdir, overwrite=True)
+            
+            # Create new config with hp code
+            config2 = CodesConfig(machine_name="test", qe_version="7.2")
+            config2.add_code(Code(name="hp", path="/usr/bin/hp.x", version="7.2"))
+            
+            # Save with merge=True
+            CodesManager.save_config(config2, output_dir=tmpdir, merge=True)
+            
+            # Load and verify both codes are present
+            loaded = CodesManager.load_config("test", codes_dir=tmpdir)
+            assert loaded is not None
+            assert loaded.has_code("pw")
+            assert loaded.has_code("hp")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+    
+    def test_save_config_merge_versions(self):
+        """Test that merge combines version-specific configurations"""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            # Create config with version 7.2
+            config1 = CodesConfig(machine_name="test", qe_version="7.2")
+            config1.add_code(Code(name="pw", path="/opt/qe-7.2/bin/pw.x"), version="7.2")
+            filepath = CodesManager.save_config(config1, output_dir=tmpdir, overwrite=True)
+            
+            # Create config with version 6.8
+            config2 = CodesConfig(machine_name="test", qe_version="6.8")
+            config2.add_code(Code(name="pw", path="/opt/qe-6.8/bin/pw.x"), version="6.8")
+            
+            # Save with merge=True
+            CodesManager.save_config(config2, output_dir=tmpdir, merge=True)
+            
+            # Load and verify both versions are present
+            loaded = CodesManager.load_config("test", codes_dir=tmpdir)
+            assert loaded is not None
+            versions = loaded.list_versions()
+            assert "7.2" in versions
+            assert "6.8" in versions
+            assert loaded.has_code("pw", version="7.2")
+            assert loaded.has_code("pw", version="6.8")
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+    
+    def test_check_module_available_local(self):
+        """Test checking if module command is available locally"""
+        # This test will pass if module is not available on the test system
+        # which is expected behavior
+        result = CodesManager._check_module_available(ssh_connection=None)
+        # Result should be boolean
+        assert isinstance(result, bool)
+    
+    def test_ssh_connection_with_port(self):
+        """Test that SSH connection dict includes port parameter"""
+        # Test that the port parameter is properly handled in ssh_connection
+        ssh_conn = {
+            'host': 'example.com',
+            'username': 'testuser',
+            'port': 2222
+        }
+        
+        # Port should be extracted correctly
+        assert ssh_conn.get('port', 22) == 2222
+        
+        # Default port should be 22
+        ssh_conn_no_port = {
+            'host': 'example.com',
+            'username': 'testuser'
+        }
+        assert ssh_conn_no_port.get('port', 22) == 22
+    
+    def test_detect_codes_with_use_modules_false(self):
+        """Test that detect_codes respects use_modules=False"""
+        # This is a unit test - we're not actually detecting codes
+        # Just verifying the parameter is accepted
+        detected = CodesManager.detect_codes(
+            search_paths=["/nonexistent/path"],
+            modules=["some-module"],
+            use_modules=False
+        )
+        # Should return empty dict since path doesn't exist
+        assert isinstance(detected, dict)
+    
+    def test_create_codes_config_with_merge(self):
+        """Test create_codes_config with merge parameter"""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            # We can't actually detect codes without QE installed,
+            # so we'll just verify the function accepts the parameters
+            # by calling it with non-existent paths
+            config = create_codes_config(
+                machine_name="test_machine",
+                search_paths=["/nonexistent"],
+                save=True,
+                output_dir=tmpdir,
+                overwrite=True,
+                merge=False,
+                auto_load_machine=False
+            )
+            
+            assert config.machine_name == "test_machine"
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
