@@ -47,7 +47,8 @@ class CodesManager:
                      search_paths: Optional[List[str]] = None,
                      qe_prefix: Optional[str] = None,
                      modules: Optional[List[str]] = None,
-                     ssh_connection: Optional[Dict] = None) -> Dict[str, str]:
+                     ssh_connection: Optional[Dict] = None,
+                     use_modules: bool = True) -> Dict[str, str]:
         """
         Detect available QE codes on the system.
         
@@ -55,8 +56,11 @@ class CodesManager:
             search_paths: List of paths to search for executables
             qe_prefix: QE installation prefix (e.g., '/opt/qe-7.2/bin')
             modules: List of modules to load before detection
-            ssh_connection: SSH connection info for remote detection
-                           {'host': 'hostname', 'username': 'user'}
+            ssh_connection: SSH connection info for remote detection.
+                           Dict with keys: 'host', 'username', 'port' (default: 22)
+                           Example: {'host': 'cluster.edu', 'username': 'user', 'port': 22}
+            use_modules: Whether to use module command (default: True, but will
+                        auto-detect if modules are available)
         
         Returns:
             Dictionary mapping code name to executable path
@@ -76,9 +80,14 @@ class CodesManager:
         
         # Build module load command if needed
         module_cmd = ""
-        if modules:
-            module_cmd = " && ".join([f"module load {mod}" for mod in modules])
-            module_cmd += " && "
+        if modules and use_modules:
+            # Check if module command is available
+            has_modules = cls._check_module_available(ssh_connection)
+            if has_modules:
+                module_cmd = " && ".join([f"module load {mod}" for mod in modules])
+                module_cmd += " && "
+            else:
+                print("⚠️  'module' command not available, skipping module loads")
         
         # Check for each common QE code
         for code_name in COMMON_QE_CODES:
@@ -96,6 +105,31 @@ class CodesManager:
                 detected_codes[code_name] = found_path
         
         return detected_codes
+    
+    @staticmethod
+    def _check_module_available(ssh_connection: Optional[Dict] = None) -> bool:
+        """
+        Check if the 'module' command is available on the system.
+        
+        Args:
+            ssh_connection: SSH connection info for remote check
+        
+        Returns:
+            True if module command is available, False otherwise
+        """
+        try:
+            if ssh_connection:
+                host = ssh_connection.get('host')
+                username = ssh_connection.get('username', os.environ.get('USER'))
+                port = ssh_connection.get('port', 22)
+                cmd = f"ssh -p {port} {username}@{host} 'command -v module > /dev/null 2>&1'"
+            else:
+                cmd = "command -v module > /dev/null 2>&1"
+            
+            result = subprocess.run(cmd, shell=True, timeout=5)
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, Exception):
+            return False
     
     @staticmethod
     def _detect_local(executable: str, search_paths: List[str], 
@@ -128,9 +162,13 @@ class CodesManager:
         try:
             host = ssh_connection.get('host')
             username = ssh_connection.get('username', os.environ.get('USER'))
+            port = ssh_connection.get('port', 22)
+            
+            # Build SSH command with port
+            ssh_cmd = f"ssh -p {port} {username}@{host}"
             
             # Try using 'which' command remotely
-            cmd = f"ssh {username}@{host} '{module_cmd}which {executable}'"
+            cmd = f"{ssh_cmd} '{module_cmd}which {executable}'"
             result = subprocess.run(cmd, shell=True, capture_output=True,
                                   text=True, timeout=30)
             if result.returncode == 0:
@@ -141,7 +179,7 @@ class CodesManager:
             # Try manual search in paths
             for search_path in search_paths:
                 full_path = os.path.join(search_path, executable)
-                cmd = f"ssh {username}@{host} 'test -x {full_path} && echo {full_path}'"
+                cmd = f"{ssh_cmd} 'test -x {full_path} && echo {full_path}'"
                 result = subprocess.run(cmd, shell=True, capture_output=True,
                                       text=True, timeout=30)
                 if result.returncode == 0 and result.stdout.strip():
@@ -160,6 +198,7 @@ class CodesManager:
         Args:
             pw_path: Path to pw.x executable
             ssh_connection: SSH connection info for remote detection
+                           {'host': 'hostname', 'username': 'user', 'port': 22}
         
         Returns:
             Version string (e.g., '7.2') or None
@@ -168,7 +207,8 @@ class CodesManager:
             if ssh_connection:
                 host = ssh_connection.get('host')
                 username = ssh_connection.get('username', os.environ.get('USER'))
-                cmd = f"ssh {username}@{host} '{pw_path} --version 2>&1 | head -5'"
+                port = ssh_connection.get('port', 22)
+                cmd = f"ssh -p {port} {username}@{host} '{pw_path} --version 2>&1 | head -5'"
             else:
                 cmd = f"{pw_path} --version 2>&1 | head -5"
             
@@ -229,7 +269,9 @@ class CodesManager:
     @staticmethod
     def save_config(config: CodesConfig, 
                    output_dir: str = DEFAULT_CODES_DIR,
-                   filename: Optional[str] = None) -> str:
+                   filename: Optional[str] = None,
+                   overwrite: bool = False,
+                   merge: bool = False) -> str:
         """
         Save a CodesConfig to JSON file.
         
@@ -237,9 +279,14 @@ class CodesManager:
             config: CodesConfig object to save
             output_dir: Directory to save the file
             filename: Optional filename (default: <machine_name>.json)
+            overwrite: If True, overwrites existing file without asking
+            merge: If True and file exists, merges with existing config
         
         Returns:
             Path to saved file
+        
+        Raises:
+            FileExistsError: If file exists and overwrite/merge are False
         """
         os.makedirs(output_dir, exist_ok=True)
         
@@ -247,6 +294,61 @@ class CodesManager:
             filename = f"{config.machine_name}.json"
         
         filepath = os.path.join(output_dir, filename)
+        
+        # Check if file already exists
+        if os.path.exists(filepath) and not overwrite and not merge:
+            print(f"⚠️  Configuration file already exists: {filepath}")
+            response = input("Choose: [o]verwrite, [m]erge, [c]ancel (default: cancel): ").strip().lower()
+            if response == 'o':
+                overwrite = True
+            elif response == 'm':
+                merge = True
+            else:
+                print("❌ Cancelled. Configuration not saved.")
+                raise FileExistsError(f"Configuration file already exists: {filepath}")
+        
+        # Handle merge
+        if merge and os.path.exists(filepath):
+            try:
+                existing_config = CodesConfig.from_json(filepath)
+                print(f"📝 Merging with existing configuration...")
+                
+                # Merge codes
+                for code_name, code in config.codes.items():
+                    existing_config.codes[code_name] = code
+                
+                # Merge versions
+                if config.versions:
+                    if not existing_config.versions:
+                        existing_config.versions = {}
+                    for version, version_config in config.versions.items():
+                        if version not in existing_config.versions:
+                            existing_config.versions[version] = version_config
+                        else:
+                            # Merge codes within version
+                            if 'codes' in version_config:
+                                if 'codes' not in existing_config.versions[version]:
+                                    existing_config.versions[version]['codes'] = {}
+                                existing_config.versions[version]['codes'].update(version_config['codes'])
+                
+                # Update other fields if they're set in new config
+                if config.qe_prefix:
+                    existing_config.qe_prefix = config.qe_prefix
+                if config.qe_version:
+                    existing_config.qe_version = config.qe_version
+                if config.modules:
+                    existing_config.modules = config.modules
+                if config.environment:
+                    if not existing_config.environment:
+                        existing_config.environment = {}
+                    existing_config.environment.update(config.environment)
+                
+                config = existing_config
+                print(f"✅ Merged configurations")
+            except Exception as e:
+                print(f"⚠️  Failed to merge configurations: {e}")
+                print("   Falling back to overwrite")
+        
         config.to_json(filepath)
         
         return filepath
@@ -280,9 +382,13 @@ def detect_qe_codes(machine_name: str = "local",
                    qe_prefix: Optional[str] = None,
                    search_paths: Optional[List[str]] = None,
                    modules: Optional[List[str]] = None,
-                   ssh_connection: Optional[Dict] = None) -> CodesConfig:
+                   ssh_connection: Optional[Dict] = None,
+                   auto_load_machine: bool = True) -> CodesConfig:
     """
     Convenience function to detect and create a codes configuration.
+    
+    This function can automatically load machine configuration from machines.json
+    or individual machine files to extract SSH connection details and modules.
     
     Args:
         machine_name: Name of the machine
@@ -290,11 +396,50 @@ def detect_qe_codes(machine_name: str = "local",
         search_paths: List of paths to search for executables
         modules: List of modules to load before detection
         ssh_connection: SSH connection info for remote detection
+                       {'host': 'hostname', 'username': 'user', 'port': 22}
+        auto_load_machine: If True, attempts to load machine config automatically
     
     Returns:
         CodesConfig object with detected codes
     """
     print(f"🔍 Detecting Quantum ESPRESSO codes on '{machine_name}'...")
+    
+    # Try to load machine configuration if auto_load_machine is True
+    if auto_load_machine and ssh_connection is None:
+        try:
+            from xespresso.machines.config.loader import load_machine, DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR
+            from xespresso.machines.machine import Machine
+            
+            # Try to load machine config
+            machine_obj = load_machine(
+                config_path=DEFAULT_CONFIG_PATH,
+                machine_name=machine_name,
+                machines_dir=DEFAULT_MACHINES_DIR,
+                return_object=True
+            )
+            
+            if machine_obj and isinstance(machine_obj, Machine):
+                print(f"📋 Loaded machine configuration for '{machine_name}'")
+                
+                # Extract SSH connection info for remote machines
+                if machine_obj.is_remote:
+                    ssh_connection = {
+                        'host': machine_obj.host,
+                        'username': machine_obj.username,
+                        'port': machine_obj.port if hasattr(machine_obj, 'port') and machine_obj.port else 22
+                    }
+                    print(f"🌐 Using remote connection: {machine_obj.username}@{machine_obj.host}:{ssh_connection['port']}")
+                
+                # Use modules from machine config if not explicitly provided
+                if modules is None and machine_obj.use_modules and machine_obj.modules:
+                    modules = machine_obj.modules
+                    print(f"📦 Using modules from machine config: {', '.join(modules)}")
+        except ImportError:
+            pass  # Machine loader not available
+        except Exception as e:
+            # Log but don't fail - continue with manual parameters
+            import logging
+            logging.debug(f"Could not auto-load machine config: {e}")
     
     detected_codes = CodesManager.detect_codes(
         search_paths=search_paths,
@@ -336,7 +481,10 @@ def create_codes_config(machine_name: str = "local",
                        modules: Optional[List[str]] = None,
                        ssh_connection: Optional[Dict] = None,
                        save: bool = True,
-                       output_dir: str = DEFAULT_CODES_DIR) -> CodesConfig:
+                       output_dir: str = DEFAULT_CODES_DIR,
+                       overwrite: bool = False,
+                       merge: bool = True,
+                       auto_load_machine: bool = True) -> CodesConfig:
     """
     Create a codes configuration (with optional auto-save).
     
@@ -348,6 +496,9 @@ def create_codes_config(machine_name: str = "local",
         ssh_connection: SSH connection info for remote detection
         save: Whether to save the configuration to file
         output_dir: Directory to save the configuration
+        overwrite: If True, overwrites existing file without asking
+        merge: If True, merges with existing config (default: True)
+        auto_load_machine: If True, attempts to load machine config automatically
     
     Returns:
         CodesConfig object
@@ -357,12 +508,21 @@ def create_codes_config(machine_name: str = "local",
         qe_prefix=qe_prefix,
         search_paths=search_paths,
         modules=modules,
-        ssh_connection=ssh_connection
+        ssh_connection=ssh_connection,
+        auto_load_machine=auto_load_machine
     )
     
     if save and config.codes:
-        filepath = CodesManager.save_config(config, output_dir=output_dir)
-        print(f"💾 Configuration saved to: {filepath}")
+        try:
+            filepath = CodesManager.save_config(
+                config, 
+                output_dir=output_dir,
+                overwrite=overwrite,
+                merge=merge
+            )
+            print(f"💾 Configuration saved to: {filepath}")
+        except FileExistsError as e:
+            print(f"⚠️  {e}")
     
     return config
 
@@ -497,8 +657,8 @@ def add_version_to_config(machine_name: str,
         config.qe_version = version
         print(f"📌 Set {version} as default version")
     
-    # Save updated configuration
-    filepath = CodesManager.save_config(config, output_dir=codes_dir)
+    # Save updated configuration (always overwrite when explicitly adding versions)
+    filepath = CodesManager.save_config(config, output_dir=codes_dir, overwrite=True)
     print(f"💾 Configuration saved to: {filepath}")
     
     return config
