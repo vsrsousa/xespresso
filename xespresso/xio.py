@@ -18,6 +18,16 @@ from ase.io.espresso import (
     read_fortran_namelist,
 )
 
+# Import Hubbard handling utilities
+try:
+    from xespresso.hubbard import build_hubbard_str, apply_hubbard_to_system
+except ImportError:
+    # Fallback if hubbard module not available
+    def build_hubbard_str(input_data, species_info, qe_version=None):
+        return []
+    def apply_hubbard_to_system(input_parameters, input_data, species_info, qe_version=None):
+        return input_parameters
+
 # ibrav error message
 ibrav_error_message = (
     "ASE does not support ibrav != 0. Note that with ibrav "
@@ -49,6 +59,7 @@ def write_espresso_in(
 
     - support parameters with ntyp
     - support atomic species
+    - support Hubbard parameters (both old and new QE 7.x+ format)
     """
 
     # Convert to a namelist to make working with parameters much easier
@@ -63,8 +74,9 @@ def write_espresso_in(
         atoms, input_parameters, pseudopotentials
     )
     # sections
+    qe_version = input_data.get('qe_version', kwargs.get('qe_version'))
     section_str, input_parameters = build_section_str(
-        atoms, species_info, input_data, input_parameters
+        atoms, species_info, input_data, input_parameters, qe_version
     )
     pwi.extend(section_str)
     # Pseudopotentials
@@ -76,6 +88,10 @@ def write_espresso_in(
     # Positions - already constructed, but must appear after namelist
     engine_str = pwi.copy()
     pwi.extend(build_atomic_positions_str(atoms, crystal_coordinates))
+    # HUBBARD card (new format for QE >= 7.0)
+    hubbard_str = build_hubbard_str(input_data, species_info, qe_version)
+    if hubbard_str:
+        pwi.extend(hubbard_str)
     # write file or not
     if filename:
         with open(filename, "w") as fd:
@@ -84,8 +100,20 @@ def write_espresso_in(
     return engine_str
 
 
-def build_section_str(atoms, species_info, input_data, input_parameters):
-    """ """
+def build_section_str(atoms, species_info, input_data, input_parameters, qe_version=None):
+    """
+    Build section strings for QE input file.
+    
+    Args:
+        atoms: ASE atoms object
+        species_info: Dictionary with species information
+        input_data: Dictionary with input data
+        input_parameters: Dictionary with namelist parameters
+        qe_version: Optional QE version string (e.g., '7.2')
+    
+    Returns:
+        Tuple of (section_str, input_parameters)
+    """
     # Add computed parameters
     # different magnetisms means different types
     input_parameters["system"]["ntyp"] = len(species_info)
@@ -94,14 +122,26 @@ def build_section_str(atoms, species_info, input_data, input_parameters):
     #
     if "INPUT_NTYP" in input_data:
         for key, value in input_data["INPUT_NTYP"].items():
+            # Skip Hubbard parameters if using new format
+            if key.startswith('Hubbard') and 'hubbard' in input_data:
+                continue
             for species in value:
                 if species in species_info:
                     mag_str = "{0}({1})".format(key, species_info[species]["index"])
                     input_parameters["system"][mag_str] = value[species]
-    if "hubbard_v" in input_data:
+    
+    # Apply Hubbard parameters to SYSTEM namelist if using old format
+    input_parameters = apply_hubbard_to_system(
+        input_parameters, input_data, species_info, qe_version
+    )
+    
+    # Old format hubbard_v (only if not using new format)
+    use_new_hubbard = 'hubbard' in input_data or (qe_version and qe_version >= '7.0')
+    if "hubbard_v" in input_data and not use_new_hubbard:
         for key, value in input_data["hubbard_v"].items():
             mag_str = "Hubbard_V{0}".format(key)
             input_parameters["system"][mag_str] = value
+    
     # Use cell as given or fit to a specific ibrav
     if "ibrav" in input_parameters["system"]:
         ibrav = input_parameters["system"]["ibrav"]
