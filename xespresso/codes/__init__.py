@@ -7,6 +7,7 @@ on different machines. It allows users to:
 - Store QE version information
 - Configure code settings per machine
 - Detect available codes on a machine
+- Support multiple QE versions on the same machine
 """
 
 from .manager import (
@@ -14,6 +15,7 @@ from .manager import (
     create_codes_config,
     load_codes_config,
     detect_qe_codes,
+    add_version_to_config,
 )
 from .config import Code, CodesConfig
 
@@ -24,4 +26,5 @@ __all__ = [
     'create_codes_config',
     'load_codes_config',
     'detect_qe_codes',
+    'add_version_to_config',
 ]

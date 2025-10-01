@@ -42,13 +42,32 @@ class CodesConfig:
     """
     Configuration for all QE codes on a machine.
     
+    Supports multiple QE versions on the same machine. Codes can be organized by version,
+    allowing users to choose which version to use for each calculation.
+    
     Attributes:
         machine_name: Name of the machine
         qe_prefix: Common prefix for QE executables (e.g., '/opt/qe-7.2/bin')
         qe_version: Default QE version on this machine
-        codes: Dictionary mapping code name to Code object
+        codes: Dictionary mapping code name to Code object (for single version configs)
+        versions: Dictionary mapping version string to version-specific configuration
+                  (for multi-version configs)
         modules: Optional list of modules to load (e.g., ['quantum-espresso/7.2'])
         environment: Optional environment variables to set
+    
+    Multi-version structure:
+        versions = {
+            "7.2": {
+                "qe_prefix": "/opt/qe-7.2/bin",
+                "modules": ["quantum-espresso/7.2"],
+                "codes": {...}
+            },
+            "6.8": {
+                "qe_prefix": "/opt/qe-6.8/bin",
+                "modules": ["quantum-espresso/6.8"],
+                "codes": {...}
+            }
+        }
     """
     machine_name: str
     codes: Dict[str, Code] = field(default_factory=dict)
@@ -56,14 +75,74 @@ class CodesConfig:
     qe_version: Optional[str] = None
     modules: Optional[List[str]] = None
     environment: Optional[Dict[str, str]] = None
+    versions: Optional[Dict[str, Dict]] = None
     
-    def add_code(self, code: Code):
-        """Add a code to the configuration."""
-        self.codes[code.name] = code
+    def add_code(self, code: Code, version: Optional[str] = None):
+        """
+        Add a code to the configuration.
+        
+        Args:
+            code: Code object to add
+            version: Optional version string. If provided, adds to version-specific codes.
+        """
+        if version:
+            # Add to version-specific configuration
+            if not self.versions:
+                self.versions = {}
+            if version not in self.versions:
+                self.versions[version] = {"codes": {}}
+            if "codes" not in self.versions[version]:
+                self.versions[version]["codes"] = {}
+            self.versions[version]["codes"][code.name] = code
+        else:
+            # Add to main codes dictionary
+            self.codes[code.name] = code
     
-    def get_code(self, name: str) -> Optional[Code]:
-        """Get a code by name."""
+    def get_code(self, name: str, version: Optional[str] = None) -> Optional[Code]:
+        """
+        Get a code by name, optionally from a specific version.
+        
+        Args:
+            name: Code name (e.g., 'pw', 'hp')
+            version: Optional version string. If None, uses default version or main codes.
+        
+        Returns:
+            Code object or None if not found
+        """
+        if version and self.versions and version in self.versions:
+            # Get from version-specific codes
+            codes_data = self.versions[version].get("codes", {})
+            if name in codes_data:
+                code_data = codes_data[name]
+                if isinstance(code_data, Code):
+                    return code_data
+                else:
+                    return Code.from_dict(code_data)
+        
+        # Fall back to main codes dictionary
         return self.codes.get(name)
+    
+    def list_versions(self) -> List[str]:
+        """List all available QE versions."""
+        if self.versions:
+            return list(self.versions.keys())
+        elif self.qe_version:
+            return [self.qe_version]
+        return []
+    
+    def get_version_config(self, version: str) -> Optional[Dict]:
+        """
+        Get version-specific configuration.
+        
+        Args:
+            version: Version string
+        
+        Returns:
+            Dictionary with version-specific config or None
+        """
+        if self.versions and version in self.versions:
+            return self.versions[version]
+        return None
     
     def to_dict(self) -> Dict:
         """Convert to dictionary."""
@@ -79,14 +158,47 @@ class CodesConfig:
             result['modules'] = self.modules
         if self.environment:
             result['environment'] = self.environment
+        if self.versions:
+            # Serialize versions
+            result['versions'] = {}
+            for ver, ver_config in self.versions.items():
+                result['versions'][ver] = {}
+                for key, value in ver_config.items():
+                    if key == 'codes':
+                        # Serialize codes in version
+                        result['versions'][ver]['codes'] = {
+                            name: (code.to_dict() if isinstance(code, Code) else code)
+                            for name, code in value.items()
+                        }
+                    else:
+                        result['versions'][ver][key] = value
         return result
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'CodesConfig':
         """Create CodesConfig from dictionary."""
+        # Make a copy to avoid modifying the original
+        data = data.copy()
+        
+        # Handle main codes
         codes_data = data.pop('codes', {})
-        codes = {name: Code.from_dict(code_data) for name, code_data in codes_data.items()}
-        return cls(codes=codes, **data)
+        codes = {name: Code.from_dict(code_data) if isinstance(code_data, dict) else code_data 
+                 for name, code_data in codes_data.items()}
+        
+        # Handle versions
+        versions_data = data.pop('versions', None)
+        versions = None
+        if versions_data:
+            versions = {}
+            for ver, ver_config in versions_data.items():
+                versions[ver] = ver_config.copy()
+                if 'codes' in ver_config:
+                    versions[ver]['codes'] = {
+                        name: Code.from_dict(code_data) if isinstance(code_data, dict) else code_data
+                        for name, code_data in ver_config['codes'].items()
+                    }
+        
+        return cls(codes=codes, versions=versions, **data)
     
     def to_json(self, filepath: str, indent: int = 2):
         """Save to JSON file."""
@@ -100,10 +212,33 @@ class CodesConfig:
             data = json.load(f)
         return cls.from_dict(data)
     
-    def list_codes(self) -> List[str]:
-        """List all available code names."""
+    def list_codes(self, version: Optional[str] = None) -> List[str]:
+        """
+        List all available code names.
+        
+        Args:
+            version: Optional version string. If provided, lists codes for that version.
+        
+        Returns:
+            List of code names
+        """
+        if version and self.versions and version in self.versions:
+            codes = self.versions[version].get('codes', {})
+            return list(codes.keys())
         return list(self.codes.keys())
     
-    def has_code(self, name: str) -> bool:
-        """Check if a code is available."""
+    def has_code(self, name: str, version: Optional[str] = None) -> bool:
+        """
+        Check if a code is available.
+        
+        Args:
+            name: Code name
+            version: Optional version string
+        
+        Returns:
+            True if code is available
+        """
+        if version and self.versions and version in self.versions:
+            codes = self.versions[version].get('codes', {})
+            return name in codes
         return name in self.codes

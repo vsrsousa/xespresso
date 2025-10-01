@@ -203,5 +203,150 @@ class TestConvenienceFunctions:
         assert config.machine_name == "test"
 
 
+class TestMultiVersionSupport:
+    """Tests for multiple QE version support"""
+    
+    def test_add_code_with_version(self):
+        """Test adding codes to specific versions"""
+        config = CodesConfig(machine_name="test", qe_version="7.2")
+        
+        # Add code to version 7.2
+        code_72 = Code(name="pw", path="/opt/qe-7.2/bin/pw.x", version="7.2")
+        config.add_code(code_72, version="7.2")
+        
+        # Add code to version 6.8
+        code_68 = Code(name="pw", path="/opt/qe-6.8/bin/pw.x", version="6.8")
+        config.add_code(code_68, version="6.8")
+        
+        # Verify both versions are stored
+        assert config.has_code("pw", version="7.2")
+        assert config.has_code("pw", version="6.8")
+        
+        # Verify paths are different
+        pw_72 = config.get_code("pw", version="7.2")
+        pw_68 = config.get_code("pw", version="6.8")
+        assert pw_72.path == "/opt/qe-7.2/bin/pw.x"
+        assert pw_68.path == "/opt/qe-6.8/bin/pw.x"
+    
+    def test_list_versions(self):
+        """Test listing available versions"""
+        config = CodesConfig(machine_name="test")
+        
+        # Add codes to different versions
+        config.add_code(Code(name="pw", path="/opt/qe-7.2/bin/pw.x"), version="7.2")
+        config.add_code(Code(name="pw", path="/opt/qe-6.8/bin/pw.x"), version="6.8")
+        
+        versions = config.list_versions()
+        assert "7.2" in versions
+        assert "6.8" in versions
+        assert len(versions) == 2
+    
+    def test_list_codes_by_version(self):
+        """Test listing codes for specific version"""
+        config = CodesConfig(machine_name="test")
+        
+        # Add different codes to different versions
+        config.add_code(Code(name="pw", path="/opt/qe-7.2/bin/pw.x"), version="7.2")
+        config.add_code(Code(name="hp", path="/opt/qe-7.2/bin/hp.x"), version="7.2")
+        config.add_code(Code(name="pw", path="/opt/qe-6.8/bin/pw.x"), version="6.8")
+        
+        # Check codes in each version
+        codes_72 = config.list_codes(version="7.2")
+        codes_68 = config.list_codes(version="6.8")
+        
+        assert "pw" in codes_72
+        assert "hp" in codes_72
+        assert len(codes_72) == 2
+        
+        assert "pw" in codes_68
+        assert len(codes_68) == 1
+    
+    def test_version_config_serialization(self):
+        """Test saving and loading multi-version config"""
+        config = CodesConfig(machine_name="test", qe_version="7.2")
+        
+        # Add codes to different versions
+        config.add_code(Code(name="pw", path="/opt/qe-7.2/bin/pw.x", version="7.2"), version="7.2")
+        config.add_code(Code(name="pw", path="/opt/qe-6.8/bin/pw.x", version="6.8"), version="6.8")
+        
+        # Add version-specific settings
+        if config.versions:
+            config.versions["7.2"]["modules"] = ["quantum-espresso/7.2"]
+            config.versions["6.8"]["modules"] = ["quantum-espresso/6.8"]
+        
+        tmpdir = tempfile.mkdtemp()
+        try:
+            # Save and load
+            filepath = CodesManager.save_config(config, output_dir=tmpdir)
+            loaded = CodesManager.load_config("test", codes_dir=tmpdir)
+            
+            # Verify structure
+            assert loaded is not None
+            assert loaded.machine_name == "test"
+            assert loaded.qe_version == "7.2"
+            
+            # Verify versions
+            versions = loaded.list_versions()
+            assert "7.2" in versions
+            assert "6.8" in versions
+            
+            # Verify codes
+            assert loaded.has_code("pw", version="7.2")
+            assert loaded.has_code("pw", version="6.8")
+            
+            # Verify version-specific settings
+            ver_config_72 = loaded.get_version_config("7.2")
+            ver_config_68 = loaded.get_version_config("6.8")
+            assert ver_config_72 is not None
+            assert ver_config_68 is not None
+            assert ver_config_72.get("modules") == ["quantum-espresso/7.2"]
+            assert ver_config_68.get("modules") == ["quantum-espresso/6.8"]
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+    
+    def test_backward_compatibility(self):
+        """Test backward compatibility with single-version configs"""
+        # Old-style config without versions
+        config = CodesConfig(machine_name="test", qe_version="7.2")
+        config.add_code(Code(name="pw", path="/usr/bin/pw.x", version="7.2"))
+        config.add_code(Code(name="hp", path="/usr/bin/hp.x", version="7.2"))
+        
+        # Should still work with old methods
+        assert config.has_code("pw")
+        assert config.has_code("hp")
+        codes = config.list_codes()
+        assert "pw" in codes
+        assert "hp" in codes
+        
+        # Get code without version parameter
+        pw = config.get_code("pw")
+        assert pw is not None
+        assert pw.path == "/usr/bin/pw.x"
+    
+    def test_get_code_fallback(self):
+        """Test get_code fallback to main codes when version not specified"""
+        config = CodesConfig(machine_name="test")
+        
+        # Add to main codes
+        config.add_code(Code(name="pw", path="/usr/bin/pw.x"))
+        
+        # Add to version-specific
+        config.add_code(Code(name="hp", path="/opt/qe-7.2/bin/hp.x"), version="7.2")
+        
+        # Should get from main codes when no version specified
+        pw = config.get_code("pw")
+        assert pw is not None
+        assert pw.path == "/usr/bin/pw.x"
+        
+        # Should get from version when specified
+        hp = config.get_code("hp", version="7.2")
+        assert hp is not None
+        assert hp.path == "/opt/qe-7.2/bin/hp.x"
+        
+        # Should return None for non-existent version
+        hp_fallback = config.get_code("hp")  # hp not in main codes
+        assert hp_fallback is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
