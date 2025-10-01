@@ -16,6 +16,7 @@ For the introduction of ASE , please visit https://wiki.fysik.dtu.dk/ase/index.h
 * Automatic set up "nscf" calculation
 * Read and plot dos, pdos and layer resolved pdos
 * Plot NEB
+* **NEW:** Web-based GUI for configuration management (Streamlit)
 
 ### Author
 * Xing Wang  <xingwang1991@gmail.com>
@@ -43,6 +44,35 @@ export PYTHONPATH="/path/to/xespresso":$PYTHONPATH
 export ASE_ESPRESSO_COMMAND="/path/to/PACKAGE.x  PARALLEL  -in  PREFIX.PACKAGEi  >  PREFIX.PACKAGEo"
 export ESPRESSO_PSEUDO="/path/to/pseudo"
 ```
+
+
+### Web GUI
+
+XEspresso now includes a web-based graphical interface for easy configuration management!
+
+**Quick Start:**
+```bash
+streamlit run gui/app.py
+```
+
+**Features:**
+- 🖥️ Configure machines (local/remote, SLURM support)
+- ⚙️ Configure Quantum ESPRESSO codes
+- 📋 View and edit existing configurations
+- 🚀 User-friendly interface with guided forms
+
+For detailed instructions, see [README_GUI.md](README_GUI.md) and [QUICKSTART_GUI.md](QUICKSTART_GUI.md)
+
+**Screenshots:**
+
+Home Page:
+![GUI Home](https://github.com/user-attachments/assets/5ea1dc72-71a7-4915-b873-05a797534393)
+
+Machine Configuration:
+![Machine Config](https://github.com/user-attachments/assets/9b801dd6-cd2f-40e7-8786-4cad910dff1d)
+
+Codes Configuration:
+![Codes Config](https://github.com/user-attachments/assets/10abec3d-a734-4eac-ac80-5640f9207468)
 
 
 ### Examples
