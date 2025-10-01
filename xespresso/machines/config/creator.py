@@ -219,13 +219,35 @@ def create_machine(path: str = DEFAULT_CONFIG_PATH, preset_path: str = None):
     machine["launcher"] = launcher
     logger.info(f"Launcher set to: {launcher}")
 
-    config["machines"][machine_name] = machine
-
-    try:
-        with open(path, "w") as f:
-            json.dump(config, f, indent=2)
-        print(f"✅ Machine '{machine_name}' saved to {path}")
-        logger.info(f"Machine '{machine_name}' saved successfully.")
-    except Exception as e:
-        print("❌ Failed to save machine configuration.")
-        logger.error(f"Failed to write config file: {e}")
+    # Ask user if they want to save as individual file or in machines.json
+    print("\n💾 Choose how to save the machine configuration:")
+    print(" [1] Add to machines.json (traditional, all machines in one file)")
+    print(" [2] Save as individual JSON file (recommended, one file per machine)")
+    save_choice = input("Choose save format [1/2] [2]: ").strip() or "2"
+    
+    if save_choice == "2":
+        # Save as individual file
+        machines_dir = os.path.join(os.path.dirname(path), "machines")
+        os.makedirs(machines_dir, exist_ok=True)
+        individual_path = os.path.join(machines_dir, f"{machine_name}.json")
+        
+        try:
+            with open(individual_path, "w") as f:
+                json.dump(machine, f, indent=2)
+            print(f"✅ Machine '{machine_name}' saved to {individual_path}")
+            logger.info(f"Machine '{machine_name}' saved as individual file: {individual_path}")
+        except Exception as e:
+            print("❌ Failed to save machine configuration.")
+            logger.error(f"Failed to write individual machine file: {e}")
+    else:
+        # Save to machines.json (traditional)
+        config["machines"][machine_name] = machine
+        
+        try:
+            with open(path, "w") as f:
+                json.dump(config, f, indent=2)
+            print(f"✅ Machine '{machine_name}' saved to {path}")
+            logger.info(f"Machine '{machine_name}' saved successfully.")
+        except Exception as e:
+            print("❌ Failed to save machine configuration.")
+            logger.error(f"Failed to write config file: {e}")
