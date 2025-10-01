@@ -9,6 +9,8 @@ xespresso supports two ways to organize machine configurations:
 
 Both approaches can be used simultaneously, and the system will look for machines in both places.
 
+**Need to migrate?** See the [Machine Migration Guide](MACHINE_MIGRATION.md) for step-by-step instructions on converting from the traditional format to the modular format.
+
 ## Directory Structure
 
 ```
