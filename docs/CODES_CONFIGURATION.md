@@ -10,6 +10,88 @@ The `xespresso.codes` module provides utilities for managing Quantum ESPRESSO co
 - Configure code settings per machine
 - Integrate with the machines configuration system
 - **Support multiple QE versions on the same machine**
+- **Auto-load machine configurations for seamless remote detection**
+- **Support custom SSH ports (default: 22)**
+- **Graceful fallback when module command is unavailable**
+- **Overwrite protection and merge options for existing configurations**
+
+## New Features (Enhanced Code Detection)
+
+### Auto-Loading Machine Configuration
+
+When detecting codes, xespresso can now automatically load machine configuration from `machines.json` or individual machine files. This eliminates the need to manually specify SSH connection details:
+
+```python
+from xespresso.codes import detect_qe_codes
+
+# Simple: Just provide the machine name
+# SSH connection details, modules, and other settings are auto-loaded
+config = detect_qe_codes(machine_name="my_cluster")
+
+# The function will:
+# 1. Load machine configuration from ~/.xespresso/machines.json or ~/.xespresso/machines/my_cluster.json
+# 2. Extract SSH details (host, username, port)
+# 3. Use configured modules automatically
+# 4. Check if module command is available (graceful fallback if not)
+# 5. Perform code detection
+```
+
+### SSH Port Support
+
+SSH connections now support custom ports (default: 22):
+
+```python
+# Explicit SSH connection with custom port
+config = detect_qe_codes(
+    machine_name="cluster",
+    ssh_connection={
+        'host': 'cluster.example.edu',
+        'username': 'john_doe',
+        'port': 2222  # Custom SSH port
+    }
+)
+
+# Or let it auto-load from machine configuration
+# (port is stored in machine config and used automatically)
+config = detect_qe_codes(machine_name="my_cluster")
+```
+
+### Module Command Fallback
+
+The detection system now gracefully handles systems without the `module` command:
+
+```python
+# If modules are specified but the 'module' command is not available,
+# detection will automatically skip module loading and continue
+config = detect_qe_codes(
+    machine_name="cluster",
+    modules=['quantum-espresso/7.2'],  # Will be skipped if unavailable
+    qe_prefix="/opt/qe-7.2/bin"        # Alternative detection method
+)
+```
+
+### Overwrite Protection and Merge
+
+When saving configurations, you can now choose to overwrite, merge, or cancel:
+
+```python
+from xespresso.codes import CodesManager, CodesConfig, Code
+
+# Create initial configuration
+config1 = CodesConfig(machine_name="cluster", qe_version="7.2")
+config1.add_code(Code(name="pw", path="/opt/qe/bin/pw.x"))
+
+# Save with overwrite protection (interactive prompt)
+CodesManager.save_config(config1, overwrite=False, merge=False)
+
+# Save with automatic merge (combines with existing)
+config2 = CodesConfig(machine_name="cluster", qe_version="7.2")
+config2.add_code(Code(name="hp", path="/opt/qe/bin/hp.x"))
+CodesManager.save_config(config2, merge=True)  # Adds hp to existing config
+
+# Non-interactive mode for scripts (raises FileExistsError if exists)
+CodesManager.save_config(config1, overwrite=False, merge=False, interactive=False)
+```
 
 ## Quick Start
 
@@ -93,25 +175,41 @@ versions = codes.list_versions()
 print(f"Available versions: {versions}")
 ```
 
-### Automatic Detection
+### Automatic Detection (Enhanced)
 
 ```python
 from xespresso.codes import detect_qe_codes
 
-# Detect codes on local machine
+# Simplest: Auto-load machine configuration
+# Loads SSH details, modules, and other settings from machine config
+config = detect_qe_codes(machine_name="my_cluster")
+
+# Detect codes on local machine with explicit path
 config = detect_qe_codes(
     machine_name="local",
     qe_prefix="/opt/qe-7.2/bin"
 )
 
-# Detect codes on remote machine via SSH
+# Detect codes on remote machine with explicit SSH connection
 config = detect_qe_codes(
     machine_name="cluster",
-    ssh_connection={'host': 'cluster.edu', 'username': 'user'},
+    ssh_connection={
+        'host': 'cluster.edu', 
+        'username': 'user',
+        'port': 22  # Optional, defaults to 22
+    },
     modules=['quantum-espresso/7.2']
 )
 
-# Configuration is automatically saved
+# Disable auto-loading if you want full manual control
+config = detect_qe_codes(
+    machine_name="custom",
+    auto_load_machine=False,  # Don't try to load machine config
+    ssh_connection={'host': 'server.com', 'username': 'user'},
+    modules=['qe/7.2']
+)
+
+# Configuration is automatically saved (with merge support)
 ```
 
 ### Loading Configuration
