@@ -30,6 +30,10 @@ class RemoteExecutionMixin:
         - 'remote_user': SSH username
         - 'remote_auth': dict with 'method', 'ssh_key' or 'password'
         - 'remote_dir': base path on remote machine
+        - 'env_setup': (optional) shell commands to set up environment
+                      (e.g., "source /etc/profile"). Defaults to "source /etc/profile"
+                      if not provided. Useful for making module command available
+                      in non-interactive SSH sessions.
     - self.job_file: name of the job script
     - self.submit_command(): method that returns the job submission command
     - self.logger: optional logger object with .info() and .warning()
@@ -144,14 +148,9 @@ class RemoteExecutionMixin:
         if hasattr(self, "logger"):
             self.logger.info(f"Submitting job via: {self.submit_command()}")
 
-#        env_setup = "source /etc/profile" if self.queue.get("scheduler") == "slurm" else ""
-        env_setup = "source /etc/profile"
+        # Use env_setup from queue if available, otherwise default to sourcing /etc/profile
+        env_setup = self.queue.get("env_setup", "source /etc/profile")
         command = f"cd {self.remote_path} && {env_setup} && {self.submit_command()}"
-#        if self.queue.get("scheduler") == "slurm":
-#            env_setup = "source /etc/profile"
-#            command = f"cd {self.remote_path} && {env_setup} && {self.submit_command()}"
-#        else:
-#            command = f"cd {self.remote_path} && {self.submit_command()}"
 
         stdout, stderr = self.remote.run_command(command)
 

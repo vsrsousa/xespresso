@@ -48,7 +48,8 @@ class CodesManager:
                      qe_prefix: Optional[str] = None,
                      modules: Optional[List[str]] = None,
                      ssh_connection: Optional[Dict] = None,
-                     use_modules: bool = True) -> Dict[str, str]:
+                     use_modules: bool = True,
+                     env_setup: Optional[str] = None) -> Dict[str, str]:
         """
         Detect available QE codes on the system.
         
@@ -61,6 +62,9 @@ class CodesManager:
                            Example: {'host': 'cluster.edu', 'username': 'user', 'port': 22}
             use_modules: Whether to use module command (default: True, but will
                         auto-detect if modules are available)
+            env_setup: Shell commands to set up environment before detection.
+                      Useful for sourcing profile files to make module command available.
+                      Example: "source /etc/profile" or "source ~/.bashrc"
         
         Returns:
             Dictionary mapping code name to executable path
@@ -82,7 +86,7 @@ class CodesManager:
         module_cmd = ""
         if modules and use_modules:
             # Check if module command is available
-            has_modules = cls._check_module_available(ssh_connection)
+            has_modules = cls._check_module_available(ssh_connection, env_setup)
             if has_modules:
                 module_cmd = " && ".join([f"module load {mod}" for mod in modules])
                 module_cmd += " && "
@@ -96,10 +100,10 @@ class CodesManager:
             if ssh_connection:
                 # Remote detection
                 found_path = cls._detect_remote(executable, search_paths, 
-                                                module_cmd, ssh_connection)
+                                                module_cmd, ssh_connection, env_setup)
             else:
                 # Local detection
-                found_path = cls._detect_local(executable, search_paths, module_cmd)
+                found_path = cls._detect_local(executable, search_paths, module_cmd, env_setup)
             
             if found_path:
                 detected_codes[code_name] = found_path
@@ -107,24 +111,29 @@ class CodesManager:
         return detected_codes
     
     @staticmethod
-    def _check_module_available(ssh_connection: Optional[Dict] = None) -> bool:
+    def _check_module_available(ssh_connection: Optional[Dict] = None,
+                                env_setup: Optional[str] = None) -> bool:
         """
         Check if the 'module' command is available on the system.
         
         Args:
             ssh_connection: SSH connection info for remote check
+            env_setup: Shell commands to set up environment (e.g., "source /etc/profile")
         
         Returns:
             True if module command is available, False otherwise
         """
         try:
+            # Build environment setup prefix
+            env_prefix = f"{env_setup} && " if env_setup else ""
+            
             if ssh_connection:
                 host = ssh_connection.get('host')
                 username = ssh_connection.get('username', os.environ.get('USER'))
                 port = ssh_connection.get('port', 22)
-                cmd = f"ssh -p {port} {username}@{host} 'command -v module > /dev/null 2>&1'"
+                cmd = f"ssh -p {port} {username}@{host} '{env_prefix}command -v module > /dev/null 2>&1'"
             else:
-                cmd = "command -v module > /dev/null 2>&1"
+                cmd = f"{env_prefix}command -v module > /dev/null 2>&1"
             
             result = subprocess.run(cmd, shell=True, timeout=5)
             return result.returncode == 0
@@ -133,11 +142,14 @@ class CodesManager:
     
     @staticmethod
     def _detect_local(executable: str, search_paths: List[str], 
-                     module_cmd: str = "") -> Optional[str]:
+                     module_cmd: str = "", env_setup: Optional[str] = None) -> Optional[str]:
         """Detect executable on local machine."""
+        # Build environment setup prefix
+        env_prefix = f"{env_setup} && " if env_setup else ""
+        
         # Try using 'which' command
         try:
-            cmd = f"{module_cmd}which {executable}"
+            cmd = f"{env_prefix}{module_cmd}which {executable}"
             result = subprocess.run(cmd, shell=True, capture_output=True, 
                                   text=True, timeout=10)
             if result.returncode == 0:
@@ -157,7 +169,8 @@ class CodesManager:
     
     @staticmethod
     def _detect_remote(executable: str, search_paths: List[str],
-                      module_cmd: str, ssh_connection: Dict) -> Optional[str]:
+                      module_cmd: str, ssh_connection: Dict,
+                      env_setup: Optional[str] = None) -> Optional[str]:
         """Detect executable on remote machine via SSH."""
         try:
             host = ssh_connection.get('host')
@@ -167,8 +180,11 @@ class CodesManager:
             # Build SSH command with port
             ssh_cmd = f"ssh -p {port} {username}@{host}"
             
+            # Build environment setup prefix
+            env_prefix = f"{env_setup} && " if env_setup else ""
+            
             # Try using 'which' command remotely
-            cmd = f"{ssh_cmd} '{module_cmd}which {executable}'"
+            cmd = f"{ssh_cmd} '{env_prefix}{module_cmd}which {executable}'"
             result = subprocess.run(cmd, shell=True, capture_output=True,
                                   text=True, timeout=30)
             if result.returncode == 0:
@@ -191,7 +207,8 @@ class CodesManager:
         return None
     
     @staticmethod
-    def detect_qe_version(pw_path: str, ssh_connection: Optional[Dict] = None) -> Optional[str]:
+    def detect_qe_version(pw_path: str, ssh_connection: Optional[Dict] = None,
+                         env_setup: Optional[str] = None) -> Optional[str]:
         """
         Detect Quantum ESPRESSO version from pw.x executable.
         
@@ -199,18 +216,22 @@ class CodesManager:
             pw_path: Path to pw.x executable
             ssh_connection: SSH connection info for remote detection
                            {'host': 'hostname', 'username': 'user', 'port': 22}
+            env_setup: Shell commands to set up environment (e.g., "source /etc/profile")
         
         Returns:
             Version string (e.g., '7.2') or None
         """
         try:
+            # Build environment setup prefix
+            env_prefix = f"{env_setup} && " if env_setup else ""
+            
             if ssh_connection:
                 host = ssh_connection.get('host')
                 username = ssh_connection.get('username', os.environ.get('USER'))
                 port = ssh_connection.get('port', 22)
-                cmd = f"ssh -p {port} {username}@{host} '{pw_path} --version 2>&1 | head -5'"
+                cmd = f"ssh -p {port} {username}@{host} '{env_prefix}{pw_path} --version 2>&1 | head -5'"
             else:
-                cmd = f"{pw_path} --version 2>&1 | head -5"
+                cmd = f"{env_prefix}{pw_path} --version 2>&1 | head -5"
             
             result = subprocess.run(cmd, shell=True, capture_output=True,
                                   text=True, timeout=10)
@@ -389,6 +410,7 @@ def detect_qe_codes(machine_name: str = "local",
                    search_paths: Optional[List[str]] = None,
                    modules: Optional[List[str]] = None,
                    ssh_connection: Optional[Dict] = None,
+                   env_setup: Optional[str] = None,
                    auto_load_machine: bool = True) -> CodesConfig:
     """
     Convenience function to detect and create a codes configuration.
@@ -403,6 +425,8 @@ def detect_qe_codes(machine_name: str = "local",
         modules: List of modules to load before detection
         ssh_connection: SSH connection info for remote detection
                        {'host': 'hostname', 'username': 'user', 'port': 22}
+        env_setup: Shell commands to set up environment before detection.
+                  Example: "source /etc/profile" or "source ~/.bashrc"
         auto_load_machine: If True, attempts to load machine config automatically
     
     Returns:
@@ -440,6 +464,19 @@ def detect_qe_codes(machine_name: str = "local",
                 if modules is None and machine_obj.use_modules and machine_obj.modules:
                     modules = machine_obj.modules
                     print(f"📦 Using modules from machine config: {', '.join(modules)}")
+                
+                # Use env_setup from machine config if not explicitly provided
+                # Check for env_setup in machine's prepend or as a separate field
+                if env_setup is None:
+                    if hasattr(machine_obj, 'env_setup') and machine_obj.env_setup:
+                        env_setup = machine_obj.env_setup
+                        print(f"🔧 Using env_setup from machine config")
+                    elif machine_obj.prepend:
+                        # Check if prepend contains environment setup commands
+                        prepend_str = machine_obj.prepend if isinstance(machine_obj.prepend, str) else '\n'.join(machine_obj.prepend)
+                        if 'source' in prepend_str or 'module' in prepend_str:
+                            env_setup = prepend_str
+                            print(f"🔧 Using prepend as env_setup from machine config")
         except ImportError:
             pass  # Machine loader not available
         except Exception as e:
@@ -451,7 +488,8 @@ def detect_qe_codes(machine_name: str = "local",
         search_paths=search_paths,
         qe_prefix=qe_prefix,
         modules=modules,
-        ssh_connection=ssh_connection
+        ssh_connection=ssh_connection,
+        env_setup=env_setup
     )
     
     if not detected_codes:
@@ -465,7 +503,8 @@ def detect_qe_codes(machine_name: str = "local",
     if 'pw' in detected_codes:
         qe_version = CodesManager.detect_qe_version(
             detected_codes['pw'], 
-            ssh_connection=ssh_connection
+            ssh_connection=ssh_connection,
+            env_setup=env_setup
         )
         if qe_version:
             print(f"📦 Detected Quantum ESPRESSO version: {qe_version}")
@@ -486,6 +525,7 @@ def create_codes_config(machine_name: str = "local",
                        search_paths: Optional[List[str]] = None,
                        modules: Optional[List[str]] = None,
                        ssh_connection: Optional[Dict] = None,
+                       env_setup: Optional[str] = None,
                        save: bool = True,
                        output_dir: str = DEFAULT_CODES_DIR,
                        overwrite: bool = False,
@@ -500,6 +540,7 @@ def create_codes_config(machine_name: str = "local",
         search_paths: List of paths to search for executables
         modules: List of modules to load before detection
         ssh_connection: SSH connection info for remote detection
+        env_setup: Shell commands to set up environment before detection
         save: Whether to save the configuration to file
         output_dir: Directory to save the configuration
         overwrite: If True, overwrites existing file without asking
@@ -515,6 +556,7 @@ def create_codes_config(machine_name: str = "local",
         search_paths=search_paths,
         modules=modules,
         ssh_connection=ssh_connection,
+        env_setup=env_setup,
         auto_load_machine=auto_load_machine
     )
     
@@ -575,6 +617,7 @@ def add_version_to_config(machine_name: str,
                          search_paths: Optional[List[str]] = None,
                          modules: Optional[List[str]] = None,
                          ssh_connection: Optional[Dict] = None,
+                         env_setup: Optional[str] = None,
                          codes_dir: str = DEFAULT_CODES_DIR) -> Optional[CodesConfig]:
     """
     Add a new QE version to an existing codes configuration.
@@ -589,6 +632,7 @@ def add_version_to_config(machine_name: str,
         search_paths: Paths to search for executables
         modules: Modules to load for this version
         ssh_connection: SSH connection info for remote detection
+        env_setup: Shell commands to set up environment before detection
         codes_dir: Directory containing codes configurations
     
     Returns:
@@ -629,7 +673,8 @@ def add_version_to_config(machine_name: str,
         search_paths=search_paths,
         qe_prefix=qe_prefix,
         modules=modules,
-        ssh_connection=ssh_connection
+        ssh_connection=ssh_connection,
+        env_setup=env_setup
     )
     
     if not detected_codes:
