@@ -368,13 +368,15 @@ def create_codes_config(machine_name: str = "local",
 
 
 def load_codes_config(machine_name: str,
-                     codes_dir: str = DEFAULT_CODES_DIR) -> Optional[CodesConfig]:
+                     codes_dir: str = DEFAULT_CODES_DIR,
+                     version: Optional[str] = None) -> Optional[CodesConfig]:
     """
     Load a codes configuration from file.
     
     Args:
         machine_name: Name of the machine
         codes_dir: Directory containing codes configurations
+        version: Optional QE version to use. If None, uses default or main codes.
     
     Returns:
         CodesConfig object or None if not found
@@ -382,9 +384,121 @@ def load_codes_config(machine_name: str,
     config = CodesManager.load_config(machine_name, codes_dir)
     
     if config:
-        print(f"✅ Loaded codes configuration for '{machine_name}'")
-        print(f"   Available codes: {', '.join(config.list_codes())}")
+        versions = config.list_versions()
+        if versions:
+            print(f"✅ Loaded codes configuration for '{machine_name}'")
+            print(f"   Available versions: {', '.join(versions)}")
+            
+            # Show codes for specified version or default
+            target_version = version or config.qe_version or versions[0]
+            codes = config.list_codes(version=target_version)
+            if codes:
+                print(f"   Codes in version {target_version}: {', '.join(codes)}")
+        else:
+            print(f"✅ Loaded codes configuration for '{machine_name}'")
+            print(f"   Available codes: {', '.join(config.list_codes())}")
     else:
         print(f"⚠️  No codes configuration found for '{machine_name}'")
+    
+    return config
+
+
+def add_version_to_config(machine_name: str,
+                         version: str,
+                         qe_prefix: Optional[str] = None,
+                         search_paths: Optional[List[str]] = None,
+                         modules: Optional[List[str]] = None,
+                         ssh_connection: Optional[Dict] = None,
+                         codes_dir: str = DEFAULT_CODES_DIR) -> Optional[CodesConfig]:
+    """
+    Add a new QE version to an existing codes configuration.
+    
+    This allows managing multiple QE versions on the same machine. Each version
+    can have its own set of executables, modules, and environment settings.
+    
+    Args:
+        machine_name: Name of the machine
+        version: QE version string (e.g., '7.2', '6.8')
+        qe_prefix: QE installation prefix for this version
+        search_paths: Paths to search for executables
+        modules: Modules to load for this version
+        ssh_connection: SSH connection info for remote detection
+        codes_dir: Directory containing codes configurations
+    
+    Returns:
+        Updated CodesConfig object or None if machine config doesn't exist
+    
+    Example:
+        # Add QE 7.2 to existing config
+        config = add_version_to_config(
+            machine_name="cluster1",
+            version="7.2",
+            qe_prefix="/opt/qe-7.2/bin",
+            modules=["quantum-espresso/7.2"]
+        )
+        
+        # Add QE 6.8
+        config = add_version_to_config(
+            machine_name="cluster1",
+            version="6.8",
+            qe_prefix="/opt/qe-6.8/bin",
+            modules=["quantum-espresso/6.8"]
+        )
+    """
+    # Load existing config
+    config = CodesManager.load_config(machine_name, codes_dir)
+    
+    if not config:
+        print(f"⚠️  No codes configuration found for '{machine_name}'")
+        print(f"   Creating new configuration...")
+        config = CodesConfig(
+            machine_name=machine_name,
+            qe_version=version  # Set as default version
+        )
+    
+    print(f"🔍 Detecting Quantum ESPRESSO {version} codes on '{machine_name}'...")
+    
+    # Detect codes for this version
+    detected_codes = CodesManager.detect_codes(
+        search_paths=search_paths,
+        qe_prefix=qe_prefix,
+        modules=modules,
+        ssh_connection=ssh_connection
+    )
+    
+    if not detected_codes:
+        print(f"⚠️  No codes detected for version {version}")
+        return config
+    
+    print(f"✅ Found {len(detected_codes)} codes: {', '.join(detected_codes.keys())}")
+    
+    # Initialize versions dict if needed
+    if not config.versions:
+        config.versions = {}
+    
+    # Add version configuration
+    config.versions[version] = {
+        'qe_prefix': qe_prefix,
+        'modules': modules or [],
+        'codes': {}
+    }
+    
+    # Add detected codes to this version
+    for code_name, code_path in detected_codes.items():
+        code = Code(
+            name=code_name,
+            path=code_path,
+            version=version
+        )
+        config.add_code(code, version=version)
+    
+    # Set as default version if not set
+    if not config.qe_version:
+        config.qe_version = version
+        print(f"📌 Set {version} as default version")
+    
+    # Save updated configuration
+    filepath = CodesManager.save_config(config, output_dir=codes_dir)
+    print(f"💾 Configuration saved to: {filepath}")
     
     return config
