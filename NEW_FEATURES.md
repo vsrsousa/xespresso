@@ -2,10 +2,11 @@
 
 ## Overview
 
-This update addresses two important issues with xespresso:
+This update addresses important issues with xespresso:
 
 1. **Codes Module**: A new module for managing Quantum ESPRESSO code configurations across different machines
-2. **Hubbard Parameters**: Updated support for the new HUBBARD card format introduced in Quantum ESPRESSO 7.0+
+2. **Multiple QE Versions**: Support for managing multiple QE versions on the same machine
+3. **Hubbard Parameters**: Updated support for the new HUBBARD card format introduced in Quantum ESPRESSO 7.0+
 
 ## 1. Codes Module
 
@@ -16,6 +17,7 @@ The codes module (`xespresso.codes`) provides utilities to:
 - Store QE code paths and versions
 - Configure codes per machine
 - Support both local and remote machines
+- **NEW: Support multiple QE versions on the same machine**
 
 ### Why do we need it?
 
@@ -24,8 +26,12 @@ Different machines may have QE installed in different locations, with different 
 - Automatically detect available codes
 - Easily switch between machines
 - Integrate with the existing machines configuration
+- **NEW: Use different QE versions for different calculations**
+- **NEW: Maintain SSH connection when switching versions**
 
 ### Quick Start
+
+#### Single Version
 
 ```python
 from xespresso.codes import detect_qe_codes, load_codes_config
@@ -46,13 +52,50 @@ if codes.has_code('pw'):
     print(f"pw.x: {pw_code.path} (version {pw_code.version})")
 ```
 
+#### Multiple Versions (NEW!)
+
+```python
+from xespresso.codes import add_version_to_config, load_codes_config
+
+# Add QE 7.2
+add_version_to_config(
+    machine_name="cluster1",
+    version="7.2",
+    qe_prefix="/opt/qe-7.2/bin",
+    modules=["quantum-espresso/7.2"]
+)
+
+# Add QE 6.8 to the same machine
+add_version_to_config(
+    machine_name="cluster1",
+    version="6.8",
+    qe_prefix="/opt/qe-6.8/bin",
+    modules=["quantum-espresso/6.8"]
+)
+
+# Use different versions in your workflow
+codes = load_codes_config("cluster1")
+
+# SCF with QE 7.2
+pw_72 = codes.get_code("pw", version="7.2")
+
+# DOS with QE 6.8
+dos_68 = codes.get_code("dos", version="6.8")
+
+# SSH connection persists throughout!
+```
+
 ### Documentation
 
-See [docs/CODES_CONFIGURATION.md](docs/CODES_CONFIGURATION.md) for complete documentation.
+- [docs/CODES_CONFIGURATION.md](docs/CODES_CONFIGURATION.md) - Complete codes module documentation
+- [docs/MULTIPLE_VERSIONS.md](docs/MULTIPLE_VERSIONS.md) - **NEW: Multiple QE versions guide**
+- [docs/REMOTE_CONNECTION_PERSISTENCE.md](docs/REMOTE_CONNECTION_PERSISTENCE.md) - Connection management details
 
 ### Examples
 
-See [examples/codes_example.py](examples/codes_example.py) for examples.
+- [examples/codes_example.py](examples/codes_example.py) - Basic codes configuration
+- [examples/multi_version_example.py](examples/multi_version_example.py) - **NEW: Multi-version setup**
+- [examples/workflow_multi_version.py](examples/workflow_multi_version.py) - **NEW: Practical workflow**
 
 ## 2. Hubbard Parameters Update
 
