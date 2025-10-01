@@ -271,7 +271,8 @@ class CodesManager:
                    output_dir: str = DEFAULT_CODES_DIR,
                    filename: Optional[str] = None,
                    overwrite: bool = False,
-                   merge: bool = False) -> str:
+                   merge: bool = False,
+                   interactive: bool = True) -> str:
         """
         Save a CodesConfig to JSON file.
         
@@ -281,6 +282,7 @@ class CodesManager:
             filename: Optional filename (default: <machine_name>.json)
             overwrite: If True, overwrites existing file without asking
             merge: If True and file exists, merges with existing config
+            interactive: If True, prompts user when file exists (default: True)
         
         Returns:
             Path to saved file
@@ -297,14 +299,18 @@ class CodesManager:
         
         # Check if file already exists
         if os.path.exists(filepath) and not overwrite and not merge:
-            print(f"⚠️  Configuration file already exists: {filepath}")
-            response = input("Choose: [o]verwrite, [m]erge, [c]ancel (default: cancel): ").strip().lower()
-            if response == 'o':
-                overwrite = True
-            elif response == 'm':
-                merge = True
+            if interactive:
+                print(f"⚠️  Configuration file already exists: {filepath}")
+                response = input("Choose: [o]verwrite, [m]erge, [c]ancel (default: cancel): ").strip().lower()
+                if response == 'o':
+                    overwrite = True
+                elif response == 'm':
+                    merge = True
+                else:
+                    print("❌ Cancelled. Configuration not saved.")
+                    raise FileExistsError(f"Configuration file already exists: {filepath}")
             else:
-                print("❌ Cancelled. Configuration not saved.")
+                # Non-interactive mode: raise error immediately
                 raise FileExistsError(f"Configuration file already exists: {filepath}")
         
         # Handle merge

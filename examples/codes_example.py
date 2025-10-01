@@ -3,8 +3,9 @@ Example: Detecting and configuring Quantum ESPRESSO codes
 
 This example shows how to:
 1. Detect available QE codes on a machine
-2. Create a codes configuration
-3. Save and load configurations
+2. Automatically load machine configuration for remote detection
+3. Create a codes configuration with port and module support
+4. Save and load configurations with merge/overwrite options
 """
 
 from xespresso.codes import (
@@ -54,7 +55,7 @@ print(f"Available codes: {', '.join(config.list_codes())}")
 import tempfile
 import os
 tmpdir = tempfile.mkdtemp()
-filepath = CodesManager.save_config(config, output_dir=tmpdir)
+filepath = CodesManager.save_config(config, output_dir=tmpdir, overwrite=True)
 print(f"\n✅ Configuration saved to: {filepath}")
 
 print("\n" + "="*60)
@@ -88,16 +89,32 @@ config = detect_qe_codes(
     qe_prefix="/path/to/qe/bin"  # Optional: specify QE installation path
 )
 
-# For remote machine via SSH
+# For remote machine via SSH with explicit connection
 config = detect_qe_codes(
     machine_name="cluster",
-    ssh_connection={'host': 'cluster.edu', 'username': 'user'},
+    ssh_connection={
+        'host': 'cluster.edu', 
+        'username': 'user',
+        'port': 22  # Optional: defaults to 22
+    },
     modules=['quantum-espresso/7.2']  # Load modules before detection
 )
 
-# Save detected configuration
+# For remote machine - auto-load from existing machine config
+# This will automatically extract host, username, port, and modules
+# from your machine configuration file
+config = detect_qe_codes(
+    machine_name="my_cluster",  # Must exist in ~/.xespresso/machines.json
+    auto_load_machine=True      # Default: True
+)
+
+# Save detected configuration with merge option
 if config.codes:
-    filepath = CodesManager.save_config(config)
+    filepath = CodesManager.save_config(
+        config, 
+        overwrite=False,  # Ask before overwriting
+        merge=True        # Merge with existing if it exists
+    )
     print(f"Saved to: {filepath}")
 """)
 
@@ -119,8 +136,24 @@ if codes and codes.has_code('pw'):
     print(f"QE version: {pw_code.version}")
 """)
 
+print("\n" + "="*60)
+print("Example 5: Module command fallback")
+print("="*60)
+
+print("""
+# If your system doesn't have the 'module' command, detection will
+# automatically skip module loading and still work:
+
+config = detect_qe_codes(
+    machine_name="my_machine",
+    modules=['quantum-espresso/7.2'],  # Will be skipped if module cmd not found
+    qe_prefix="/opt/qe-7.2/bin"        # Alternative: specify QE path directly
+)
+""")
+
 # Cleanup
 import shutil
 shutil.rmtree(tmpdir, ignore_errors=True)
 
 print("\n✅ Examples completed!")
+
