@@ -52,6 +52,9 @@ class Machine:
         username (str): SSH username (for remote execution)
         auth (Dict): Authentication configuration (for remote execution)
         port (int): SSH port (for remote execution)
+        env_setup (str): Environment setup commands for SSH sessions
+                        (e.g., "source /etc/profile"). Required for making
+                        module command available in non-interactive SSH sessions.
     """
     
     def __init__(
@@ -71,6 +74,7 @@ class Machine:
         username: Optional[str] = None,
         auth: Optional[Dict] = None,
         port: int = 22,
+        env_setup: Optional[str] = None,
         **kwargs
     ):
         """
@@ -92,6 +96,9 @@ class Machine:
             username (str): SSH username
             auth (Dict): Authentication config
             port (int): SSH port
+            env_setup (str): Environment setup commands for SSH sessions.
+                           Example: "source /etc/profile" or "source ~/.bashrc"
+                           Useful for making module command available in non-interactive SSH.
             **kwargs: Additional configuration options
         """
         self.name = name
@@ -111,6 +118,7 @@ class Machine:
         self.username = username
         self.auth = auth or {}
         self.port = port
+        self.env_setup = env_setup
         
         # Store any additional attributes
         self._extra = kwargs
@@ -216,6 +224,10 @@ class Machine:
             config["auth"] = self.auth
             config["port"] = self.port
         
+        # Add env_setup if set
+        if self.env_setup:
+            config["env_setup"] = self.env_setup
+        
         # Add any extra attributes
         config.update(self._extra)
         
@@ -261,6 +273,10 @@ class Machine:
             "launcher": self.launcher,
             "nprocs": self.nprocs,
         }
+        
+        # Add env_setup if set
+        if self.env_setup:
+            queue["env_setup"] = self.env_setup
         
         if self.is_local:
             queue["local_dir"] = self.workdir
