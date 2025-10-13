@@ -2,7 +2,7 @@
 Tests for graphene monolayer using ase.build.graphene
 
 This module tests graphene monolayer structures for DFT calculations
-with Quantum ESPRESSO through xespresso. Requires ASE >= 3.22.0.
+with Quantum ESPRESSO through xespresso. Requires ASE >= 3.22.1.
 
 Tests:
     test_graphene_structure: Validates structure creation (no QE required)
@@ -42,7 +42,7 @@ def test_graphene_structure():
     
     # Verify basic structure
     assert len(atoms) == 2, "Graphene unit cell should have 2 atoms"
-    assert all(atoms.get_chemical_symbols() == np.array(["C", "C"])), "Both atoms should be Carbon"
+    assert atoms.get_chemical_symbols() == ['C', 'C'], "Both atoms should be Carbon"
     assert atoms.pbc[0] and atoms.pbc[1], "Graphene should be periodic in x and y"
     assert not atoms.pbc[2], "Graphene should not be periodic in z initially"
     
@@ -133,6 +133,6 @@ def test_graphene_relax(graphene_monolayer):
     
     # Verify structure properties
     assert len(atoms) == 2, "Graphene unit cell should have 2 atoms"
-    assert all(atoms.get_chemical_symbols() == np.array(["C", "C"])), "Both atoms should be Carbon"
+    assert atoms.get_chemical_symbols() == ['C', 'C'], "Both atoms should be Carbon"
     assert e < 0, "Energy should be negative"
     assert np.isfinite(e), "Energy should be finite"
