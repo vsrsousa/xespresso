@@ -2,22 +2,36 @@ from _common_helpers import set_envs
 import numpy as np
 
 
-def test_graphene_scf():
-    """Test graphene monolayer using ase.build.graphene"""
+def test_graphene_structure():
+    """Test graphene structure creation from ase.build.graphene"""
     from ase.build import graphene
-    from xespresso import Espresso
-
-    set_envs()
     
     # Create graphene monolayer
     atoms = graphene()
     
-    # Add vacuum in z-direction for 2D material (15 Angstrom)
+    # Verify basic structure
+    assert len(atoms) == 2, "Graphene unit cell should have 2 atoms"
+    assert all(atoms.get_chemical_symbols() == np.array(["C", "C"])), "Both atoms should be Carbon"
+    assert atoms.pbc[0] and atoms.pbc[1], "Graphene should be periodic in x and y"
+    assert not atoms.pbc[2], "Graphene should not be periodic in z initially"
+    
+    # Add vacuum in z-direction
     atoms.cell[2, 2] = 15.0
     atoms.center(axis=2)
     
-    # Set all directions as periodic (standard for plane wave calculations)
-    atoms.pbc = [True, True, True]
+    # Verify cell setup
+    assert atoms.cell[2, 2] == 15.0, "Cell should have 15 Angstrom vacuum"
+    assert np.allclose(atoms.positions[:, 2], 7.5), "Atoms should be centered at z=7.5"
+
+
+def test_graphene_scf(graphene_monolayer):
+    """Test graphene monolayer SCF calculation using ase.build.graphene"""
+    from xespresso import Espresso
+
+    set_envs()
+    
+    # Use fixture
+    atoms = graphene_monolayer
     
     # Define pseudopotentials
     pseudopotentials = {
@@ -44,20 +58,14 @@ def test_graphene_scf():
     assert np.isfinite(e), "Energy should be finite"
 
 
-def test_graphene_relax():
+def test_graphene_relax(graphene_monolayer):
     """Test graphene monolayer relaxation"""
-    from ase.build import graphene
     from xespresso import Espresso
 
     set_envs()
     
-    # Create graphene monolayer
-    atoms = graphene()
-    
-    # Add vacuum in z-direction for 2D material
-    atoms.cell[2, 2] = 15.0
-    atoms.center(axis=2)
-    atoms.pbc = [True, True, True]
+    # Use fixture
+    atoms = graphene_monolayer
     
     pseudopotentials = {"C": "C.pbe-n-rrkjus_psl.1.0.0.UPF"}
     
