@@ -76,7 +76,33 @@ calc = Espresso(label = 'scf/fe')
 calc = Espresso(debug = True)
 ```
 
-#### Add new species
+#### Magnetic configuration (New Simplified API!)
+
+**New**: Helper functions to easily set up antiferromagnetic and spin-polarized calculations!
+
+``` python
+from xespresso import set_antiferromagnetic
+
+atoms = bulk('Fe', cubic=True)
+
+# Simple AFM configuration with one function call
+mag_config = set_antiferromagnetic(atoms, [[0], [1]])
+
+# Add pseudopotential files
+mag_config['pseudopotentials']['Fe'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+mag_config['pseudopotentials']['Fe1'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+
+# Use in calculator
+calc = Espresso(
+    pseudopotentials=mag_config['pseudopotentials'],
+    input_data={'input_ntyp': mag_config['input_ntyp']},
+    nspin=2
+)
+```
+
+See `MAGNETIC_HELPERS.md` for complete documentation and examples.
+
+#### Add new species (Manual method)
 Some atoms are special:
 + atoms with different starting_magnetization
 + atoms with different U values
