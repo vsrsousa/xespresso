@@ -39,11 +39,14 @@ def set_magnetic_moments(atoms, magnetic_moments, pseudopotentials=None):
         A dictionary containing:
         - 'input_ntyp': dict with starting_magnetization
         - 'pseudopotentials': dict mapping species to pseudopotential files
-        - 'species_map': dict mapping original symbols to species labels
+        - 'species_map': dict mapping species labels to their base element symbols
+                         (e.g., {'Fe': 'Fe', 'Fe1': 'Fe'})
     
     Examples
     --------
     # Example 1: Simple antiferromagnetic Fe
+    >>> from ase.build import bulk
+    >>> from xespresso import Espresso
     >>> atoms = bulk('Fe', cubic=True)
     >>> mag_config = set_magnetic_moments(atoms, [1.0, -1.0])
     >>> calc = Espresso(
@@ -95,7 +98,8 @@ def set_magnetic_moments(atoms, magnetic_moments, pseudopotentials=None):
     for (symbol, mag), species_label in species_groups.items():
         if mag != 0.0:
             input_ntyp['starting_magnetization'][species_label] = mag
-        species_map[symbol] = species_label
+        # Map species_label back to base element symbol
+        species_map[species_label] = symbol
     
     # Handle pseudopotentials
     if pseudopotentials is None:
@@ -150,6 +154,8 @@ def set_antiferromagnetic(atoms, sublattice_indices, magnetic_moment=1.0, pseudo
     Examples
     --------
     # Simple AFM with alternating spins
+    >>> from ase.build import bulk
+    >>> from xespresso import Espresso
     >>> atoms = bulk('Fe', cubic=True)
     >>> afm_config = set_antiferromagnetic(atoms, [[0], [1]])
     >>> calc = Espresso(
@@ -196,6 +202,8 @@ def set_ferromagnetic(atoms, magnetic_moment=1.0, element=None, pseudopotentials
     Examples
     --------
     # Ferromagnetic Fe
+    >>> from ase.build import bulk
+    >>> from xespresso import Espresso
     >>> atoms = bulk('Fe', cubic=True)
     >>> fm_config = set_ferromagnetic(atoms, magnetic_moment=2.0)
     >>> calc = Espresso(
