@@ -132,6 +132,13 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
     """
     from ase import Atoms
     
+    # Validate projector parameter
+    valid_projectors = ['ortho-atomic', 'atomic', 'norm-atomic', 'wf', 'pseudo']
+    if projector not in valid_projectors:
+        raise ValueError(
+            f"Invalid projector '{projector}'. Must be one of: {', '.join(valid_projectors)}"
+        )
+    
     # Determine Hubbard format
     use_new_hubbard_format = False
     if hubbard_format == 'new':
