@@ -10,6 +10,209 @@ import multiprocessing
 import numpy as np
 
 # ====================================================
+# Magnetic configuration helpers
+# ====================================================
+
+
+def set_magnetic_moments(atoms, magnetic_moments, pseudopotentials=None):
+    """
+    Simplified way to set up magnetic moments for spin-polarized calculations.
+    
+    Automatically creates species labels and input_ntyp dictionary for 
+    starting_magnetization based on the provided magnetic moments.
+    
+    Parameters
+    ----------
+    atoms : ase.Atoms
+        The atomic structure
+    magnetic_moments : list, dict, or array
+        Magnetic moments for each atom. Can be:
+        - list/array: magnetic moment for each atom in order
+        - dict: {atom_index: magnetic_moment} for specific atoms
+    pseudopotentials : dict, optional
+        Existing pseudopotentials dict. If provided, it will be updated
+        with new species labels. Otherwise, returns the species mapping.
+    
+    Returns
+    -------
+    dict
+        A dictionary containing:
+        - 'input_ntyp': dict with starting_magnetization
+        - 'pseudopotentials': dict mapping species to pseudopotential files
+        - 'species_map': dict mapping original symbols to species labels
+    
+    Examples
+    --------
+    # Example 1: Simple antiferromagnetic Fe
+    >>> atoms = bulk('Fe', cubic=True)
+    >>> mag_config = set_magnetic_moments(atoms, [1.0, -1.0])
+    >>> calc = Espresso(
+    ...     pseudopotentials=mag_config['pseudopotentials'],
+    ...     input_data={'input_ntyp': mag_config['input_ntyp']},
+    ...     nspin=2
+    ... )
+    
+    # Example 2: Specific atoms with magnetic moments
+    >>> atoms = bulk('Fe', cubic=True) * (2, 2, 1)
+    >>> mag_config = set_magnetic_moments(atoms, {0: 1.0, 1: -1.0, 2: -1.0, 3: 1.0})
+    """
+    # Ensure species array exists
+    if 'species' not in atoms.arrays:
+        atoms.new_array('species', np.array(atoms.get_chemical_symbols(), dtype='U20'))
+    
+    # Convert magnetic_moments to dict format
+    if isinstance(magnetic_moments, (list, np.ndarray)):
+        mag_dict = {i: mag for i, mag in enumerate(magnetic_moments)}
+    else:
+        mag_dict = magnetic_moments
+    
+    # Group atoms by (symbol, magnetic_moment)
+    species_groups = {}
+    species_counter = {}
+    
+    for i in range(len(atoms)):
+        symbol = atoms[i].symbol
+        mag = mag_dict.get(i, 0.0)
+        
+        key = (symbol, mag)
+        if key not in species_groups:
+            # Count how many species of this element we already have
+            if symbol not in species_counter:
+                species_counter[symbol] = 0
+                species_label = symbol
+            else:
+                species_counter[symbol] += 1
+                species_label = f"{symbol}{species_counter[symbol]}"
+            species_groups[key] = species_label
+        
+        # Assign species label to atom
+        atoms.arrays['species'][i] = species_groups[key]
+    
+    # Create input_ntyp dictionary for starting_magnetization
+    input_ntyp = {'starting_magnetization': {}}
+    species_map = {}
+    
+    for (symbol, mag), species_label in species_groups.items():
+        if mag != 0.0:
+            input_ntyp['starting_magnetization'][species_label] = mag
+        species_map[symbol] = species_label
+    
+    # Handle pseudopotentials
+    if pseudopotentials is None:
+        # Return template that user should fill
+        pseudo_dict = {}
+        for species_label in species_groups.values():
+            # Get the base element symbol
+            base_symbol = ''.join([c for c in species_label if not c.isdigit()])
+            pseudo_dict[species_label] = f"{base_symbol}.UPF"
+    else:
+        # Update existing pseudopotentials
+        pseudo_dict = pseudopotentials.copy()
+        for (symbol, mag), species_label in species_groups.items():
+            if species_label not in pseudo_dict:
+                # Try to find pseudopotential for base element
+                base_pseudo = pseudopotentials.get(symbol)
+                if base_pseudo:
+                    pseudo_dict[species_label] = base_pseudo
+                else:
+                    pseudo_dict[species_label] = f"{symbol}.UPF"
+    
+    return {
+        'input_ntyp': input_ntyp,
+        'pseudopotentials': pseudo_dict,
+        'species_map': species_map
+    }
+
+
+def set_antiferromagnetic(atoms, sublattice_indices, magnetic_moment=1.0, pseudopotentials=None):
+    """
+    Simplified way to set up antiferromagnetic configurations.
+    
+    Divides atoms into two sublattices with opposite magnetic moments.
+    
+    Parameters
+    ----------
+    atoms : ase.Atoms
+        The atomic structure
+    sublattice_indices : list of lists
+        Two sublattices: [sublattice_A_indices, sublattice_B_indices]
+        Example: [[0, 2], [1, 3]] for 4 atoms in checkerboard AFM
+    magnetic_moment : float, default=1.0
+        Magnitude of magnetic moment (absolute value)
+    pseudopotentials : dict, optional
+        Existing pseudopotentials dict
+    
+    Returns
+    -------
+    dict
+        Same as set_magnetic_moments: input_ntyp, pseudopotentials, species_map
+    
+    Examples
+    --------
+    # Simple AFM with alternating spins
+    >>> atoms = bulk('Fe', cubic=True)
+    >>> afm_config = set_antiferromagnetic(atoms, [[0], [1]])
+    >>> calc = Espresso(
+    ...     pseudopotentials=afm_config['pseudopotentials'],
+    ...     input_data={'input_ntyp': afm_config['input_ntyp']},
+    ...     nspin=2
+    ... )
+    """
+    if len(sublattice_indices) != 2:
+        raise ValueError("sublattice_indices must contain exactly 2 sublattices")
+    
+    # Create magnetic moments array
+    mag_dict = {}
+    for idx in sublattice_indices[0]:
+        mag_dict[idx] = magnetic_moment
+    for idx in sublattice_indices[1]:
+        mag_dict[idx] = -magnetic_moment
+    
+    return set_magnetic_moments(atoms, mag_dict, pseudopotentials)
+
+
+def set_ferromagnetic(atoms, magnetic_moment=1.0, element=None, pseudopotentials=None):
+    """
+    Simplified way to set up ferromagnetic configurations.
+    
+    Sets all atoms (or all atoms of a specific element) to the same magnetic moment.
+    
+    Parameters
+    ----------
+    atoms : ase.Atoms
+        The atomic structure
+    magnetic_moment : float, default=1.0
+        Magnetic moment for all atoms
+    element : str, optional
+        If specified, only set magnetic moment for atoms of this element
+    pseudopotentials : dict, optional
+        Existing pseudopotentials dict
+    
+    Returns
+    -------
+    dict
+        Same as set_magnetic_moments: input_ntyp, pseudopotentials, species_map
+    
+    Examples
+    --------
+    # Ferromagnetic Fe
+    >>> atoms = bulk('Fe', cubic=True)
+    >>> fm_config = set_ferromagnetic(atoms, magnetic_moment=2.0)
+    >>> calc = Espresso(
+    ...     pseudopotentials=fm_config['pseudopotentials'],
+    ...     input_data={'input_ntyp': fm_config['input_ntyp']},
+    ...     nspin=2
+    ... )
+    """
+    mag_dict = {}
+    for i, atom in enumerate(atoms):
+        if element is None or atom.symbol == element:
+            mag_dict[i] = magnetic_moment
+    
+    return set_magnetic_moments(atoms, mag_dict, pseudopotentials)
+
+
+# ====================================================
 
 
 def get_nbnd(atoms=None, scale=1.2, pseudopotentials={}, nspin=1, input_data={}):
