@@ -149,6 +149,29 @@ class TestReadConvergence:
             assert convergence == 2
             assert "Maximum CPU time exceeded" in msg
 
+    def test_read_convergence_unknown_status(self):
+        """Test with file that doesn't match any known pattern"""
+        set_envs()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pwo_content = """
+     Program PWSCF v.7.4.1 starts on 17Oct2025 at  1:39:50 
+
+     Some calculation output
+     More output
+     Still running maybe?
+"""
+            label_dir = os.path.join(tmpdir, "test")
+            os.makedirs(label_dir, exist_ok=True)
+            pwo_file = os.path.join(label_dir, "test.pwo")
+            with open(pwo_file, "w") as f:
+                f.write(pwo_content)
+
+            calc = Espresso(label=label_dir, debug=True)
+            convergence, msg = calc.read_convergence()
+            
+            # Should return unknown error code
+            assert convergence == 4
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
