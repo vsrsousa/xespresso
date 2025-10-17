@@ -562,12 +562,18 @@ def check_qe_input(input_parameters, package="PW"):
     from xespresso.utils import check_type
 
     pw_parameters = qe_namespace[package]
+    # Special parameters to skip (not part of namelists)
+    special_parameters = ["qe_version", "hubbard", "hubbard_v", "hubbard_format"]
+    
     for section, parameters in input_parameters.items():
+        # Skip special parameters that are not namelists
+        if section in special_parameters:
+            continue
         if section == "INPUT_NTYP":
             for key, subparas in parameters.items():
                 for value in subparas.values():
                     check_type(key, value, pw_parameters)
-        else:
+        elif isinstance(parameters, dict):
             for key, value in parameters.items():
                 check_type(key, value, pw_parameters)
 
