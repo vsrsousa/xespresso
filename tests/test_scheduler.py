@@ -260,6 +260,44 @@ class TestSlurmScheduler:
             with pytest.raises(FileNotFoundError, match="Missing pseudopotentials.*O"):
                 scheduler._transfer_pseudopotentials()
 
+    @patch('xespresso.schedulers.remote_mixin.RemoteAuth')
+    @patch('os.path.exists')
+    def test_run_prevents_execution_when_pseudopotentials_missing(self, mock_exists, mock_remote_auth_class):
+        """Test that the run() method prevents execution when pseudopotentials are missing."""
+        mock_remote = Mock()
+        mock_remote_auth_class.return_value = mock_remote
+        mock_remote.run_command.return_value = ("", "")
+        mock_remote.connect = Mock()
+        
+        # Set up calculator with pseudopotentials
+        self.mock_calc.parameters = {
+            "pseudopotentials": {
+                "Fe": "Fe.pbe-spn-rrkjus_psl.1.0.0.UPF"
+            },
+            "input_data": {
+                "CONTROL": {}
+            }
+        }
+        self.mock_calc.write_input = Mock()
+        
+        scheduler = SlurmScheduler(
+            calc=self.mock_calc,
+            queue=self.queue_config,
+            command="test command"
+        )
+        
+        # Mock that pseudopotential file doesn't exist
+        mock_exists.return_value = False
+        
+        # The run() method should raise FileNotFoundError during _transfer_pseudopotentials
+        with pytest.raises(FileNotFoundError, match="Cannot proceed with calculation"):
+            scheduler.run()
+        
+        # Verify that file transfer and job submission were NOT attempted
+        # The send_file method should not have been called since we failed before that
+        if hasattr(mock_remote, 'send_file'):
+            assert not mock_remote.send_file.called, "Files should not be transferred when pseudopotentials are missing"
+
 
 # Helper methods for scheduler testing
 def _create_slurm_scheduler_with_mocks():
