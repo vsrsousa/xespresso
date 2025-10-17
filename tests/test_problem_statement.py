@@ -1,6 +1,7 @@
 """
 Final test reproducing the exact problem statement scenario
-This test verifies that the bug reported in the issue is fixed.
+This test verifies that the bug where Hubbard parameters were 
+silently removed from QE input files is fixed.
 """
 
 import pytest
@@ -84,13 +85,6 @@ def test_problem_statement_scenario():
         hubbard_section = '\n'.join(lines[hubbard_index:hubbard_index+3])
         assert 'HUBBARD {atomic}' in hubbard_section
         assert 'U Fe-3d 4.3' in hubbard_section
-        
-        print("\n" + "="*60)
-        print("SUCCESS! The bug is fixed!")
-        print("="*60)
-        print("\nGenerated HUBBARD card:")
-        print(hubbard_section)
-        print("="*60)
 
 
 def test_problem_statement_expected_output():
