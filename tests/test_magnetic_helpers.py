@@ -214,6 +214,86 @@ class TestSetupMagneticConfig:
         mag_dict = config['input_ntyp']['starting_magnetization']
         assert len(mag_dict) == 1
         assert list(mag_dict.values())[0] == 1.5
+    
+    def test_new_hubbard_format_with_orbital(self):
+        """Test new Hubbard format (QE 7.x) with orbital specification."""
+        atoms = bulk('Fe', cubic=True)
+        
+        config = setup_magnetic_config(atoms, {
+            'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
+        }, qe_version='7.2')
+        
+        # Check that hubbard dict is created (new format)
+        assert 'hubbard' in config
+        assert config['hubbard_format'] == 'new'
+        
+        # Check U parameters with orbital
+        hubbard = config['hubbard']
+        assert 'u' in hubbard
+        assert 'Fe-3d' in hubbard['u']
+        assert 'Fe1-3d' in hubbard['u']
+        assert hubbard['u']['Fe-3d'] == 4.3
+        assert hubbard['u']['Fe1-3d'] == 4.3
+    
+    def test_new_hubbard_format_different_u_per_species(self):
+        """Test new format with different U for each species."""
+        atoms = bulk('Fe', cubic=True)
+        
+        config = setup_magnetic_config(atoms, {
+            'Fe': {'mag': [1, -1], 'U': {'3d': [4.3, 4.5]}}
+        }, qe_version='7.2')
+        
+        hubbard = config['hubbard']
+        assert hubbard['u']['Fe-3d'] == 4.3
+        assert hubbard['u']['Fe1-3d'] == 4.5
+    
+    def test_new_hubbard_format_with_v_parameter(self):
+        """Test new format with V parameter (inter-site interaction)."""
+        atoms = Atoms('FeO', positions=[[0, 0, 0], [1.5, 0, 0]])
+        atoms.cell = [5, 5, 5]
+        
+        config = setup_magnetic_config(atoms, {
+            'Fe': {
+                'mag': [1],
+                'U': {'3d': 4.3},
+                'V': [{'species2': 'O', 'orbital1': '3d', 'orbital2': '2p', 'value': 1.0}]
+            },
+            'O': [0]
+        }, qe_version='7.2')
+        
+        hubbard = config['hubbard']
+        assert 'v' in hubbard
+        assert len(hubbard['v']) == 1
+        v_param = hubbard['v'][0]
+        assert v_param['species1'] == 'Fe'
+        assert v_param['species2'] == 'O'
+        assert v_param['orbital1'] == '3d'
+        assert v_param['orbital2'] == '2p'
+        assert v_param['value'] == 1.0
+    
+    def test_old_format_with_dict_u_warns(self):
+        """Test that using dict U format with old QE version extracts value."""
+        atoms = bulk('Fe', cubic=True)
+        
+        # Should work but print warning
+        config = setup_magnetic_config(atoms, {
+            'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
+        }, qe_version='6.8')
+        
+        # Should fall back to old format
+        assert config['hubbard_format'] == 'old'
+        assert 'Hubbard_U' in config['input_ntyp']
+        assert config['input_ntyp']['Hubbard_U']['Fe'] == 4.3
+        assert config['input_ntyp']['Hubbard_U']['Fe1'] == 4.3
+    
+    def test_new_format_error_without_orbital(self):
+        """Test that new format requires orbital specification."""
+        atoms = bulk('Fe', cubic=True)
+        
+        with pytest.raises(ValueError, match="requires orbital specification"):
+            setup_magnetic_config(atoms, {
+                'Fe': {'mag': [1, -1], 'U': 4.3}  # No orbital
+            }, hubbard_format='new')
 
 
 class TestSetMagneticMoments:
