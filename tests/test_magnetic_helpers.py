@@ -8,11 +8,212 @@ for spin-polarized and antiferromagnetic calculations.
 import pytest
 import numpy as np
 from ase.build import bulk
+from ase import Atoms
 from xespresso.tools import (
     set_magnetic_moments,
     set_antiferromagnetic,
-    set_ferromagnetic
+    set_ferromagnetic,
+    setup_magnetic_config
 )
+
+
+class TestSetupMagneticConfig:
+    """Tests for the new setup_magnetic_config function."""
+    
+    def test_simple_equivalent_atoms(self):
+        """Test Fe=[1] with 2 Fe atoms - both should be equivalent."""
+        atoms = bulk('Fe', cubic=True)  # 2 Fe atoms
+        
+        config = setup_magnetic_config(atoms, {'Fe': [1]})
+        
+        # Both atoms should have same species and magnetization
+        assert 'input_ntyp' in config
+        mag_dict = config['input_ntyp']['starting_magnetization']
+        assert len(mag_dict) == 1  # Only one species
+        assert list(mag_dict.values())[0] == 1.0
+        
+        # Check species - should be same for both atoms
+        species = set(config['atoms'].arrays['species'])
+        assert len(species) == 1  # Both atoms same species
+    
+    def test_simple_afm_non_equivalent(self):
+        """Test Fe=[1, -1] with 2 Fe atoms - should create two species."""
+        atoms = bulk('Fe', cubic=True)  # 2 Fe atoms
+        
+        config = setup_magnetic_config(atoms, {'Fe': [1, -1]})
+        
+        # Should have two species with opposite magnetization
+        mag_dict = config['input_ntyp']['starting_magnetization']
+        assert len(mag_dict) == 2
+        values = list(mag_dict.values())
+        assert 1.0 in values
+        assert -1.0 in values
+        
+        # Check species
+        species = set(config['atoms'].arrays['species'])
+        assert len(species) == 2  # Two different species
+    
+    def test_multiple_elements(self):
+        """Test multiple elements with different magnetic configs."""
+        # Create FeMn compound (simplified)
+        atoms = Atoms('Fe2Mn2', positions=[
+            [0, 0, 0], [1.5, 0, 0],  # Fe
+            [0, 1.5, 0], [1.5, 1.5, 0]  # Mn
+        ])
+        atoms.cell = [5, 5, 5]
+        
+        config = setup_magnetic_config(atoms, {
+            'Fe': [1],       # Both Fe equivalent
+            'Mn': [1, -1]    # Mn antiferromagnetic
+        })
+        
+        mag_dict = config['input_ntyp']['starting_magnetization']
+        
+        # Should have 3 species: Fe, Mn, Mn1
+        assert len(mag_dict) == 3
+        
+        # Check that we have the right magnetizations
+        values = list(mag_dict.values())
+        assert values.count(1.0) == 2  # Fe and one Mn
+        assert values.count(-1.0) == 1  # One Mn
+    
+    def test_pattern_replication(self):
+        """Test that pattern replicates when fewer moments than atoms."""
+        atoms = bulk('Fe', cubic=True) * (2, 1, 1)  # 4 Fe atoms
+        
+        config = setup_magnetic_config(atoms, {'Fe': [1, -1]})
+        
+        # Should replicate pattern: 1, -1, 1, -1
+        mag_dict = config['input_ntyp']['starting_magnetization']
+        assert len(mag_dict) == 2  # Two species
+        
+        # Count occurrences
+        species_list = list(config['atoms'].arrays['species'])
+        species_counts = {}
+        for sp in species_list:
+            species_counts[sp] = species_counts.get(sp, 0) + 1
+        
+        # Each species should appear twice
+        assert all(count == 2 for count in species_counts.values())
+    
+    def test_expansion_needed_error(self):
+        """Test error when expansion needed but not allowed."""
+        atoms = bulk('Fe', cubic=True)  # 2 Fe atoms
+        
+        # Try to specify 4 moments without allowing expansion
+        with pytest.raises(ValueError, match="Set expand_cell=True"):
+            setup_magnetic_config(atoms, {'Fe': [1, 1, -1, -1]}, expand_cell=False)
+    
+    def test_expansion_allowed(self):
+        """Test cell expansion when needed."""
+        atoms = bulk('Fe', cubic=True)  # 2 Fe atoms
+        
+        config = setup_magnetic_config(
+            atoms, 
+            {'Fe': [1, 1, -1, -1]},  # Need 4 Fe
+            expand_cell=True
+        )
+        
+        assert config['expanded'] is True
+        assert len(config['atoms']) == 4  # Should have 4 atoms now
+        
+        mag_dict = config['input_ntyp']['starting_magnetization']
+        assert len(mag_dict) == 2  # Two species (mag=1 and mag=-1)
+    
+    def test_with_hubbard_u_single_value(self):
+        """Test adding Hubbard U with single value."""
+        atoms = bulk('Fe', cubic=True)
+        
+        config = setup_magnetic_config(atoms, {
+            'Fe': {'mag': [1, -1], 'U': 4.3}
+        })
+        
+        # Check magnetization
+        mag_dict = config['input_ntyp']['starting_magnetization']
+        assert len(mag_dict) == 2
+        
+        # Check Hubbard U
+        assert 'Hubbard_U' in config['input_ntyp']
+        u_dict = config['input_ntyp']['Hubbard_U']
+        assert len(u_dict) == 2  # Both species should have U
+        assert all(u == 4.3 for u in u_dict.values())
+    
+    def test_with_hubbard_u_different_values(self):
+        """Test adding different Hubbard U for each species."""
+        atoms = bulk('Fe', cubic=True)
+        
+        config = setup_magnetic_config(atoms, {
+            'Fe': {'mag': [1, -1], 'U': [4.3, 4.5]}
+        })
+        
+        # Check Hubbard U
+        u_dict = config['input_ntyp']['Hubbard_U']
+        assert len(u_dict) == 2
+        values = list(u_dict.values())
+        assert 4.3 in values
+        assert 4.5 in values
+    
+    def test_complex_femnal_system(self):
+        """Test complex FeMnAl2 system as mentioned in the issue."""
+        # Simulate FeMnAl2 with 2 Fe, 2 Mn, 4 Al
+        atoms = Atoms('Fe2Mn2Al4', positions=[
+            [0, 0, 0], [1, 0, 0],           # Fe
+            [0, 1, 0], [1, 1, 0],           # Mn
+            [0, 0, 1], [1, 0, 1],           # Al
+            [0, 1, 1], [1, 1, 1]            # Al
+        ])
+        atoms.cell = [5, 5, 5]
+        
+        config = setup_magnetic_config(atoms, {
+            'Fe': [1],        # Both Fe equivalent
+            'Mn': [1, -1],    # Mn AFM
+            'Al': [0]         # Al non-magnetic
+        })
+        
+        mag_dict = config['input_ntyp']['starting_magnetization']
+        
+        # Only Fe and Mn should be in starting_magnetization (Al has 0)
+        assert len(mag_dict) == 3  # Fe, Mn, Mn1
+        
+        # Verify magnetizations
+        assert any(v == 1.0 for v in mag_dict.values())  # Fe
+        assert any(v == -1.0 for v in mag_dict.values())  # One Mn
+    
+    def test_element_not_in_structure(self):
+        """Test error when specified element not in structure."""
+        atoms = bulk('Fe', cubic=True)
+        
+        with pytest.raises(ValueError, match="Element Mn not found"):
+            setup_magnetic_config(atoms, {'Mn': [1]})
+    
+    def test_with_pseudopotentials(self):
+        """Test with existing pseudopotentials."""
+        atoms = bulk('Fe', cubic=True)
+        
+        base_pseudo = {'Fe': 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'}
+        
+        config = setup_magnetic_config(
+            atoms, 
+            {'Fe': [1, -1]},
+            pseudopotentials=base_pseudo
+        )
+        
+        # Check pseudopotentials are updated
+        pseudo = config['pseudopotentials']
+        assert 'Fe' in pseudo
+        assert 'Fe1' in pseudo
+        assert pseudo['Fe'] == 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+        assert pseudo['Fe1'] == 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+    
+    def test_simple_value_not_list(self):
+        """Test that single values work (not in list)."""
+        atoms = bulk('Fe', cubic=True)
+        
+        config = setup_magnetic_config(atoms, {'Fe': 1.5})
+        
+        mag_dict = config['input_ntyp']['starting_magnetization']
+        assert len(mag_dict) == 1
+        assert list(mag_dict.values())[0] == 1.5
 
 
 class TestSetMagneticMoments:

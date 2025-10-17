@@ -78,27 +78,49 @@ calc = Espresso(debug = True)
 
 #### Magnetic configuration (New Simplified API!)
 
-**New**: Helper functions to easily set up antiferromagnetic and spin-polarized calculations!
+**🎉 NEW: Element-based magnetic configuration** - The easiest way to set up magnetic systems!
 
 ``` python
-from xespresso import set_antiferromagnetic
+from xespresso import setup_magnetic_config
 
 atoms = bulk('Fe', cubic=True)
 
-# Simple AFM configuration with one function call
-mag_config = set_antiferromagnetic(atoms, [[0], [1]])
+# All Fe equivalent with magnetization 1
+config = setup_magnetic_config(atoms, {'Fe': [1]})
 
-# Add pseudopotential files
-mag_config['pseudopotentials']['Fe'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
-mag_config['pseudopotentials']['Fe1'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+# AFM: two non-equivalent Fe
+config = setup_magnetic_config(atoms, {'Fe': [1, -1]})
+
+# With Hubbard U
+config = setup_magnetic_config(atoms, {
+    'Fe': {'mag': [1, -1], 'U': 4.3}
+})
+
+# Multiple elements (e.g., FeMnAl2)
+config = setup_magnetic_config(atoms, {
+    'Fe': [1],        # All Fe equivalent
+    'Mn': [1, -1],    # Mn antiferromagnetic
+    'Al': [0]         # Al non-magnetic
+})
+
+# Auto-expand cell if needed
+config = setup_magnetic_config(
+    atoms, 
+    {'Fe': [1, 1, -1, -1]},  # Need 4 Fe but only have 2
+    expand_cell=True
+)
 
 # Use in calculator
+config['pseudopotentials']['Fe'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+config['pseudopotentials']['Fe1'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
 calc = Espresso(
-    pseudopotentials=mag_config['pseudopotentials'],
-    input_data={'input_ntyp': mag_config['input_ntyp']},
+    pseudopotentials=config['pseudopotentials'],
+    input_data={'input_ntyp': config['input_ntyp']},
     nspin=2
 )
 ```
+
+**Also available:** `set_antiferromagnetic()`, `set_ferromagnetic()`, `set_magnetic_moments()`
 
 See `MAGNETIC_HELPERS.md` for complete documentation and examples.
 

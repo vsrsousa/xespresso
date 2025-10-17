@@ -1,6 +1,11 @@
 from xespresso.xespresso import Espresso
 from xespresso.hubbard import HubbardConfig, build_hubbard_str, apply_hubbard_to_system
-from xespresso.tools import set_magnetic_moments, set_antiferromagnetic, set_ferromagnetic
+from xespresso.tools import (
+    set_magnetic_moments, 
+    set_antiferromagnetic, 
+    set_ferromagnetic,
+    setup_magnetic_config
+)
 
 __all__ = [
     'Espresso', 
@@ -10,4 +15,5 @@ __all__ = [
     'set_magnetic_moments',
     'set_antiferromagnetic',
     'set_ferromagnetic',
+    'setup_magnetic_config',
 ]

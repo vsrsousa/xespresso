@@ -14,6 +14,212 @@ import numpy as np
 # ====================================================
 
 
+def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_cell=False):
+    """
+    Simplified and intuitive way to set up magnetic configurations by element.
+    
+    This function allows you to specify magnetic moments per element type, automatically
+    handling species creation, supercell expansion if needed, and Hubbard parameters.
+    
+    Parameters
+    ----------
+    atoms : ase.Atoms
+        The atomic structure
+    magnetic_config : dict
+        Magnetic configuration per element. Format:
+        {'Element': [mag1, mag2, ...], 'Element2': [mag], ...}
+        
+        Examples:
+        - {'Fe': [1]} - All Fe atoms have magnetization 1 (equivalent)
+        - {'Fe': [1, -1]} - Two Fe atoms with different magnetizations (non-equivalent)
+        - {'Fe': [1, 1], 'Mn': [1, -1]} - Multiple elements with different configs
+        
+        If more moments are specified than atoms exist in the cell, and expand_cell=True,
+        the cell will be expanded to accommodate the configuration.
+        
+        Special syntax for Hubbard parameters:
+        - {'Fe': {'mag': [1, -1], 'U': 4.3}} - Include Hubbard U
+        - {'Fe': {'mag': [1, -1], 'U': [4.3, 4.5]}} - Different U for each species
+    
+    pseudopotentials : dict, optional
+        Base pseudopotentials dict mapping elements to UPF files
+    
+    expand_cell : bool, default=False
+        If True and more moments specified than atoms exist, expand the cell.
+        If False and mismatch occurs, raise an error.
+    
+    Returns
+    -------
+    dict
+        A dictionary containing:
+        - 'atoms': Updated atoms object (may be supercell if expanded)
+        - 'input_ntyp': dict with starting_magnetization and optionally Hubbard_U
+        - 'pseudopotentials': dict mapping species to pseudopotential files
+        - 'species_map': dict mapping species labels to their base element symbols
+        - 'expanded': bool indicating if cell was expanded
+    
+    Examples
+    --------
+    # Example 1: Simple AFM Fe - all equivalent
+    >>> from ase.build import bulk
+    >>> atoms = bulk('Fe', cubic=True)  # 2 Fe atoms
+    >>> config = setup_magnetic_config(atoms, {'Fe': [1, -1]})
+    # Creates Fe (mag=1) and Fe1 (mag=-1)
+    
+    # Example 2: FM with all equivalent
+    >>> atoms = bulk('Fe', cubic=True)
+    >>> config = setup_magnetic_config(atoms, {'Fe': [1]})
+    # Both Fe atoms get mag=1, same species
+    
+    # Example 3: Complex FeMnAl2 system
+    >>> # Assume 2 Fe, 2 Mn, 4 Al in unit cell
+    >>> config = setup_magnetic_config(atoms, {
+    ...     'Fe': [1],        # Both Fe equivalent, mag=1
+    ...     'Mn': [1, -1],    # 2 Mn non-equivalent, AFM
+    ...     'Al': [0]         # Al non-magnetic
+    ... })
+    
+    # Example 4: With Hubbard U
+    >>> config = setup_magnetic_config(atoms, {
+    ...     'Fe': {'mag': [1, -1], 'U': 4.3}
+    ... })
+    
+    # Example 5: Expand cell if needed
+    >>> atoms = bulk('Fe', cubic=True)  # 2 Fe
+    >>> config = setup_magnetic_config(
+    ...     atoms, 
+    ...     {'Fe': [1, 1, -1, -1]},  # Need 4 Fe
+    ...     expand_cell=True
+    ... )
+    # Will create 2x1x1 supercell
+    """
+    from ase import Atoms
+    
+    # Parse magnetic configuration
+    element_mags = {}
+    element_hubbard = {}
+    
+    for element, config in magnetic_config.items():
+        if isinstance(config, dict):
+            # Extended format with Hubbard parameters
+            element_mags[element] = config.get('mag', config.get('magnetization', [0]))
+            if 'U' in config:
+                element_hubbard[element] = config['U']
+        elif isinstance(config, (list, tuple)):
+            # Simple list of magnetic moments
+            element_mags[element] = list(config)
+        else:
+            # Single value
+            element_mags[element] = [config]
+    
+    # Count atoms per element in current cell
+    element_counts = {}
+    for atom in atoms:
+        element = atom.symbol
+        element_counts[element] = element_counts.get(element, 0) + 1
+    
+    # Check if we need to expand the cell
+    needs_expansion = False
+    expansion_factors = {}
+    
+    for element, mags in element_mags.items():
+        if element not in element_counts:
+            raise ValueError(f"Element {element} not found in atoms structure")
+        
+        current_count = element_counts[element]
+        needed_count = len(mags)
+        
+        if needed_count > current_count:
+            if not expand_cell:
+                raise ValueError(
+                    f"Element {element}: {needed_count} magnetic moments specified "
+                    f"but only {current_count} atoms exist. Set expand_cell=True to auto-expand."
+                )
+            needs_expansion = True
+            factor = (needed_count + current_count - 1) // current_count  # Ceiling division
+            expansion_factors[element] = factor
+        elif needed_count < current_count:
+            # If fewer moments than atoms, replicate the pattern
+            # e.g., Fe=[1] with 2 Fe atoms -> both get mag=1
+            full_mags = []
+            for i in range(current_count):
+                full_mags.append(mags[i % len(mags)])
+            element_mags[element] = full_mags
+    
+    # Expand cell if needed
+    expanded = False
+    if needs_expansion:
+        max_factor = max(expansion_factors.values())
+        # Simple expansion along first direction
+        atoms = atoms * (max_factor, 1, 1)
+        expanded = True
+        
+        # Recount atoms
+        element_counts = {}
+        for atom in atoms:
+            element = atom.symbol
+            element_counts[element] = element_counts.get(element, 0) + 1
+        
+        # Verify expansion is sufficient
+        for element, mags in element_mags.items():
+            if len(mags) > element_counts[element]:
+                raise ValueError(
+                    f"Element {element}: Even after expansion, not enough atoms. "
+                    f"Need {len(mags)}, have {element_counts[element]}"
+                )
+    
+    # Now assign magnetic moments to atoms
+    # Build atom index to magnetic moment mapping
+    element_atom_indices = {}
+    for i, atom in enumerate(atoms):
+        element = atom.symbol
+        if element not in element_atom_indices:
+            element_atom_indices[element] = []
+        element_atom_indices[element].append(i)
+    
+    mag_dict = {}
+    for element, mags in element_mags.items():
+        if element in element_atom_indices:
+            atom_indices = element_atom_indices[element]
+            for i, atom_idx in enumerate(atom_indices):
+                if i < len(mags):
+                    mag_dict[atom_idx] = mags[i]
+                else:
+                    # Replicate pattern if more atoms than moments
+                    mag_dict[atom_idx] = mags[i % len(mags)]
+    
+    # Use existing set_magnetic_moments to create species
+    result = set_magnetic_moments(atoms, mag_dict, pseudopotentials)
+    
+    # Add Hubbard U parameters if specified
+    if element_hubbard:
+        if 'Hubbard_U' not in result['input_ntyp']:
+            result['input_ntyp']['Hubbard_U'] = {}
+        
+        # Map Hubbard U to species
+        for element, u_value in element_hubbard.items():
+            # Find all species for this element
+            element_species = [sp for sp in result['species_map'].keys() 
+                             if result['species_map'][sp] == element]
+            
+            if isinstance(u_value, (list, tuple)):
+                # Different U for each species
+                for i, species in enumerate(element_species):
+                    if i < len(u_value):
+                        result['input_ntyp']['Hubbard_U'][species] = u_value[i]
+                    else:
+                        result['input_ntyp']['Hubbard_U'][species] = u_value[-1]
+            else:
+                # Same U for all species of this element
+                for species in element_species:
+                    result['input_ntyp']['Hubbard_U'][species] = u_value
+    
+    result['atoms'] = atoms
+    result['expanded'] = expanded
+    
+    return result
+
+
 def set_magnetic_moments(atoms, magnetic_moments, pseudopotentials=None):
     """
     Simplified way to set up magnetic moments for spin-polarized calculations.
