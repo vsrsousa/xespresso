@@ -432,10 +432,9 @@ class Espresso(FileIOCalculator):
             lines = f.readlines()
             if len(lines) == 0:
                 return 1, "pwo file has nothing"
-            stime = lines[1].split("starts on")[1]
             nlines = len(lines)
             n = min([200, nlines])
-            lastlines = lines[-n:-1]
+            lastlines = lines[-n:]
             for line in lastlines:
                 if line.rfind("too many bands are not converged") > -1:
                     logger.debug("Need restart")
@@ -449,7 +448,8 @@ class Espresso(FileIOCalculator):
                 if line.rfind("JOB DONE.") > -1:
                     logger.debug("JOB DONE")
                     return 0, line
-            logger.debug("Not converged, %s" % lastlines[-1])
+            if lastlines:
+                logger.debug("Not converged, %s" % lastlines[-1])
         return 4, line
 
     def run(self, atoms=None, restart=False):
