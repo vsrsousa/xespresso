@@ -497,6 +497,8 @@ def sort_qe_input(parameters, package="PW"):
     unuse_parameters = {}
     # section_names = ['CONTROL', 'SYSTEM', 'ELECTRONS', 'IONS', 'CELL', 'ATOMIC_SPECIES', 'K_POINTS', 'CELL_PARAMETERS', 'CONSTRAINTS', 'OCCUPATIONS', 'ATOMIC_VELECITIES', 'ATOMIC_FORCES']
     section_names = ["CONTROL", "SYSTEM", "ELECTRONS", "IONS", "CELL", "INPUT_NTYP"]
+    # Special parameters to preserve in input_data (not part of namelists)
+    special_parameters = ["qe_version", "hubbard", "hubbard_v", "hubbard_format"]
     for section in section_names:
         if section not in sorted_parameters["input_data"]:
             sorted_parameters["input_data"][section] = {}
@@ -536,6 +538,9 @@ def sort_qe_input(parameters, package="PW"):
             sorted_parameters["input_data"][key.upper()] = sorted_parameters[
                 "input_data"
             ].pop(key)
+            continue
+        # Preserve special parameters in input_data
+        if key in special_parameters:
             continue
         for section in section_names:
             if section.upper() == "INPUT_NTYP":
