@@ -4,6 +4,131 @@
 
 This module provides simplified helper functions to configure magnetic moments for spin-polarized and antiferromagnetic calculations in Quantum ESPRESSO. These functions automate the process of creating species labels and setting up `starting_magnetization` parameters.
 
+## New: Element-Based Configuration (Recommended!)
+
+The `setup_magnetic_config()` function provides the most intuitive way to define magnetic configurations. Instead of specifying magnetic moments for individual atom indices, you specify them per element type.
+
+### Quick Start
+
+```python
+from ase.build import bulk
+from xespresso import setup_magnetic_config, Espresso
+
+atoms = bulk('Fe', cubic=True)  # 2 Fe atoms
+
+# Simple: All Fe equivalent with magnetization 1
+config = setup_magnetic_config(atoms, {'Fe': [1]})
+
+# AFM: Two non-equivalent Fe atoms
+config = setup_magnetic_config(atoms, {'Fe': [1, -1]})
+
+# With Hubbard U
+config = setup_magnetic_config(atoms, {
+    'Fe': {'mag': [1, -1], 'U': 4.3}
+})
+
+# Add pseudopotentials and create calculator
+config['pseudopotentials']['Fe'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+config['pseudopotentials']['Fe1'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+
+calc = Espresso(
+    pseudopotentials=config['pseudopotentials'],
+    input_data={'input_ntyp': config['input_ntyp']},
+    nspin=2,
+    ecutwfc=40,
+    kpts=(4, 4, 4)
+)
+config['atoms'].calc = calc
+```
+
+### Understanding the Syntax
+
+**Element-based specification:**
+- `{'Fe': [1]}` - All Fe atoms equivalent, magnetization = 1
+- `{'Fe': [1, -1]}` - Two Fe atoms, non-equivalent (AFM)
+- `{'Fe': [1], 'Mn': [1, -1]}` - Multiple elements
+
+**Automatic pattern replication:**
+- If you have 4 Fe atoms but specify `{'Fe': [1, -1]}`, the pattern replicates: [1, -1, 1, -1]
+- Useful for periodic magnetic structures
+
+**Supercell expansion:**
+- `{'Fe': [1, 1, -1, -1]}` with only 2 Fe atoms → Error (by default)
+- Set `expand_cell=True` → Automatically creates supercell with 4 Fe atoms
+
+**With Hubbard parameters:**
+- `{'Fe': {'mag': [1, -1], 'U': 4.3}}` - Same U for all Fe species
+- `{'Fe': {'mag': [1, -1], 'U': [4.3, 4.5]}}` - Different U for each species
+
+## API Reference
+
+### `setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_cell=False)`
+
+**Parameters:**
+- `atoms`: ASE Atoms object
+- `magnetic_config`: Dict mapping elements to magnetic moments
+  - Simple: `{'Fe': [1, -1]}`
+  - With Hubbard: `{'Fe': {'mag': [1, -1], 'U': 4.3}}`
+- `pseudopotentials`: Optional base pseudopotentials dict
+- `expand_cell`: If True, automatically expand cell when needed
+
+**Returns:**
+- `'atoms'`: Updated atoms object (may be supercell if expanded)
+- `'input_ntyp'`: Dict with starting_magnetization and optionally Hubbard_U
+- `'pseudopotentials'`: Dict mapping species to pseudopotential files
+- `'species_map'`: Dict mapping species labels to base elements
+- `'expanded'`: Bool indicating if cell was expanded
+
+### Examples
+
+#### Example 1: FeMnAl₂ System
+
+```python
+from ase import Atoms
+from xespresso import setup_magnetic_config
+
+# Create structure with 2 Fe, 2 Mn, 4 Al
+atoms = Atoms('Fe2Mn2Al4', positions=[...])
+atoms.cell = [5, 5, 5]
+
+config = setup_magnetic_config(atoms, {
+    'Fe': [1],        # Both Fe equivalent
+    'Mn': [1, -1],    # Mn AFM
+    'Al': [0]         # Al non-magnetic
+})
+
+# Result:
+# - Fe: one species with mag=1
+# - Mn: two species (Mn with mag=1, Mn1 with mag=-1)
+# - Al: non-magnetic, not in starting_magnetization
+```
+
+#### Example 2: Complex Magnetic Pattern
+
+```python
+# 4 Fe atoms with checkerboard pattern
+atoms = bulk('Fe', cubic=True) * (2, 1, 1)
+
+config = setup_magnetic_config(atoms, {
+    'Fe': [1, -1, -1, 1]
+})
+
+# Creates 4 species: Fe, Fe1, Fe2, Fe3
+```
+
+#### Example 3: With DFT+U
+
+```python
+config = setup_magnetic_config(atoms, {
+    'Fe': {'mag': [1, -1], 'U': 4.3},
+    'Mn': {'mag': [1, -1], 'U': [5.7, 5.8]}  # Different U values
+})
+
+# Result includes both starting_magnetization and Hubbard_U
+```
+
+## Original Functions (Still Supported)
+
 ## Motivation
 
 Previously, setting up antiferromagnetic or spin-polarized calculations required:
