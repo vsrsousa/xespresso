@@ -184,6 +184,82 @@ class TestSlurmScheduler:
             with pytest.raises(RuntimeError, match="Failed to retrieve .* after 3 attempts"):
                 scheduler._verify_and_retrieve_output_file("test.pwo", "/local/test.pwo", max_retries=3)
 
+    @patch('xespresso.schedulers.remote_mixin.RemoteAuth')
+    @patch('os.path.exists')
+    def test_missing_pseudopotential_prevents_execution(self, mock_exists, mock_remote_auth_class):
+        """Test that missing pseudopotentials prevent job execution."""
+        mock_remote = Mock()
+        mock_remote_auth_class.return_value = mock_remote
+        mock_remote.run_command.return_value = ("", "")
+        
+        # Set up calculator with pseudopotentials
+        self.mock_calc.parameters = {
+            "pseudopotentials": {
+                "Fe": "Fe.pbe-spn-rrkjus_psl.1.0.0.UPF",
+                "O": "O.pbe-n-kjpaw_psl.1.0.0.UPF"
+            },
+            "input_data": {
+                "CONTROL": {}
+            }
+        }
+        self.mock_calc.write_input = Mock()
+        
+        scheduler = SlurmScheduler(
+            calc=self.mock_calc,
+            queue=self.queue_config,
+            command="test command"
+        )
+        scheduler.remote = mock_remote
+        scheduler.remote_path = "/remote/path"
+        
+        # Mock that pseudopotential files don't exist
+        mock_exists.return_value = False
+        
+        # Should raise FileNotFoundError when pseudopotentials are missing
+        with pytest.raises(FileNotFoundError, match="Cannot proceed with calculation.*Missing pseudopotentials"):
+            scheduler._transfer_pseudopotentials()
+    
+    @patch('xespresso.schedulers.remote_mixin.RemoteAuth')
+    @patch('os.path.exists')
+    def test_partial_missing_pseudopotentials(self, mock_exists, mock_remote_auth_class):
+        """Test that execution is prevented even if only some pseudopotentials are missing."""
+        mock_remote = Mock()
+        mock_remote_auth_class.return_value = mock_remote
+        mock_remote.run_command.return_value = ("", "")
+        mock_remote.sha256.return_value = "abc123"
+        
+        # Set up calculator with pseudopotentials
+        self.mock_calc.parameters = {
+            "pseudopotentials": {
+                "Fe": "Fe.pbe-spn-rrkjus_psl.1.0.0.UPF",
+                "O": "O.pbe-n-kjpaw_psl.1.0.0.UPF"
+            },
+            "input_data": {
+                "CONTROL": {}
+            }
+        }
+        self.mock_calc.write_input = Mock()
+        
+        scheduler = SlurmScheduler(
+            calc=self.mock_calc,
+            queue=self.queue_config,
+            command="test command"
+        )
+        scheduler.remote = mock_remote
+        scheduler.remote_path = "/remote/path"
+        
+        # Mock SHA256 method
+        with patch.object(scheduler, '_sha256', return_value='abc123'):
+            # Mock that only Fe pseudopotential exists
+            def exists_side_effect(path):
+                return "Fe.pbe-spn-rrkjus_psl.1.0.0.UPF" in path
+            
+            mock_exists.side_effect = exists_side_effect
+            
+            # Should raise FileNotFoundError for missing O pseudopotential
+            with pytest.raises(FileNotFoundError, match="Missing pseudopotentials.*O"):
+                scheduler._transfer_pseudopotentials()
+
 
 # Helper methods for scheduler testing
 def _create_slurm_scheduler_with_mocks():
