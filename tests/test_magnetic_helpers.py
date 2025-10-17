@@ -294,6 +294,35 @@ class TestSetupMagneticConfig:
             setup_magnetic_config(atoms, {
                 'Fe': {'mag': [1, -1], 'U': 4.3}  # No orbital
             }, hubbard_format='new')
+    
+    def test_custom_projector_parameter(self):
+        """Test that custom projector can be specified."""
+        atoms = bulk('Fe', cubic=True)
+        
+        # Test with atomic projector
+        config = setup_magnetic_config(atoms, {
+            'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
+        }, qe_version='7.2', projector='atomic')
+        
+        assert config['hubbard']['projector'] == 'atomic'
+        
+        # Test with norm-atomic projector
+        config = setup_magnetic_config(atoms, {
+            'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
+        }, qe_version='7.2', projector='norm-atomic')
+        
+        assert config['hubbard']['projector'] == 'norm-atomic'
+    
+    def test_default_projector_is_ortho_atomic(self):
+        """Test that default projector is ortho-atomic (QE recommended)."""
+        atoms = bulk('Fe', cubic=True)
+        
+        config = setup_magnetic_config(atoms, {
+            'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
+        }, qe_version='7.2')
+        
+        # Default should be ortho-atomic as recommended by QE
+        assert config['hubbard']['projector'] == 'ortho-atomic'
 
 
 class TestSetMagneticMoments:

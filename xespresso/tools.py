@@ -15,7 +15,7 @@ import numpy as np
 
 
 def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_cell=False, 
-                         qe_version=None, hubbard_format='auto'):
+                         qe_version=None, hubbard_format='auto', projector='ortho-atomic'):
     """
     Simplified and intuitive way to set up magnetic configurations by element.
     
@@ -67,6 +67,14 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
         - 'old': Use old format (Hubbard_U in SYSTEM namelist)
         - 'new': Use new format (HUBBARD card)
     
+    projector : str, default='ortho-atomic'
+        Projector type for new Hubbard format. One of:
+        - 'ortho-atomic': Orthogonalized atomic orbitals (recommended by QE)
+        - 'atomic': Atomic orbitals
+        - 'norm-atomic': Normalized atomic orbitals
+        - 'wf': Wannier functions
+        - 'pseudo': Pseudopotential orbitals
+    
     Returns
     -------
     dict
@@ -107,6 +115,11 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
     >>> config = setup_magnetic_config(atoms, {
     ...     'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
     ... }, qe_version='7.2')
+    
+    # Example 5b: Specify custom projector (default is 'ortho-atomic')
+    >>> config = setup_magnetic_config(atoms, {
+    ...     'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
+    ... }, qe_version='7.2', projector='atomic')
     
     # Example 6: Expand cell if needed
     >>> atoms = bulk('Fe', cubic=True)  # 2 Fe
@@ -245,7 +258,7 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
             # NEW FORMAT: Use HUBBARD card (QE 7.x+)
             # Build hubbard dict for new format
             hubbard_dict = {
-                'projector': 'atomic',  # Default projector
+                'projector': projector,  # Use user-provided projector
                 'u': {},
                 'v': []
             }
