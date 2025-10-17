@@ -8,6 +8,39 @@ This module provides simplified helper functions to configure magnetic moments f
 
 The `setup_magnetic_config()` function provides the most intuitive way to define magnetic configurations. Instead of specifying magnetic moments for individual atom indices, you specify them per element type.
 
+### Hubbard Parameters Support
+
+**NEW**: Full support for both old (QE < 7.0) and new (QE 7.x+) Hubbard parameter formats!
+
+#### Old Format (QE < 7.0)
+```python
+config = setup_magnetic_config(atoms, {
+    'Fe': {'mag': [1, -1], 'U': 4.3}
+}, qe_version='6.8')
+# Result: Hubbard_U in SYSTEM namelist
+```
+
+#### New Format (QE 7.x+) - HUBBARD Card
+```python
+config = setup_magnetic_config(atoms, {
+    'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
+}, qe_version='7.2')
+# Result: HUBBARD card with Fe-3d orbital specification
+```
+
+#### Inter-site V Parameters
+```python
+config = setup_magnetic_config(atoms, {
+    'Fe': {
+        'mag': [1],
+        'U': {'3d': 4.3},
+        'V': [{'species2': 'O', 'orbital1': '3d', 'orbital2': '2p', 'value': 1.0}]
+    },
+    'O': [0]
+}, qe_version='7.2')
+# Result: Both U and V parameters in HUBBARD card
+```
+
 ### Quick Start
 
 ```python

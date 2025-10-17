@@ -14,7 +14,8 @@ import numpy as np
 # ====================================================
 
 
-def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_cell=False):
+def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_cell=False, 
+                         qe_version=None, hubbard_format='auto'):
     """
     Simplified and intuitive way to set up magnetic configurations by element.
     
@@ -38,8 +39,16 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
         the cell will be expanded to accommodate the configuration.
         
         Special syntax for Hubbard parameters:
+        
+        OLD FORMAT (QE < 7.0):
         - {'Fe': {'mag': [1, -1], 'U': 4.3}} - Include Hubbard U
         - {'Fe': {'mag': [1, -1], 'U': [4.3, 4.5]}} - Different U for each species
+        
+        NEW FORMAT (QE >= 7.0 - HUBBARD card):
+        - {'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}} - U on Fe-3d orbital
+        - {'Fe': {'mag': [1, -1], 'U': {'3d': [4.3, 4.5]}}} - Different U per species
+        - {'Fe': {'mag': [1], 'U': {'3d': 4.3}, 'V': [{'species2': 'O', 'orbital2': '2p', 'value': 1.0}]}}
+          - Inter-site V interaction between Fe-3d and O-2p
     
     pseudopotentials : dict, optional
         Base pseudopotentials dict mapping elements to UPF files
@@ -47,6 +56,16 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
     expand_cell : bool, default=False
         If True and more moments specified than atoms exist, expand the cell.
         If False and mismatch occurs, raise an error.
+    
+    qe_version : str, optional
+        QE version string (e.g., '7.2', '6.8'). Used to determine format.
+        If not provided, uses hubbard_format parameter.
+    
+    hubbard_format : str, default='auto'
+        Hubbard parameter format: 'auto', 'old', or 'new'.
+        - 'auto': Determine from qe_version or U format
+        - 'old': Use old format (Hubbard_U in SYSTEM namelist)
+        - 'new': Use new format (HUBBARD card)
     
     Returns
     -------
@@ -79,12 +98,17 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
     ...     'Al': [0]         # Al non-magnetic
     ... })
     
-    # Example 4: With Hubbard U
+    # Example 4: With Hubbard U (old format)
     >>> config = setup_magnetic_config(atoms, {
     ...     'Fe': {'mag': [1, -1], 'U': 4.3}
     ... })
     
-    # Example 5: Expand cell if needed
+    # Example 5: With Hubbard U (new format QE 7.x)
+    >>> config = setup_magnetic_config(atoms, {
+    ...     'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
+    ... }, qe_version='7.2')
+    
+    # Example 6: Expand cell if needed
     >>> atoms = bulk('Fe', cubic=True)  # 2 Fe
     >>> config = setup_magnetic_config(
     ...     atoms, 
@@ -95,9 +119,24 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
     """
     from ase import Atoms
     
+    # Determine Hubbard format
+    use_new_hubbard_format = False
+    if hubbard_format == 'new':
+        use_new_hubbard_format = True
+    elif hubbard_format == 'old':
+        use_new_hubbard_format = False
+    elif qe_version:
+        # Auto-detect from version
+        try:
+            major, minor = map(int, qe_version.split('.')[:2])
+            use_new_hubbard_format = (major >= 7)
+        except (ValueError, AttributeError):
+            pass
+    
     # Parse magnetic configuration
     element_mags = {}
     element_hubbard = {}
+    element_hubbard_v = {}
     
     for element, config in magnetic_config.items():
         if isinstance(config, dict):
@@ -105,6 +144,15 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
             element_mags[element] = config.get('mag', config.get('magnetization', [0]))
             if 'U' in config:
                 element_hubbard[element] = config['U']
+            if 'V' in config:
+                element_hubbard_v[element] = config['V']
+            
+            # Auto-detect format if not specified and no qe_version override
+            if hubbard_format == 'auto' and not qe_version and 'U' in config:
+                u_val = config['U']
+                if isinstance(u_val, dict):
+                    # New format: {'3d': 4.3}
+                    use_new_hubbard_format = True
         elif isinstance(config, (list, tuple)):
             # Simple list of magnetic moments
             element_mags[element] = list(config)
@@ -191,31 +239,124 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
     # Use existing set_magnetic_moments to create species
     result = set_magnetic_moments(atoms, mag_dict, pseudopotentials)
     
-    # Add Hubbard U parameters if specified
-    if element_hubbard:
-        if 'Hubbard_U' not in result['input_ntyp']:
-            result['input_ntyp']['Hubbard_U'] = {}
-        
-        # Map Hubbard U to species
-        for element, u_value in element_hubbard.items():
-            # Find all species for this element
-            element_species = [sp for sp in result['species_map'].keys() 
-                             if result['species_map'][sp] == element]
+    # Add Hubbard parameters if specified
+    if element_hubbard or element_hubbard_v:
+        if use_new_hubbard_format:
+            # NEW FORMAT: Use HUBBARD card (QE 7.x+)
+            # Build hubbard dict for new format
+            hubbard_dict = {
+                'projector': 'atomic',  # Default projector
+                'u': {},
+                'v': []
+            }
             
-            if isinstance(u_value, (list, tuple)):
-                # Different U for each species
-                for i, species in enumerate(element_species):
-                    if i < len(u_value):
-                        result['input_ntyp']['Hubbard_U'][species] = u_value[i]
-                    else:
-                        result['input_ntyp']['Hubbard_U'][species] = u_value[-1]
-            else:
-                # Same U for all species of this element
-                for species in element_species:
-                    result['input_ntyp']['Hubbard_U'][species] = u_value
+            # Process U parameters
+            for element, u_value in element_hubbard.items():
+                # Find all species for this element
+                element_species = [sp for sp in result['species_map'].keys() 
+                                 if result['species_map'][sp] == element]
+                
+                if isinstance(u_value, dict):
+                    # New format: {'3d': 4.3} or {'3d': [4.3, 4.5]}
+                    for orbital, val in u_value.items():
+                        if isinstance(val, (list, tuple)):
+                            # Different U for each species
+                            for i, species in enumerate(element_species):
+                                if i < len(val):
+                                    hubbard_dict['u'][f"{species}-{orbital}"] = val[i]
+                                else:
+                                    hubbard_dict['u'][f"{species}-{orbital}"] = val[-1]
+                        else:
+                            # Same U for all species of this element
+                            for species in element_species:
+                                hubbard_dict['u'][f"{species}-{orbital}"] = val
+                else:
+                    # Old-style value provided but new format requested
+                    # Need orbital information - raise error
+                    raise ValueError(
+                        f"Element {element}: New Hubbard format requires orbital specification. "
+                        f"Use 'U': {{'3d': {u_value}}} instead of 'U': {u_value}"
+                    )
+            
+            # Process V parameters
+            for element, v_list in element_hubbard_v.items():
+                element_species = [sp for sp in result['species_map'].keys() 
+                                 if result['species_map'][sp] == element]
+                
+                if not isinstance(v_list, list):
+                    v_list = [v_list]
+                
+                for v_param in v_list:
+                    if not isinstance(v_param, dict):
+                        raise ValueError(
+                            f"V parameters must be dictionaries with 'species2', 'orbital2', 'value' keys"
+                        )
+                    
+                    species2 = v_param.get('species2')
+                    orbital1 = v_param.get('orbital1', v_param.get('orbital'))  # Allow 'orbital' as shorthand
+                    orbital2 = v_param.get('orbital2')
+                    value = v_param.get('value')
+                    i = v_param.get('i', 1)
+                    j = v_param.get('j', 1)
+                    
+                    if not all([species2, orbital1, orbital2, value]):
+                        raise ValueError(
+                            f"V parameter must specify: species2, orbital1 (or orbital), orbital2, value"
+                        )
+                    
+                    # Add V for each species of this element
+                    for species1 in element_species:
+                        hubbard_dict['v'].append({
+                            'species1': species1,
+                            'orbital1': orbital1,
+                            'species2': species2,
+                            'orbital2': orbital2,
+                            'i': i,
+                            'j': j,
+                            'value': value
+                        })
+            
+            # Store in result for later use in input file generation
+            result['hubbard'] = hubbard_dict
+            result['qe_version'] = qe_version if qe_version else '7.0'
+            
+        else:
+            # OLD FORMAT: Use input_ntyp (QE < 7.0)
+            if 'Hubbard_U' not in result['input_ntyp']:
+                result['input_ntyp']['Hubbard_U'] = {}
+            
+            # Map Hubbard U to species
+            for element, u_value in element_hubbard.items():
+                # Find all species for this element
+                element_species = [sp for sp in result['species_map'].keys() 
+                                 if result['species_map'][sp] == element]
+                
+                if isinstance(u_value, dict):
+                    # User specified orbital but we're in old format
+                    # Extract first value and warn
+                    first_orbital, first_val = next(iter(u_value.items()))
+                    print(f"Warning: Orbital specification ('{first_orbital}') ignored in old Hubbard format")
+                    u_value = first_val
+                
+                if isinstance(u_value, (list, tuple)):
+                    # Different U for each species
+                    for i, species in enumerate(element_species):
+                        if i < len(u_value):
+                            result['input_ntyp']['Hubbard_U'][species] = u_value[i]
+                        else:
+                            result['input_ntyp']['Hubbard_U'][species] = u_value[-1]
+                else:
+                    # Same U for all species of this element
+                    for species in element_species:
+                        result['input_ntyp']['Hubbard_U'][species] = u_value
+            
+            # V parameters in old format
+            if element_hubbard_v:
+                print("Warning: V parameters specified but old Hubbard format may not fully support them")
     
     result['atoms'] = atoms
     result['expanded'] = expanded
+    result['hubbard_format'] = 'new' if use_new_hubbard_format else 'old'
     
     return result
 
