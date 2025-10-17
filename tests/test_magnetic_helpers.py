@@ -323,6 +323,15 @@ class TestSetupMagneticConfig:
         
         # Default should be ortho-atomic as recommended by QE
         assert config['hubbard']['projector'] == 'ortho-atomic'
+    
+    def test_invalid_projector_raises_error(self):
+        """Test that invalid projector value raises an error."""
+        atoms = bulk('Fe', cubic=True)
+        
+        with pytest.raises(ValueError, match="Invalid projector"):
+            setup_magnetic_config(atoms, {
+                'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
+            }, qe_version='7.2', projector='invalid-projector')
 
 
 class TestSetMagneticMoments:
