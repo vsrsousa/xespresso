@@ -140,6 +140,9 @@ def compare_parameters(para1, para2, ignore=[]):
         changed_parameters = ["all"]
         return changed_parameters, igonre_parameters
     default_parameters = default_parameters["PW"]
+    # Special parameters that are not namelists (stored in input_data but not QE sections)
+    special_parameters = ["qe_version", "hubbard", "hubbard_v", "hubbard_format"]
+    
     # pseudopotentials
     key = "pseudopotentials"
     try:
@@ -158,6 +161,15 @@ def compare_parameters(para1, para2, ignore=[]):
         changed_parameters.append(key)
     # input_data
     for section, paras in para1["input_data"].items():
+        # Skip special parameters that are not QE namelists
+        if section in special_parameters:
+            # For special parameters, just compare directly without default lookup
+            if section not in para2["input_data"]:
+                changed_parameters.append(section)
+            elif para1["input_data"][section] != para2["input_data"][section]:
+                changed_parameters.append(section)
+            continue
+        
         if section == "INPUT_NTYP":
             changed_parameters1, igonre_parameters1 = compare_dict(
                 para1["input_data"][section],
