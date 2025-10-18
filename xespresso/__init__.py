@@ -6,6 +6,12 @@ from xespresso.tools import (
     set_ferromagnetic,
     setup_magnetic_config
 )
+from xespresso.workflow import (
+    CalculationWorkflow,
+    quick_scf,
+    quick_relax,
+    PRESETS,
+)
 
 __all__ = [
     'Espresso', 
@@ -16,4 +22,8 @@ __all__ = [
     'set_antiferromagnetic',
     'set_ferromagnetic',
     'setup_magnetic_config',
+    'CalculationWorkflow',
+    'quick_scf',
+    'quick_relax',
+    'PRESETS',
 ]
