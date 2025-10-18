@@ -51,7 +51,10 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
           - Inter-site V interaction between Fe-3d and O-2p
     
     pseudopotentials : dict, optional
-        Base pseudopotentials dict mapping elements to UPF files
+        Pseudopotentials dict mapping elements to UPF files.
+        Only base element names are needed (e.g., 'Fe'); derived species 
+        (e.g., 'Fe1', 'Fe2') automatically inherit the pseudopotential from 
+        their base element. Example: {'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'}
     
     expand_cell : bool, default=False
         If True and more moments specified than atoms exist, expand the cell.
@@ -120,6 +123,12 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
     >>> config = setup_magnetic_config(atoms, {
     ...     'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}
     ... }, qe_version='7.2', projector='atomic')
+    
+    # Example 5c: With pseudopotentials (only base element needed)
+    >>> pseudopotentials = {'Fe': 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'}
+    >>> config = setup_magnetic_config(atoms, {'Fe': [1, -1]},
+    ...                                pseudopotentials=pseudopotentials)
+    # Both Fe and Fe1 species will use 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
     
     # Example 6: Expand cell if needed
     >>> atoms = bulk('Fe', cubic=True)  # 2 Fe
