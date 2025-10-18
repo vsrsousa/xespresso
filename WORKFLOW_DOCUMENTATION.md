@@ -113,12 +113,13 @@ Instead of specifying explicit k-points, you can use k-spacing (in Å⁻¹):
 from xespresso import CalculationWorkflow
 import numpy as np
 
-# Using k-spacing as mentioned in the problem statement
+# Using k-spacing in physical units (Angstrom^-1)
+# The workflow automatically handles the 2π normalization internally
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
     quality='moderate',
-    kspacing=0.20/(2*np.pi)  # This gets converted to k-points
+    kspacing=0.20  # Just pass the physical value - no need for /(2*np.pi)!
 )
 
 # See what k-points this corresponds to
@@ -126,7 +127,125 @@ kpts = workflow._get_kpts()
 print(f"K-points: {kpts}")
 ```
 
-The workflow uses ASE's `kspacing_to_grid` function internally to convert k-spacing to k-points.
+The workflow uses ASE's `kspacing_to_grid` function internally to convert k-spacing to k-points. 
+**You don't need to worry about the 2π normalization** - just pass your desired k-spacing in Angstrom^-1.
+
+## Magnetic and Hubbard Support
+
+The workflow seamlessly integrates with xespresso's magnetic configuration and Hubbard parameter functionality.
+
+### Simple Magnetic Configurations
+
+```python
+from xespresso import CalculationWorkflow
+
+# Ferromagnetic configuration
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    magnetic_config='ferro'  # or 'ferromagnetic'
+)
+
+# Antiferromagnetic configuration
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    magnetic_config='antiferro'  # or 'antiferromagnetic'
+)
+```
+
+### Element-based Magnetic Configurations
+
+```python
+# Define magnetization per element
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials={'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
+    quality='moderate',
+    magnetic_config={
+        'Fe': [1, -1],  # Two non-equivalent Fe atoms (AFM)
+        'O': [0]        # Non-magnetic oxygen
+    }
+)
+
+# With automatic cell expansion if needed
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    magnetic_config={'Fe': [1, 1, -1, -1]},  # Need 4 Fe but only have 2
+    expand_cell=True  # Automatically expands the cell
+)
+```
+
+### Magnetic Configurations with Hubbard Parameters
+
+```python
+# Old format (QE < 7.0) with Hubbard U
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials={'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
+    quality='accurate',
+    magnetic_config={
+        'Fe': {'mag': [1, -1], 'U': 4.3}  # AFM with Hubbard U
+    }
+)
+
+# New format (QE >= 7.0) with HUBBARD card
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials={'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
+    quality='accurate',
+    magnetic_config={
+        'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}},  # U on Fe-3d orbital
+        'O': {'mag': [0]}
+    },
+    input_data={'qe_version': '7.2'}
+)
+
+# With inter-site Hubbard V parameters
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials={'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
+    quality='accurate',
+    magnetic_config={
+        'Fe': {
+            'mag': [1],
+            'U': {'3d': 4.3},
+            'V': [{'species2': 'O', 'orbital2': '2p', 'value': 1.0}]
+        },
+        'O': {'mag': [0]}
+    },
+    input_data={'qe_version': '7.2'}
+)
+```
+
+### Using with Quick Functions
+
+```python
+from xespresso import quick_scf, quick_relax
+
+# Quick SCF with antiferromagnetic configuration
+calc = quick_scf(
+    'structure.cif',
+    {'Fe': 'Fe.pbe-spn.UPF'},
+    magnetic_config='antiferro',
+    quality='moderate'
+)
+
+# Quick relaxation with Hubbard parameters
+calc = quick_relax(
+    atoms,
+    {'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
+    magnetic_config={'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}},
+    quality='accurate',
+    relax_type='vc-relax'
+)
+```
+
+See the [Magnetic Helpers documentation](MAGNETIC_HELPERS.md) for more details on magnetic configurations.
 
 ## Pseudopotential Configuration Management
 

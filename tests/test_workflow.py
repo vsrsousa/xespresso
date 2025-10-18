@@ -177,7 +177,89 @@ def test_workflow_from_atoms_object():
         quality='moderate'
     )
     
-    assert workflow.get_atoms() is atoms
+    # Workflow makes a copy to avoid modifying the original
+    assert workflow.get_atoms() is not atoms
+    assert len(workflow.get_atoms()) == len(atoms)
+    assert workflow.get_atoms().get_chemical_symbols() == atoms.get_chemical_symbols()
+
+
+def test_workflow_magnetic_ferro():
+    """Test ferromagnetic configuration."""
+    atoms = bulk("Fe", cubic=True)
+    pseudopotentials = {"Fe": "Fe.pbe-spn.UPF"}
+    
+    workflow = CalculationWorkflow(
+        atoms=atoms,
+        pseudopotentials=pseudopotentials,
+        quality='moderate',
+        magnetic_config='ferro'
+    )
+    
+    assert 'input_ntyp' in workflow.input_data
+    assert 'starting_magnetization' in workflow.input_data['input_ntyp']
+
+
+def test_workflow_magnetic_antiferro():
+    """Test antiferromagnetic configuration."""
+    atoms = bulk("Fe", cubic=True)
+    pseudopotentials = {"Fe": "Fe.pbe-spn.UPF"}
+    
+    workflow = CalculationWorkflow(
+        atoms=atoms,
+        pseudopotentials=pseudopotentials,
+        quality='moderate',
+        magnetic_config='antiferro'
+    )
+    
+    # Should create different species
+    assert 'species' in workflow.atoms.arrays
+    assert len(set(workflow.atoms.arrays['species'])) > 1
+    assert 'input_ntyp' in workflow.input_data
+    assert 'starting_magnetization' in workflow.input_data['input_ntyp']
+
+
+def test_workflow_magnetic_element_based():
+    """Test element-based magnetic configuration."""
+    atoms = bulk("Fe", cubic=True)
+    pseudopotentials = {"Fe": "Fe.pbe-spn.UPF"}
+    
+    workflow = CalculationWorkflow(
+        atoms=atoms,
+        pseudopotentials=pseudopotentials,
+        quality='moderate',
+        magnetic_config={'Fe': [1, -1]}
+    )
+    
+    # Should create different species
+    assert 'species' in workflow.atoms.arrays
+    species = workflow.atoms.arrays['species']
+    assert 'Fe1' in species
+    assert 'Fe2' in species
+
+
+def test_workflow_magnetic_with_hubbard():
+    """Test magnetic configuration with Hubbard U."""
+    atoms = bulk("Fe", cubic=True)
+    pseudopotentials = {"Fe": "Fe.pbe-spn.UPF"}
+    
+    workflow = CalculationWorkflow(
+        atoms=atoms,
+        pseudopotentials=pseudopotentials,
+        quality='accurate',
+        magnetic_config={'Fe': {'mag': [1, -1], 'U': 4.3}}
+    )
+    
+    # Should have Hubbard parameters
+    assert 'input_ntyp' in workflow.input_data
+    assert 'Hubbard_U' in workflow.input_data['input_ntyp']
+    
+    # Check that U values are set
+    hubbard_u = workflow.input_data['input_ntyp']['Hubbard_U']
+    assert 'Fe1' in hubbard_u
+    assert 'Fe2' in hubbard_u
+    assert hubbard_u['Fe1'] == 4.3
+    assert hubbard_u['Fe2'] == 4.3
+
 
 # Note: We don't test actual calculation runs here as they require
 # Quantum ESPRESSO to be installed and configured. These tests focus
