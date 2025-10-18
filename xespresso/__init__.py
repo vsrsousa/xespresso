@@ -4,7 +4,8 @@ from xespresso.tools import (
     set_magnetic_moments, 
     set_antiferromagnetic, 
     set_ferromagnetic,
-    setup_magnetic_config
+    setup_magnetic_config,
+    kpts_from_spacing,
 )
 from xespresso.workflow import (
     CalculationWorkflow,
@@ -22,6 +23,7 @@ __all__ = [
     'set_antiferromagnetic',
     'set_ferromagnetic',
     'setup_magnetic_config',
+    'kpts_from_spacing',
     'CalculationWorkflow',
     'quick_scf',
     'quick_relax',

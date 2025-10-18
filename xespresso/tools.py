@@ -1,13 +1,63 @@
 import os
 from ase.geometry import get_layers
 from ase.constraints import FixAtoms
-from ase.io.espresso import construct_namelist
+from ase.io.espresso import construct_namelist, kspacing_to_grid
 from xespresso import Espresso
 from xespresso.xio import build_atomic_species_str
 from ase.dft.bandgap import bandgap
 import pickle
 import multiprocessing
 import numpy as np
+
+# ====================================================
+# K-point utilities
+# ====================================================
+
+
+def kpts_from_spacing(atoms, kspacing):
+    """
+    Convert k-point spacing to k-point grid without manual 2π normalization.
+    
+    This is a convenience wrapper around ase.io.espresso.kspacing_to_grid that
+    handles the 2π normalization internally, so users can pass k-spacing values
+    in physical units (Angstrom^-1) directly.
+    
+    Parameters
+    ----------
+    atoms : ase.Atoms
+        The atomic structure
+    kspacing : float
+        K-point spacing in Angstrom^-1 (physical units)
+        
+    Returns
+    -------
+    tuple
+        K-point grid (kx, ky, kz)
+        
+    Examples
+    --------
+    >>> from ase.build import bulk
+    >>> from xespresso import kpts_from_spacing
+    >>> atoms = bulk('Si', cubic=True)
+    >>> 
+    >>> # Simple usage - no need for /(2*np.pi)
+    >>> kpts = kpts_from_spacing(atoms, 0.20)
+    >>> print(kpts)
+    (6, 6, 6)
+    >>> 
+    >>> # This is equivalent to:
+    >>> # from ase.io.espresso import kspacing_to_grid
+    >>> # kpts = kspacing_to_grid(atoms, 0.20/(2*np.pi))
+    
+    Notes
+    -----
+    This function automatically handles the 2π normalization required by
+    ase.io.espresso.kspacing_to_grid, providing a cleaner API for users.
+    """
+    # Apply 2π normalization internally
+    kpts = kspacing_to_grid(atoms, kspacing / (2 * np.pi))
+    return tuple(kpts)
+
 
 # ====================================================
 # Magnetic configuration helpers
