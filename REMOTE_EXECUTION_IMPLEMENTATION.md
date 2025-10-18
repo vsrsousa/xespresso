@@ -41,7 +41,7 @@ from xespresso import quick_scf
 calc = quick_scf(
     'structure.cif',
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     machine='cluster1'  # Loads from ~/.xespresso/machines/cluster1.json
 )
 ```
@@ -63,18 +63,18 @@ queue = {
 calc = quick_scf(
     'structure.cif',
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     queue=queue
 )
 ```
 
 **Combining all features:**
 ```python
-# Remote execution + quality presets + magnetic config + Hubbard U + k-spacing
+# Remote execution + protocol presets + magnetic config + Hubbard U + k-spacing
 calc = quick_scf(
     atoms,
     {'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
-    quality='accurate',
+    protocol='accurate',
     magnetic_config={'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}},
     kspacing=0.15,
     machine='cluster1'
@@ -130,7 +130,7 @@ calc = quick_scf(
 3. **Connection Persistence**: SSH connections automatically cached and reused
 4. **Automatic File Transfer**: Inputs, pseudopotentials, and outputs handled automatically
 5. **SLURM Integration**: Job submission and monitoring built-in
-6. **Works with All Features**: Quality presets, k-spacing, magnetic configs, Hubbard parameters all work with remote execution
+6. **Works with All Features**: Protocol presets, k-spacing, magnetic configs, Hubbard parameters all work with remote execution
 7. **Validation**: Clear error messages for configuration issues
 8. **Documentation**: Comprehensive documentation and examples
 

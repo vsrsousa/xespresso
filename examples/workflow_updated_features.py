@@ -23,7 +23,7 @@ atoms = bulk('Si', cubic=True)
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Si': 'Si.pbe.UPF'},
-    quality='moderate',
+    protocol='moderate',
     kspacing=0.20  # Just pass the physical value in Angstrom^-1!
 )
 
@@ -42,7 +42,7 @@ atoms_fe = bulk('Fe', cubic=True)
 workflow_ferro = CalculationWorkflow(
     atoms=atoms_fe,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     kspacing=0.3,
     magnetic_config='ferro'  # Simple string for ferro
 )
@@ -56,7 +56,7 @@ atoms_fe = bulk('Fe', cubic=True)
 workflow_afm = CalculationWorkflow(
     atoms=atoms_fe,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     kspacing=0.3,
     magnetic_config='antiferro'  # Simple string for AFM
 )
@@ -71,7 +71,7 @@ atoms_fe = bulk('Fe', cubic=True)
 workflow_custom = CalculationWorkflow(
     atoms=atoms_fe,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     kspacing=0.3,
     magnetic_config={'Fe': [1, -1]}  # AFM with explicit moments
 )
@@ -89,7 +89,7 @@ atoms_fe = bulk('Fe', cubic=True)
 workflow_hubbard_old = CalculationWorkflow(
     atoms=atoms_fe,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
-    quality='accurate',
+    protocol='accurate',
     kspacing=0.25,
     magnetic_config={'Fe': {'mag': [1, -1], 'U': 4.3}}
 )
@@ -102,7 +102,7 @@ atoms_fe = bulk('Fe', cubic=True)
 workflow_hubbard_new = CalculationWorkflow(
     atoms=atoms_fe,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
-    quality='accurate',
+    protocol='accurate',
     kspacing=0.25,
     magnetic_config={'Fe': {'mag': [1], 'U': {'3d': 4.3}}},
     input_data={'qe_version': '7.2'}
@@ -119,7 +119,7 @@ print("""
 calc = quick_scf(
     'fe_structure.cif',
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     kspacing=0.3,           # Simple k-spacing
     magnetic_config='antiferro'  # Simple AFM
 )
@@ -131,7 +131,7 @@ print("""
 calc = quick_relax(
     atoms,
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='accurate',
+    protocol='accurate',
     kspacing=0.2,
     magnetic_config={'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}},
     relax_type='vc-relax'

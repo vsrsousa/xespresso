@@ -27,7 +27,7 @@ pseudopotentials = {"Fe": "Fe.pbe-spn.UPF"}
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='moderate',
+    protocol='moderate',
     machine='cluster1'  # Loads from ~/.xespresso/machines/cluster1.json
 )
 
@@ -72,7 +72,7 @@ queue_config = {
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='moderate',
+    protocol='moderate',
     queue=queue_config
 )
 
@@ -106,7 +106,7 @@ local_slurm_queue = {
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='fast',
+    protocol='fast',
     queue=local_slurm_queue
 )
 
@@ -130,7 +130,7 @@ pseudopotentials = {"Fe": "Fe.pbe-spn.UPF"}
 calc = quick_scf(
     atoms,
     pseudopotentials,
-    quality='moderate',
+    protocol='moderate',
     magnetic_config='ferro',
     machine='cluster1',  # Remote execution
     label='scf/fe-ferro-remote'
@@ -142,7 +142,7 @@ calc = quick_scf(
 calc = quick_relax(
     'structure.cif',
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='accurate',
+    protocol='accurate',
     relax_type='vc-relax',
     machine='cluster1',  # Remote execution
     label='relax/fe-remote'
@@ -166,7 +166,7 @@ pseudopotentials = {"Fe": "Fe.pbe-spn.UPF", "O": "O.pbe.UPF"}
 calc = quick_scf(
     atoms,
     pseudopotentials,
-    quality='accurate',
+    protocol='accurate',
     magnetic_config={
         'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}  # AFM with Hubbard U
     },
@@ -212,7 +212,7 @@ machine.to_file("~/.xespresso/machines/my_cluster.json")
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='moderate',
+    protocol='moderate',
     machine='my_cluster'
 )
 
