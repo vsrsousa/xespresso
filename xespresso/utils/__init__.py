@@ -170,6 +170,12 @@ def compare_parameters(para1, para2, ignore=[]):
                 changed_parameters.append(section)
             continue
         
+        # Check if section exists in para2
+        if section not in para2["input_data"]:
+            # Section is missing in para2, mark all its parameters as changed
+            changed_parameters.append(section)
+            continue
+        
         if section == "INPUT_NTYP":
             changed_parameters1, igonre_parameters1 = compare_dict(
                 para1["input_data"][section],
