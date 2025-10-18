@@ -8,7 +8,9 @@ import shutil
 import numpy as np
 from pathlib import Path
 from ase.build import bulk
+from ase.io.espresso import kspacing_to_grid
 from xespresso.workflow import CalculationWorkflow, quick_scf, quick_relax, PRESETS
+from xespresso import kpts_from_spacing
 
 
 def test_presets_exist():
@@ -259,6 +261,56 @@ def test_workflow_magnetic_with_hubbard():
     assert 'Fe2' in hubbard_u
     assert hubbard_u['Fe1'] == 4.3
     assert hubbard_u['Fe2'] == 4.3
+
+
+def test_kpts_from_spacing():
+    """Test kpts_from_spacing utility function."""
+    atoms = bulk("Si", cubic=True)
+    
+    # Test that it returns the correct k-points
+    kpts = kpts_from_spacing(atoms, 0.20)
+    assert isinstance(kpts, tuple)
+    assert len(kpts) == 3
+    
+    # Test that it matches manual calculation
+    kpts_manual = kspacing_to_grid(atoms, 0.20 / (2 * np.pi))
+    assert kpts == tuple(kpts_manual)
+    
+    # Test with different k-spacing values
+    kpts1 = kpts_from_spacing(atoms, 0.5)
+    kpts2 = kpts_from_spacing(atoms, 0.3)
+    kpts3 = kpts_from_spacing(atoms, 0.15)
+    
+    # Larger k-spacing should give fewer k-points
+    assert sum(kpts1) < sum(kpts2) < sum(kpts3)
+
+
+def test_kpts_from_spacing_different_structures():
+    """Test kpts_from_spacing with different structures."""
+    si = bulk("Si", cubic=True)
+    fe = bulk("Fe", cubic=True)
+    
+    # Same k-spacing should give different k-points for different structures
+    kpts_si = kpts_from_spacing(si, 0.3)
+    kpts_fe = kpts_from_spacing(fe, 0.3)
+    
+    # Both should be tuples of length 3
+    assert isinstance(kpts_si, tuple) and len(kpts_si) == 3
+    assert isinstance(kpts_fe, tuple) and len(kpts_fe) == 3
+    
+    # Due to different lattice parameters, k-points will differ
+    # (Si has a=5.43 Å, Fe has a=2.87 Å)
+    assert kpts_si != kpts_fe
+
+
+def test_kpts_from_spacing_consistency():
+    """Test that kpts_from_spacing gives consistent results."""
+    atoms = bulk("Si", cubic=True)
+    
+    # Multiple calls with same input should give same output
+    kpts1 = kpts_from_spacing(atoms, 0.25)
+    kpts2 = kpts_from_spacing(atoms, 0.25)
+    assert kpts1 == kpts2
 
 
 # Note: We don't test actual calculation runs here as they require

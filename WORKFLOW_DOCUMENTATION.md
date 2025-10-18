@@ -130,6 +130,33 @@ print(f"K-points: {kpts}")
 The workflow uses ASE's `kspacing_to_grid` function internally to convert k-spacing to k-points. 
 **You don't need to worry about the 2π normalization** - just pass your desired k-spacing in Angstrom^-1.
 
+### Using kpts_from_spacing Outside Workflows
+
+For custom calculation setups outside of workflows, you can use the `kpts_from_spacing` utility function:
+
+```python
+from xespresso import Espresso, kpts_from_spacing
+from ase.build import bulk
+
+atoms = bulk('Si', cubic=True)
+
+# Convert k-spacing to k-points without manual normalization
+kpts = kpts_from_spacing(atoms, 0.20)  # Clean and simple!
+
+# Use in a calculation
+calc = Espresso(
+    pseudopotentials={'Si': 'Si.pbe.UPF'},
+    ecutwfc=50,
+    kpts=kpts,
+    label='scf/silicon'
+)
+
+atoms.calc = calc
+energy = atoms.get_potential_energy()
+```
+
+This is equivalent to manually calling `kspacing_to_grid(atoms, 0.20/(2*np.pi))` but with a cleaner API.
+
 ## Magnetic and Hubbard Support
 
 The workflow seamlessly integrates with xespresso's magnetic configuration and Hubbard parameter functionality.
@@ -375,6 +402,15 @@ Main class for managing calculations.
 
 - `quick_scf(structure, pseudopotentials, quality='moderate', ...)`: Quick SCF calculation
 - `quick_relax(structure, pseudopotentials, quality='moderate', ...)`: Quick relaxation
+
+### K-point Utility Functions
+
+- `kpts_from_spacing(atoms, kspacing)`: Convert k-spacing to k-point grid without manual 2π normalization
+  - **Parameters:**
+    - `atoms`: ASE Atoms object
+    - `kspacing`: K-point spacing in Å⁻¹ (physical units)
+  - **Returns:** Tuple of k-points (kx, ky, kz)
+  - **Example:** `kpts = kpts_from_spacing(atoms, 0.20)`
 
 ### Pseudo Configuration Functions
 
