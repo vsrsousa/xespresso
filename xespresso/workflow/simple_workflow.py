@@ -82,6 +82,8 @@ class CalculationWorkflow:
         input_data: Optional[Dict] = None,
         magnetic_config: Optional[Union[str, Dict]] = None,
         expand_cell: bool = False,
+        queue: Optional[Dict] = None,
+        machine: Optional[str] = None,
         **kwargs
     ):
         """
@@ -102,6 +104,11 @@ class CalculationWorkflow:
                            - Dict: Element-based config, e.g. {'Fe': [1, -1], 'O': [0]}
                            Also supports Hubbard parameters in the dict format
             expand_cell: If True, expand cell to accommodate magnetic configuration
+            queue: Queue configuration dictionary for job submission (local or remote).
+                   This is directly passed to the Espresso calculator.
+            machine: Name of a machine configuration to load from ~/.xespresso/machines/.
+                    If provided, the machine configuration is loaded and converted to a queue dict.
+                    Cannot be used together with 'queue' parameter.
             **kwargs: Additional parameters passed to Espresso calculator
         """
         self.atoms = atoms.copy()  # Work with a copy to avoid modifying original
@@ -109,6 +116,20 @@ class CalculationWorkflow:
         self.quality = quality
         self.extra_kwargs = kwargs
         self.expand_cell = expand_cell
+        
+        # Handle machine and queue configuration
+        if queue is not None and machine is not None:
+            raise ValueError(
+                "Cannot specify both 'queue' and 'machine' parameters. "
+                "Use 'queue' for direct configuration or 'machine' to load from config."
+            )
+        
+        if machine is not None:
+            # Load machine configuration
+            from xespresso.machines import load_machine
+            self.queue = load_machine(machine_name=machine)
+        else:
+            self.queue = queue
         
         # Get preset configuration
         if quality not in PRESETS:
@@ -221,6 +242,8 @@ class CalculationWorkflow:
         input_data: Optional[Dict] = None,
         magnetic_config: Optional[Union[str, Dict]] = None,
         expand_cell: bool = False,
+        queue: Optional[Dict] = None,
+        machine: Optional[str] = None,
         **kwargs
     ) -> 'CalculationWorkflow':
         """
@@ -234,6 +257,8 @@ class CalculationWorkflow:
             input_data: Additional input parameters
             magnetic_config: Magnetic configuration ('ferro', 'antiferro', or element dict)
             expand_cell: If True, expand cell to accommodate magnetic configuration
+            queue: Queue configuration dictionary for job submission
+            machine: Name of a machine configuration to load
             **kwargs: Additional parameters passed to Espresso calculator
             
         Returns:
@@ -241,7 +266,7 @@ class CalculationWorkflow:
         """
         atoms = read(str(cif_file))
         return cls(atoms, pseudopotentials, quality, kspacing, input_data, 
-                   magnetic_config, expand_cell, **kwargs)
+                   magnetic_config, expand_cell, queue, machine, **kwargs)
     
     def _get_kpts(self) -> Union[Tuple[int, int, int], str]:
         """
@@ -287,6 +312,10 @@ class CalculationWorkflow:
         # Add ecutwfc and ecutrho at top level
         params['ecutwfc'] = self.input_data.get('ecutwfc', 50.0)
         params['ecutrho'] = self.input_data.get('ecutrho', 400.0)
+        
+        # Add queue configuration if provided
+        if self.queue is not None:
+            params['queue'] = self.queue
         
         # Merge with extra kwargs
         params.update(self.extra_kwargs)
@@ -334,6 +363,10 @@ class CalculationWorkflow:
         params['ecutwfc'] = self.input_data.get('ecutwfc', 50.0)
         params['ecutrho'] = self.input_data.get('ecutrho', 400.0)
         
+        # Add queue configuration if provided
+        if self.queue is not None:
+            params['queue'] = self.queue
+        
         # Merge with extra kwargs
         params.update(self.extra_kwargs)
         params.update(calc_kwargs)
@@ -367,6 +400,8 @@ def quick_scf(
     kspacing: Optional[float] = None,
     magnetic_config: Optional[Union[str, Dict]] = None,
     expand_cell: bool = False,
+    queue: Optional[Dict] = None,
+    machine: Optional[str] = None,
     **kwargs
 ) -> Espresso:
     """
@@ -380,6 +415,8 @@ def quick_scf(
         kspacing: K-point spacing in Angstrom^-1 (physical units)
         magnetic_config: Magnetic configuration ('ferro', 'antiferro', or element dict)
         expand_cell: If True, expand cell to accommodate magnetic configuration
+        queue: Queue configuration dictionary for job submission (local or remote)
+        machine: Name of a machine configuration to load from ~/.xespresso/machines/
         **kwargs: Additional parameters for the calculator
         
     Returns:
@@ -398,16 +435,25 @@ def quick_scf(
         ...     magnetic_config='antiferro',
         ...     quality='moderate'
         ... )
+        >>> # With remote execution
+        >>> calc = quick_scf(
+        ...     'structure.cif',
+        ...     {'Fe': 'Fe.pbe-spn.UPF'},
+        ...     quality='moderate',
+        ...     machine='cluster1'  # Load from ~/.xespresso/machines/cluster1.json
+        ... )
     """
     if isinstance(structure, (str, Path)):
         workflow = CalculationWorkflow.from_cif(
             structure, pseudopotentials, quality, kspacing, 
-            magnetic_config=magnetic_config, expand_cell=expand_cell, **kwargs
+            magnetic_config=magnetic_config, expand_cell=expand_cell,
+            queue=queue, machine=machine, **kwargs
         )
     else:
         workflow = CalculationWorkflow(
             structure, pseudopotentials, quality, kspacing,
-            magnetic_config=magnetic_config, expand_cell=expand_cell, **kwargs
+            magnetic_config=magnetic_config, expand_cell=expand_cell,
+            queue=queue, machine=machine, **kwargs
         )
     
     return workflow.run_scf(label=label)
@@ -422,6 +468,8 @@ def quick_relax(
     relax_type: str = 'relax',
     magnetic_config: Optional[Union[str, Dict]] = None,
     expand_cell: bool = False,
+    queue: Optional[Dict] = None,
+    machine: Optional[str] = None,
     **kwargs
 ) -> Espresso:
     """
@@ -436,6 +484,8 @@ def quick_relax(
         relax_type: Type of relaxation: 'relax' or 'vc-relax'
         magnetic_config: Magnetic configuration ('ferro', 'antiferro', or element dict)
         expand_cell: If True, expand cell to accommodate magnetic configuration
+        queue: Queue configuration dictionary for job submission (local or remote)
+        machine: Name of a machine configuration to load from ~/.xespresso/machines/
         **kwargs: Additional parameters for the calculator
         
     Returns:
@@ -455,16 +505,25 @@ def quick_relax(
         ...     magnetic_config={'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}},
         ...     quality='accurate'
         ... )
+        >>> # With remote execution on SLURM cluster
+        >>> calc = quick_relax(
+        ...     'structure.cif',
+        ...     {'Fe': 'Fe.pbe-spn.UPF'},
+        ...     quality='moderate',
+        ...     machine='slurm_cluster'  # Load from config
+        ... )
     """
     if isinstance(structure, (str, Path)):
         workflow = CalculationWorkflow.from_cif(
             structure, pseudopotentials, quality, kspacing,
-            magnetic_config=magnetic_config, expand_cell=expand_cell, **kwargs
+            magnetic_config=magnetic_config, expand_cell=expand_cell,
+            queue=queue, machine=machine, **kwargs
         )
     else:
         workflow = CalculationWorkflow(
             structure, pseudopotentials, quality, kspacing,
-            magnetic_config=magnetic_config, expand_cell=expand_cell, **kwargs
+            magnetic_config=magnetic_config, expand_cell=expand_cell,
+            queue=queue, machine=machine, **kwargs
         )
     
     return workflow.run_relax(label=label, relax_type=relax_type)
