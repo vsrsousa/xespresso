@@ -16,6 +16,9 @@ For the introduction of ASE , please visit https://wiki.fysik.dtu.dk/ase/index.h
 * Automatic set up "nscf" calculation
 * Read and plot dos, pdos and layer resolved pdos
 * Plot NEB
+* **NEW: Simplified workflow with quality presets**
+* **NEW: K-spacing support for easy k-point specification**
+* **NEW: Pseudopotential configuration management**
 
 ### Author
 * Xing Wang  <xingwang1991@gmail.com>
@@ -46,6 +49,63 @@ export ESPRESSO_PSEUDO="/path/to/pseudo"
 
 
 ### Examples
+
+#### Simplified Workflow (NEW!)
+
+**🚀 NEW: Easy calculations with quality presets and k-spacing**
+
+Run calculations from CIF files with quality presets (`fast`, `moderate`, `accurate`):
+
+``` python
+from xespresso import quick_scf, quick_relax
+
+# Quick SCF calculation from CIF file
+calc = quick_scf(
+    'structure.cif',
+    {'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    label='scf/fe'
+)
+
+# Quick relaxation with k-spacing (instead of k-points)
+calc = quick_relax(
+    'structure.cif',
+    {'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    kspacing=0.3,  # Angstrom^-1, converted automatically
+    relax_type='vc-relax',
+    label='relax/fe'
+)
+```
+
+**Quality Presets:**
+- `fast`: Quick calculations for testing (ecutwfc=30 Ry, kspacing=0.5)
+- `moderate`: Standard production runs (ecutwfc=50 Ry, kspacing=0.3)
+- `accurate`: High-precision results (ecutwfc=80 Ry, kspacing=0.15)
+
+**Pseudopotential Configuration Management:**
+
+Store and reuse pseudopotential configurations:
+
+``` python
+from xespresso.utils import save_pseudo_config, load_pseudo_config
+
+# Save configuration to ~/.xespresso/
+config = {
+    "name": "my_config",
+    "pseudopotentials": {
+        "Fe": "Fe.pbe-spn.UPF",
+        "O": "O.pbe.UPF"
+    }
+}
+save_pseudo_config("my_config", config)
+
+# Load and use
+config = load_pseudo_config("my_config")
+calc = quick_scf('structure.cif', config['pseudopotentials'], quality='moderate')
+```
+
+See [WORKFLOW_DOCUMENTATION.md](WORKFLOW_DOCUMENTATION.md) for complete documentation.
 
 #### Automatic submit job
 
