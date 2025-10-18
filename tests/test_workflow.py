@@ -49,24 +49,24 @@ def test_workflow_initialization():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate'
+        protocol='moderate'
     )
     
     assert workflow.atoms is not None
     assert workflow.pseudopotentials == pseudopotentials
-    assert workflow.quality == 'moderate'
+    assert workflow.protocol == 'moderate'
 
 
 def test_workflow_invalid_quality():
-    """Test that invalid quality raises an error."""
+    """Test that invalid protocol raises an error."""
     atoms = bulk("Si", cubic=True)
     pseudopotentials = {"Si": "Si.pbe-n-rrkjus_psl.1.0.0.UPF"}
     
-    with pytest.raises(ValueError, match="Quality must be one of"):
+    with pytest.raises(ValueError, match="Protocol must be one of"):
         CalculationWorkflow(
             atoms=atoms,
             pseudopotentials=pseudopotentials,
-            quality='invalid'
+            protocol='invalid'
         )
 
 
@@ -79,7 +79,7 @@ def test_workflow_kspacing():
     workflow1 = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate'
+        protocol='moderate'
     )
     kpts1 = workflow1._get_kpts()
     assert isinstance(kpts1, tuple)
@@ -90,7 +90,7 @@ def test_workflow_kspacing():
     workflow2 = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate',
+        protocol='moderate',
         kspacing=0.5  # Larger spacing = fewer k-points
     )
     kpts2 = workflow2._get_kpts()
@@ -110,18 +110,18 @@ def test_workflow_get_preset_info():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='fast',
+        protocol='fast',
         kspacing=0.4
     )
     
     info = workflow.get_preset_info()
     
-    assert 'quality' in info
+    assert 'protocol' in info
     assert 'preset' in info
     assert 'kpts' in info
     assert 'kspacing' in info
     
-    assert info['quality'] == 'fast'
+    assert info['protocol'] == 'fast'
     assert info['kspacing'] == 0.4
 
 
@@ -138,7 +138,7 @@ def test_workflow_input_data_merge():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate',
+        protocol='moderate',
         input_data=custom_input
     )
     
@@ -176,7 +176,7 @@ def test_workflow_from_atoms_object():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate'
+        protocol='moderate'
     )
     
     # Workflow makes a copy to avoid modifying the original
@@ -193,7 +193,7 @@ def test_workflow_magnetic_ferro():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate',
+        protocol='moderate',
         magnetic_config='ferro'
     )
     
@@ -209,7 +209,7 @@ def test_workflow_magnetic_antiferro():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate',
+        protocol='moderate',
         magnetic_config='antiferro'
     )
     
@@ -228,7 +228,7 @@ def test_workflow_magnetic_element_based():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate',
+        protocol='moderate',
         magnetic_config={'Fe': [1, -1]}
     )
     
@@ -247,7 +247,7 @@ def test_workflow_magnetic_with_hubbard():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='accurate',
+        protocol='accurate',
         magnetic_config={'Fe': {'mag': [1, -1], 'U': 4.3}}
     )
     
@@ -327,7 +327,7 @@ def test_workflow_with_queue():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate',
+        protocol='moderate',
         queue=queue
     )
     
@@ -350,7 +350,7 @@ def test_workflow_queue_and_machine_conflict():
         CalculationWorkflow(
             atoms=atoms,
             pseudopotentials=pseudopotentials,
-            quality='moderate',
+            protocol='moderate',
             queue=queue,
             machine='cluster1'
         )
@@ -372,7 +372,7 @@ def test_quick_scf_with_queue():
         workflow = CalculationWorkflow(
             atoms=atoms,
             pseudopotentials=pseudopotentials,
-            quality='moderate',
+            protocol='moderate',
             queue=queue
         )
         assert workflow.queue == queue
@@ -397,7 +397,7 @@ def test_quick_relax_with_queue():
         workflow = CalculationWorkflow(
             atoms=atoms,
             pseudopotentials=pseudopotentials,
-            quality='moderate',
+            protocol='moderate',
             queue=queue
         )
         assert workflow.queue == queue
@@ -415,7 +415,7 @@ def test_workflow_none_queue():
     workflow = CalculationWorkflow(
         atoms=atoms,
         pseudopotentials=pseudopotentials,
-        quality='moderate'
+        protocol='moderate'
     )
     
     # Queue should be None when not specified

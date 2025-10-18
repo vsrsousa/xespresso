@@ -24,7 +24,7 @@ pseudopotentials = {"Si": "Si.pbe-n-rrkjus_psl.1.0.0.UPF"}
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='fast'
+    protocol='fast'
 )
 
 print("\nPreset information:")
@@ -49,7 +49,7 @@ print("="*60)
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='moderate',
+    protocol='moderate',
     kspacing=0.3  # Angstrom^-1
 )
 
@@ -69,14 +69,14 @@ print("="*60)
 workflow_fast = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='fast'
+    protocol='fast'
 )
 
 # Accurate relaxation for final structure
 workflow_accurate = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='accurate'
+    protocol='accurate'
 )
 
 print("\nFast preset:")
@@ -102,7 +102,7 @@ print("="*60)
 #     atoms,
 #     pseudopotentials,
 #     label='scf/silicon-quick',
-#     quality='moderate'
+#     protocol='moderate'
 # )
 
 # Quick relaxation
@@ -110,7 +110,7 @@ print("="*60)
 #     atoms,
 #     pseudopotentials,
 #     label='relax/silicon-quick',
-#     quality='moderate',
+#     protocol='moderate',
 #     relax_type='vc-relax'  # relax cell and ions
 # )
 
@@ -126,7 +126,7 @@ print("="*60)
 # workflow = CalculationWorkflow.from_cif(
 #     'structure.cif',
 #     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
-#     quality='moderate'
+#     protocol='moderate'
 # )
 # calc = workflow.run_scf(label='scf/from-cif')
 
@@ -134,7 +134,7 @@ print("="*60)
 # calc = quick_scf(
 #     'structure.cif',
 #     {'Fe': 'Fe.pbe-spn.UPF'},
-#     quality='fast'
+#     protocol='fast'
 # )
 
 print("Workflows can be created directly from CIF files")

@@ -16,7 +16,7 @@ from xespresso.tools import setup_magnetic_config
 from xespresso.machines import load_machine
 
 
-# Preset configurations for different calculation qualities
+# Preset configurations for different calculation protocols
 PRESETS = {
     'fast': {
         'ecutwfc': 30.0,
@@ -51,7 +51,7 @@ class CalculationWorkflow:
     
     This class provides an easy interface for:
     - Reading structures from CIF files
-    - Setting up calculations with quality presets
+    - Setting up calculations with protocol presets
     - Running SCF or relaxation calculations
     - Using k-spacing instead of explicit k-points
     
@@ -60,7 +60,7 @@ class CalculationWorkflow:
         >>> workflow = CalculationWorkflow.from_cif(
         ...     'structure.cif',
         ...     pseudopotentials={'Si': 'Si.pbe.UPF'},
-        ...     quality='moderate'
+        ...     protocol='moderate'
         ... )
         >>> workflow.run_scf(label='scf/silicon')
         
@@ -68,7 +68,7 @@ class CalculationWorkflow:
         >>> workflow = CalculationWorkflow.from_cif(
         ...     'structure.cif',
         ...     pseudopotentials={'Si': 'Si.pbe.UPF'},
-        ...     quality='fast',
+        ...     protocol='fast',
         ...     kspacing=0.4
         ... )
         >>> workflow.run_relax(label='relax/silicon')
@@ -78,7 +78,7 @@ class CalculationWorkflow:
         self,
         atoms: Atoms,
         pseudopotentials: Dict[str, str],
-        quality: str = 'moderate',
+        protocol: str = 'moderate',
         kspacing: Optional[float] = None,
         input_data: Optional[Dict] = None,
         magnetic_config: Optional[Union[str, Dict]] = None,
@@ -93,7 +93,7 @@ class CalculationWorkflow:
         Args:
             atoms: ASE Atoms object representing the structure
             pseudopotentials: Dictionary mapping element symbols to pseudopotential files
-            quality: Quality preset: 'fast', 'moderate', or 'accurate'
+            protocol: Protocol preset: 'fast', 'moderate', or 'accurate'
             kspacing: K-point spacing in Angstrom^-1 (physical units). If None, uses preset value.
                      The workflow automatically handles the 2π normalization when converting to k-points.
                      Example: kspacing=0.20 will give the same k-points as
@@ -114,7 +114,7 @@ class CalculationWorkflow:
         """
         self.atoms = atoms.copy()  # Work with a copy to avoid modifying original
         self.original_pseudopotentials = pseudopotentials
-        self.quality = quality
+        self.protocol = protocol
         self.extra_kwargs = kwargs
         self.expand_cell = expand_cell
         
@@ -132,12 +132,12 @@ class CalculationWorkflow:
             self.queue = queue
         
         # Get preset configuration
-        if quality not in PRESETS:
+        if protocol not in PRESETS:
             raise ValueError(
-                f"Quality must be one of {list(PRESETS.keys())}, got '{quality}'"
+                f"Protocol must be one of {list(PRESETS.keys())}, got '{protocol}'"
             )
         
-        self.preset = PRESETS[quality].copy()
+        self.preset = PRESETS[protocol].copy()
         
         # Override k-spacing if provided
         if kspacing is not None:
@@ -237,7 +237,7 @@ class CalculationWorkflow:
         cls,
         cif_file: Union[str, Path],
         pseudopotentials: Dict[str, str],
-        quality: str = 'moderate',
+        protocol: str = 'moderate',
         kspacing: Optional[float] = None,
         input_data: Optional[Dict] = None,
         magnetic_config: Optional[Union[str, Dict]] = None,
@@ -252,7 +252,7 @@ class CalculationWorkflow:
         Args:
             cif_file: Path to CIF file
             pseudopotentials: Dictionary mapping element symbols to pseudopotential files
-            quality: Quality preset: 'fast', 'moderate', or 'accurate'
+            protocol: Protocol preset: 'fast', 'moderate', or 'accurate'
             kspacing: K-point spacing in Angstrom^-1 (physical units)
             input_data: Additional input parameters
             magnetic_config: Magnetic configuration ('ferro', 'antiferro', or element dict)
@@ -265,7 +265,7 @@ class CalculationWorkflow:
             CalculationWorkflow: Initialized workflow object
         """
         atoms = read(str(cif_file))
-        return cls(atoms, pseudopotentials, quality, kspacing, input_data, 
+        return cls(atoms, pseudopotentials, protocol, kspacing, input_data, 
                    magnetic_config, expand_cell, queue, machine, **kwargs)
     
     def _get_kpts(self) -> Union[Tuple[int, int, int], str]:
@@ -383,9 +383,9 @@ class CalculationWorkflow:
         return self.atoms
     
     def get_preset_info(self) -> Dict:
-        """Get information about the current quality preset."""
+        """Get information about the current protocol preset."""
         return {
-            'quality': self.quality,
+            'protocol': self.protocol,
             'preset': self.preset,
             'kpts': self._get_kpts(),
             'kspacing': self.kspacing,
@@ -396,7 +396,7 @@ def quick_scf(
     structure: Union[str, Path, Atoms],
     pseudopotentials: Dict[str, str],
     label: str = 'scf',
-    quality: str = 'moderate',
+    protocol: str = 'moderate',
     kspacing: Optional[float] = None,
     magnetic_config: Optional[Union[str, Dict]] = None,
     expand_cell: bool = False,
@@ -411,7 +411,7 @@ def quick_scf(
         structure: CIF file path or ASE Atoms object
         pseudopotentials: Dictionary mapping element symbols to pseudopotential files
         label: Directory/label for the calculation
-        quality: Quality preset: 'fast', 'moderate', or 'accurate'
+        protocol: Protocol preset: 'fast', 'moderate', or 'accurate'
         kspacing: K-point spacing in Angstrom^-1 (physical units)
         magnetic_config: Magnetic configuration ('ferro', 'antiferro', or element dict)
         expand_cell: If True, expand cell to accommodate magnetic configuration
@@ -426,32 +426,32 @@ def quick_scf(
         >>> calc = quick_scf(
         ...     'structure.cif',
         ...     {'Si': 'Si.pbe.UPF'},
-        ...     quality='fast'
+        ...     protocol='fast'
         ... )
         >>> # With magnetic configuration
         >>> calc = quick_scf(
         ...     atoms,
         ...     {'Fe': 'Fe.pbe-spn.UPF'},
         ...     magnetic_config='antiferro',
-        ...     quality='moderate'
+        ...     protocol='moderate'
         ... )
         >>> # With remote execution
         >>> calc = quick_scf(
         ...     'structure.cif',
         ...     {'Fe': 'Fe.pbe-spn.UPF'},
-        ...     quality='moderate',
+        ...     protocol='moderate',
         ...     machine='cluster1'  # Load from ~/.xespresso/machines/cluster1.json
         ... )
     """
     if isinstance(structure, (str, Path)):
         workflow = CalculationWorkflow.from_cif(
-            structure, pseudopotentials, quality, kspacing, 
+            structure, pseudopotentials, protocol, kspacing, 
             magnetic_config=magnetic_config, expand_cell=expand_cell,
             queue=queue, machine=machine, **kwargs
         )
     else:
         workflow = CalculationWorkflow(
-            structure, pseudopotentials, quality, kspacing,
+            structure, pseudopotentials, protocol, kspacing,
             magnetic_config=magnetic_config, expand_cell=expand_cell,
             queue=queue, machine=machine, **kwargs
         )
@@ -463,7 +463,7 @@ def quick_relax(
     structure: Union[str, Path, Atoms],
     pseudopotentials: Dict[str, str],
     label: str = 'relax',
-    quality: str = 'moderate',
+    protocol: str = 'moderate',
     kspacing: Optional[float] = None,
     relax_type: str = 'relax',
     magnetic_config: Optional[Union[str, Dict]] = None,
@@ -479,7 +479,7 @@ def quick_relax(
         structure: CIF file path or ASE Atoms object
         pseudopotentials: Dictionary mapping element symbols to pseudopotential files
         label: Directory/label for the calculation
-        quality: Quality preset: 'fast', 'moderate', or 'accurate'
+        protocol: Protocol preset: 'fast', 'moderate', or 'accurate'
         kspacing: K-point spacing in Angstrom^-1 (physical units)
         relax_type: Type of relaxation: 'relax' or 'vc-relax'
         magnetic_config: Magnetic configuration ('ferro', 'antiferro', or element dict)
@@ -495,7 +495,7 @@ def quick_relax(
         >>> calc = quick_relax(
         ...     'structure.cif',
         ...     {'Si': 'Si.pbe.UPF'},
-        ...     quality='moderate',
+        ...     protocol='moderate',
         ...     relax_type='vc-relax'
         ... )
         >>> # With Hubbard parameters
@@ -503,25 +503,25 @@ def quick_relax(
         ...     atoms,
         ...     {'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
         ...     magnetic_config={'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}},
-        ...     quality='accurate'
+        ...     protocol='accurate'
         ... )
         >>> # With remote execution on SLURM cluster
         >>> calc = quick_relax(
         ...     'structure.cif',
         ...     {'Fe': 'Fe.pbe-spn.UPF'},
-        ...     quality='moderate',
+        ...     protocol='moderate',
         ...     machine='slurm_cluster'  # Load from config
         ... )
     """
     if isinstance(structure, (str, Path)):
         workflow = CalculationWorkflow.from_cif(
-            structure, pseudopotentials, quality, kspacing,
+            structure, pseudopotentials, protocol, kspacing,
             magnetic_config=magnetic_config, expand_cell=expand_cell,
             queue=queue, machine=machine, **kwargs
         )
     else:
         workflow = CalculationWorkflow(
-            structure, pseudopotentials, quality, kspacing,
+            structure, pseudopotentials, protocol, kspacing,
             magnetic_config=magnetic_config, expand_cell=expand_cell,
             queue=queue, machine=machine, **kwargs
         )

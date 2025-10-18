@@ -1,10 +1,10 @@
 # Simplified Workflow for Quantum ESPRESSO Calculations
 
-This document describes the new simplified workflow system in xespresso that makes it easy to run common calculations with quality presets and k-spacing support.
+This document describes the new simplified workflow system in xespresso that makes it easy to run common calculations with protocol presets and k-spacing support.
 
 ## Features
 
-- **Quality Presets**: Choose between `fast`, `moderate`, and `accurate` calculations
+- **Protocol Presets**: Choose between `fast`, `moderate`, and `accurate` calculations
 - **K-spacing Support**: Use k-point spacing instead of explicit k-meshes
 - **CIF File Support**: Create workflows directly from CIF files
 - **Pseudopotential Management**: Store and manage pseudopotential configurations in JSON format
@@ -29,7 +29,7 @@ from xespresso import quick_scf
 calc = quick_scf(
     'structure.cif',
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     label='scf/fe'
 )
 
@@ -46,7 +46,7 @@ from xespresso import quick_relax
 calc = quick_relax(
     'structure.cif',
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     relax_type='vc-relax',  # relax both cell and ions
     label='relax/fe'
 )
@@ -54,9 +54,9 @@ calc = quick_relax(
 relaxed_atoms = calc.results['atoms']
 ```
 
-## Quality Presets
+## Protocol Presets
 
-Three quality presets are available:
+Three protocol presets are available:
 
 ### Fast
 - **ecutwfc**: 30.0 Ry
@@ -94,7 +94,7 @@ atoms = read('structure.cif')
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Si': 'Si.pbe.UPF'},
-    quality='moderate',
+    protocol='moderate',
     kspacing=0.3  # Optional: override preset k-spacing
 )
 
@@ -118,7 +118,7 @@ import numpy as np
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='moderate',
+    protocol='moderate',
     kspacing=0.20  # Just pass the physical value - no need for /(2*np.pi)!
 )
 
@@ -170,7 +170,7 @@ from xespresso import CalculationWorkflow
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     magnetic_config='ferro'  # or 'ferromagnetic'
 )
 
@@ -178,7 +178,7 @@ workflow = CalculationWorkflow(
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     magnetic_config='antiferro'  # or 'antiferromagnetic'
 )
 ```
@@ -190,7 +190,7 @@ workflow = CalculationWorkflow(
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
-    quality='moderate',
+    protocol='moderate',
     magnetic_config={
         'Fe': [1, -1],  # Two non-equivalent Fe atoms (AFM)
         'O': [0]        # Non-magnetic oxygen
@@ -201,7 +201,7 @@ workflow = CalculationWorkflow(
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     magnetic_config={'Fe': [1, 1, -1, -1]},  # Need 4 Fe but only have 2
     expand_cell=True  # Automatically expands the cell
 )
@@ -214,7 +214,7 @@ workflow = CalculationWorkflow(
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
-    quality='accurate',
+    protocol='accurate',
     magnetic_config={
         'Fe': {'mag': [1, -1], 'U': 4.3}  # AFM with Hubbard U
     }
@@ -224,7 +224,7 @@ workflow = CalculationWorkflow(
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
-    quality='accurate',
+    protocol='accurate',
     magnetic_config={
         'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}},  # U on Fe-3d orbital
         'O': {'mag': [0]}
@@ -236,7 +236,7 @@ workflow = CalculationWorkflow(
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
-    quality='accurate',
+    protocol='accurate',
     magnetic_config={
         'Fe': {
             'mag': [1],
@@ -259,7 +259,7 @@ calc = quick_scf(
     'structure.cif',
     {'Fe': 'Fe.pbe-spn.UPF'},
     magnetic_config='antiferro',
-    quality='moderate'
+    protocol='moderate'
 )
 
 # Quick relaxation with Hubbard parameters
@@ -267,7 +267,7 @@ calc = quick_relax(
     atoms,
     {'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
     magnetic_config={'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}},
-    quality='accurate',
+    protocol='accurate',
     relax_type='vc-relax'
 )
 ```
@@ -311,7 +311,7 @@ config = load_pseudo_config("pbe_efficiency")
 calc = quick_scf(
     'structure.cif',
     config['pseudopotentials'],
-    quality='moderate'
+    protocol='moderate'
 )
 ```
 
@@ -349,7 +349,7 @@ from xespresso import quick_scf, CalculationWorkflow
 calc = quick_scf(
     'structure.cif',
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     machine='cluster1',  # Load from ~/.xespresso/machines/cluster1.json
     label='scf/fe-remote'
 )
@@ -374,7 +374,7 @@ queue = {
 calc = quick_scf(
     'structure.cif',
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     queue=queue,
     label='scf/fe-remote'
 )
@@ -418,7 +418,7 @@ from xespresso import CalculationWorkflow
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     machine='my_cluster'  # References the saved configuration
 )
 
@@ -452,7 +452,7 @@ queue = {
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials={'Si': 'Si.pbe.UPF'},
-    quality='moderate',
+    protocol='moderate',
     queue=queue
 )
 
@@ -497,7 +497,7 @@ For SLURM clusters, the workflow:
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudos,
-    quality='accurate',
+    protocol='accurate',
     machine='slurm_cluster'
 )
 
@@ -514,7 +514,7 @@ All workflow features work seamlessly with remote execution:
 calc = quick_scf(
     atoms,
     {'Fe': 'Fe.pbe-spn.UPF'},
-    quality='moderate',
+    protocol='moderate',
     magnetic_config='antiferro',
     machine='cluster1'
 )
@@ -525,7 +525,7 @@ calc = quick_scf(
 calc = quick_scf(
     atoms,
     {'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
-    quality='accurate',
+    protocol='accurate',
     magnetic_config={'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}},
     machine='cluster1'
 )
@@ -536,7 +536,7 @@ calc = quick_scf(
 calc = quick_relax(
     'structure.cif',
     {'Si': 'Si.pbe.UPF'},
-    quality='moderate',
+    protocol='moderate',
     kspacing=0.2,
     machine='cluster1',
     relax_type='vc-relax'
@@ -559,7 +559,7 @@ local_queue = {
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudos,
-    quality='fast',
+    protocol='fast',
     queue=local_queue
 )
 
@@ -575,7 +575,7 @@ The workflow validates configurations to prevent common errors:
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudos,
-    quality='moderate',
+    protocol='moderate',
     queue=queue_config,      # ❌ 
     machine='cluster1'       # ❌
 )  # Raises ValueError
@@ -584,7 +584,7 @@ workflow = CalculationWorkflow(
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudos,
-    quality='moderate',
+    protocol='moderate',
     machine='cluster1'       # ✓
 )
 ```
@@ -601,7 +601,7 @@ The workflow provides clear error messages for common issues:
 ### Best Practices
 
 1. **Use machine configurations** for regular clusters
-2. **Test locally first** with 'fast' quality preset
+2. **Test locally first** with 'fast' protocol preset
 3. **Check pseudopotential paths** before remote submission
 4. **Monitor first job** to ensure configuration is correct
 5. **Clean up connections** at program exit (optional):
@@ -626,7 +626,7 @@ You can override any preset parameter or add custom ones:
 workflow = CalculationWorkflow(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    quality='moderate',
+    protocol='moderate',
     input_data={
         'mixing_beta': 0.9,  # Override preset
         'nspin': 2,          # Add magnetic calculation
@@ -664,7 +664,7 @@ Main class for managing calculations.
 **Constructor Parameters:**
 - `atoms`: ASE Atoms object
 - `pseudopotentials`: Dict mapping elements to pseudopotential files
-- `quality`: Quality preset ('fast', 'moderate', 'accurate')
+- `quality`: Protocol preset ('fast', 'moderate', 'accurate')
 - `kspacing`: K-point spacing in Å⁻¹ (optional)
 - `input_data`: Additional input parameters (optional)
 - `magnetic_config`: Magnetic configuration (optional)
@@ -684,9 +684,9 @@ Main class for managing calculations.
 
 ### Quick Functions
 
-- `quick_scf(structure, pseudopotentials, quality='moderate', ...)`: Quick SCF calculation
+- `quick_scf(structure, pseudopotentials, protocol='moderate', ...)`: Quick SCF calculation
   - Additional parameters: `kspacing`, `magnetic_config`, `expand_cell`, `queue`, `machine`, `label`
-- `quick_relax(structure, pseudopotentials, quality='moderate', ...)`: Quick relaxation
+- `quick_relax(structure, pseudopotentials, protocol='moderate', ...)`: Quick relaxation
   - Additional parameters: `kspacing`, `magnetic_config`, `expand_cell`, `queue`, `machine`, `label`, `relax_type`
 
 ### K-point Utility Functions
