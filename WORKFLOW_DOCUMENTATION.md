@@ -336,6 +336,286 @@ print(f"Fe pseudopotential: {pseudo}")
 delete_pseudo_config("old_config")
 ```
 
+## Remote Job Execution
+
+The workflow system fully supports remote job execution on HPC clusters with SLURM or direct execution. This allows you to run calculations on remote machines with the same simple API as local execution.
+
+### Quick Start with Remote Execution
+
+```python
+from xespresso import quick_scf, CalculationWorkflow
+
+# Option 1: Use a machine configuration
+calc = quick_scf(
+    'structure.cif',
+    {'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    machine='cluster1',  # Load from ~/.xespresso/machines/cluster1.json
+    label='scf/fe-remote'
+)
+
+# Option 2: Direct queue configuration
+queue = {
+    "execution": "remote",
+    "scheduler": "slurm",
+    "remote_host": "cluster.university.edu",
+    "remote_user": "username",
+    "remote_dir": "/home/username/calculations",
+    "remote_auth": {
+        "method": "key",
+        "ssh_key": "~/.ssh/id_rsa"
+    },
+    "nodes": 1,
+    "ntasks-per-node": 16,
+    "time": "02:00:00",
+    "partition": "compute"
+}
+
+calc = quick_scf(
+    'structure.cif',
+    {'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    queue=queue,
+    label='scf/fe-remote'
+)
+```
+
+### Machine Configuration Approach (Recommended)
+
+The recommended way to use remote execution is to create machine configuration files:
+
+**1. Create a machine configuration:**
+
+```python
+from xespresso.machines import Machine
+
+machine = Machine(
+    name="my_cluster",
+    execution="remote",
+    scheduler="slurm",
+    workdir="/home/user/calculations",
+    host="cluster.university.edu",
+    username="user",
+    auth={"method": "key", "ssh_key": "~/.ssh/id_rsa"},
+    nprocs=32,
+    resources={
+        "nodes": 2,
+        "ntasks-per-node": 16,
+        "time": "04:00:00",
+        "partition": "compute"
+    }
+)
+
+# Save for reuse
+machine.to_file("~/.xespresso/machines/my_cluster.json")
+```
+
+**2. Use in workflows:**
+
+```python
+from xespresso import CalculationWorkflow
+
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    machine='my_cluster'  # References the saved configuration
+)
+
+# Run calculations remotely
+calc = workflow.run_scf(label='scf/fe')
+calc = workflow.run_relax(label='relax/fe', relax_type='vc-relax')
+```
+
+### Direct Queue Configuration
+
+For one-off calculations or testing, you can pass the queue configuration directly:
+
+```python
+from xespresso import CalculationWorkflow
+
+queue = {
+    "execution": "remote",
+    "scheduler": "slurm",
+    "remote_host": "cluster.edu",
+    "remote_user": "username",
+    "remote_dir": "/scratch/calculations",
+    "remote_auth": {
+        "method": "key",
+        "ssh_key": "~/.ssh/id_rsa"
+    },
+    "nodes": 1,
+    "ntasks-per-node": 16,
+    "time": "02:00:00"
+}
+
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials={'Si': 'Si.pbe.UPF'},
+    quality='moderate',
+    queue=queue
+)
+
+calc = workflow.run_scf(label='scf/si')
+```
+
+### Remote Execution Features
+
+#### Automatic File Transfer
+
+The workflow automatically handles:
+- **Input files**: Transferred to remote machine before calculation
+- **Pseudopotentials**: Automatically located and transferred
+- **Job scripts**: Generated and transferred based on scheduler
+- **Output files**: Retrieved after calculation completes
+
+#### Connection Persistence
+
+SSH connections are automatically cached and reused:
+- First calculation to a machine creates a new connection
+- Subsequent calculations reuse the existing connection
+- Connections are identified by `(hostname, username)`
+- No manual connection management required
+
+```python
+# All three calculations use the same SSH connection
+calc1 = quick_scf(atoms1, pseudos, machine='cluster1', label='scf/1')
+calc2 = quick_scf(atoms2, pseudos, machine='cluster1', label='scf/2')
+calc3 = quick_scf(atoms3, pseudos, machine='cluster1', label='scf/3')
+```
+
+#### SLURM Integration
+
+For SLURM clusters, the workflow:
+- Generates appropriate SLURM job scripts
+- Submits jobs with `sbatch`
+- Monitors job status with `squeue`
+- Waits for completion before retrieving results
+- Handles job failures gracefully
+
+```python
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials=pseudos,
+    quality='accurate',
+    machine='slurm_cluster'
+)
+
+# Job is submitted, monitored, and results retrieved automatically
+calc = workflow.run_relax(label='relax/structure', relax_type='vc-relax')
+```
+
+### Combining Remote Execution with Other Features
+
+All workflow features work seamlessly with remote execution:
+
+**Remote + Magnetic Configurations:**
+```python
+calc = quick_scf(
+    atoms,
+    {'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    magnetic_config='antiferro',
+    machine='cluster1'
+)
+```
+
+**Remote + Hubbard Parameters:**
+```python
+calc = quick_scf(
+    atoms,
+    {'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
+    quality='accurate',
+    magnetic_config={'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}},
+    machine='cluster1'
+)
+```
+
+**Remote + Custom K-spacing:**
+```python
+calc = quick_relax(
+    'structure.cif',
+    {'Si': 'Si.pbe.UPF'},
+    quality='moderate',
+    kspacing=0.2,
+    machine='cluster1',
+    relax_type='vc-relax'
+)
+```
+
+### Local SLURM Execution
+
+You can also use SLURM on your local machine (if available):
+
+```python
+local_queue = {
+    "execution": "local",
+    "scheduler": "slurm",
+    "nodes": 1,
+    "ntasks-per-node": 4,
+    "time": "00:30:00"
+}
+
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials=pseudos,
+    quality='fast',
+    queue=local_queue
+)
+
+calc = workflow.run_scf(label='scf/local-slurm')
+```
+
+### Configuration Validation
+
+The workflow validates configurations to prevent common errors:
+
+```python
+# ERROR: Cannot specify both 'queue' and 'machine'
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials=pseudos,
+    quality='moderate',
+    queue=queue_config,      # ❌ 
+    machine='cluster1'       # ❌
+)  # Raises ValueError
+
+# CORRECT: Use one or the other
+workflow = CalculationWorkflow(
+    atoms=atoms,
+    pseudopotentials=pseudos,
+    quality='moderate',
+    machine='cluster1'       # ✓
+)
+```
+
+### Error Handling
+
+The workflow provides clear error messages for common issues:
+
+- **Missing pseudopotentials**: Lists which files are missing
+- **Connection failures**: Reports authentication or network issues  
+- **Job failures**: Reports SLURM job status and errors
+- **File transfer errors**: Retries with exponential backoff
+
+### Best Practices
+
+1. **Use machine configurations** for regular clusters
+2. **Test locally first** with 'fast' quality preset
+3. **Check pseudopotential paths** before remote submission
+4. **Monitor first job** to ensure configuration is correct
+5. **Clean up connections** at program exit (optional):
+   ```python
+   from xespresso.schedulers.remote_mixin import RemoteExecutionMixin
+   RemoteExecutionMixin.close_all_connections()
+   ```
+
+### See Also
+
+- [Machine Configuration Guide](docs/MACHINE_CONFIGURATION.md) - Creating machine configs
+- [Remote Connection Persistence](docs/REMOTE_CONNECTION_PERSISTENCE.md) - Connection management
+- [Examples](examples/workflow_remote_execution.py) - Complete remote execution examples
+
 ## Advanced Usage
 
 ### Custom Input Parameters
@@ -387,6 +667,10 @@ Main class for managing calculations.
 - `quality`: Quality preset ('fast', 'moderate', 'accurate')
 - `kspacing`: K-point spacing in Å⁻¹ (optional)
 - `input_data`: Additional input parameters (optional)
+- `magnetic_config`: Magnetic configuration (optional)
+- `expand_cell`: Expand cell for magnetic config (optional)
+- `queue`: Queue configuration dict for job submission (optional)
+- `machine`: Name of machine configuration to load (optional)
 - `**kwargs`: Additional parameters for Espresso calculator
 
 **Methods:**
@@ -401,7 +685,9 @@ Main class for managing calculations.
 ### Quick Functions
 
 - `quick_scf(structure, pseudopotentials, quality='moderate', ...)`: Quick SCF calculation
+  - Additional parameters: `kspacing`, `magnetic_config`, `expand_cell`, `queue`, `machine`, `label`
 - `quick_relax(structure, pseudopotentials, quality='moderate', ...)`: Quick relaxation
+  - Additional parameters: `kspacing`, `magnetic_config`, `expand_cell`, `queue`, `machine`, `label`, `relax_type`
 
 ### K-point Utility Functions
 

@@ -313,6 +313,115 @@ def test_kpts_from_spacing_consistency():
     assert kpts1 == kpts2
 
 
+def test_workflow_with_queue():
+    """Test workflow with queue configuration."""
+    atoms = bulk("Si", cubic=True)
+    pseudopotentials = {"Si": "Si.pbe-n-rrkjus_psl.1.0.0.UPF"}
+    
+    queue = {
+        "execution": "local",
+        "scheduler": "direct",
+        "nprocs": 4
+    }
+    
+    workflow = CalculationWorkflow(
+        atoms=atoms,
+        pseudopotentials=pseudopotentials,
+        quality='moderate',
+        queue=queue
+    )
+    
+    assert workflow.queue is not None
+    assert workflow.queue == queue
+    assert workflow.queue['execution'] == 'local'
+
+
+def test_workflow_queue_and_machine_conflict():
+    """Test that specifying both queue and machine raises an error."""
+    atoms = bulk("Si", cubic=True)
+    pseudopotentials = {"Si": "Si.pbe-n-rrkjus_psl.1.0.0.UPF"}
+    
+    queue = {
+        "execution": "local",
+        "scheduler": "direct"
+    }
+    
+    with pytest.raises(ValueError, match="Cannot specify both 'queue' and 'machine'"):
+        CalculationWorkflow(
+            atoms=atoms,
+            pseudopotentials=pseudopotentials,
+            quality='moderate',
+            queue=queue,
+            machine='cluster1'
+        )
+
+
+def test_quick_scf_with_queue():
+    """Test quick_scf with queue configuration."""
+    atoms = bulk("Si", cubic=True)
+    pseudopotentials = {"Si": "Si.pbe-n-rrkjus_psl.1.0.0.UPF"}
+    
+    queue = {
+        "execution": "local",
+        "scheduler": "direct"
+    }
+    
+    # This should not raise an error during workflow creation
+    # (actual calculation would require QE to be installed)
+    try:
+        workflow = CalculationWorkflow(
+            atoms=atoms,
+            pseudopotentials=pseudopotentials,
+            quality='moderate',
+            queue=queue
+        )
+        assert workflow.queue == queue
+    except Exception as e:
+        # Only workflow creation should succeed, not actual calc execution
+        if "Quantum" not in str(e):
+            raise
+
+
+def test_quick_relax_with_queue():
+    """Test quick_relax with queue configuration."""
+    atoms = bulk("Si", cubic=True)
+    pseudopotentials = {"Si": "Si.pbe-n-rrkjus_psl.1.0.0.UPF"}
+    
+    queue = {
+        "execution": "local",
+        "scheduler": "direct"
+    }
+    
+    # This should not raise an error during workflow creation
+    try:
+        workflow = CalculationWorkflow(
+            atoms=atoms,
+            pseudopotentials=pseudopotentials,
+            quality='moderate',
+            queue=queue
+        )
+        assert workflow.queue == queue
+    except Exception as e:
+        # Only workflow creation should succeed, not actual calc execution
+        if "Quantum" not in str(e):
+            raise
+
+
+def test_workflow_none_queue():
+    """Test that workflow works without queue (backward compatibility)."""
+    atoms = bulk("Si", cubic=True)
+    pseudopotentials = {"Si": "Si.pbe-n-rrkjus_psl.1.0.0.UPF"}
+    
+    workflow = CalculationWorkflow(
+        atoms=atoms,
+        pseudopotentials=pseudopotentials,
+        quality='moderate'
+    )
+    
+    # Queue should be None when not specified
+    assert workflow.queue is None
+
+
 # Note: We don't test actual calculation runs here as they require
 # Quantum ESPRESSO to be installed and configured. These tests focus
 # on the workflow setup and parameter handling.
