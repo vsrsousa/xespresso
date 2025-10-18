@@ -1,5 +1,16 @@
 import numpy as np
 
+# Import pseudo configuration utilities
+from xespresso.utils.pseudo_config import (
+    get_config_dir,
+    ensure_config_dir,
+    save_pseudo_config,
+    load_pseudo_config,
+    list_pseudo_configs,
+    delete_pseudo_config,
+    get_pseudo_info,
+)
+
 
 def get_hash(file):
     import hashlib
