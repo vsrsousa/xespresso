@@ -6,12 +6,13 @@ like SCF and structure relaxation from CIF files or ASE Atoms objects.
 """
 
 import numpy as np
-from typing import Dict, Optional, Union, Tuple
+from typing import Dict, Optional, Union, Tuple, List
 from pathlib import Path
 from ase import Atoms
 from ase.io import read
 from ase.io.espresso import kspacing_to_grid
 from xespresso import Espresso
+from xespresso.tools import setup_magnetic_config
 
 
 # Preset configurations for different calculation qualities
@@ -79,6 +80,8 @@ class CalculationWorkflow:
         quality: str = 'moderate',
         kspacing: Optional[float] = None,
         input_data: Optional[Dict] = None,
+        magnetic_config: Optional[Union[str, Dict]] = None,
+        expand_cell: bool = False,
         **kwargs
     ):
         """
@@ -88,15 +91,24 @@ class CalculationWorkflow:
             atoms: ASE Atoms object representing the structure
             pseudopotentials: Dictionary mapping element symbols to pseudopotential files
             quality: Quality preset: 'fast', 'moderate', or 'accurate'
-            kspacing: K-point spacing in Angstrom^-1. If None, uses preset value.
-                     This is converted to k-points using ase.io.espresso.kspacing_to_grid
+            kspacing: K-point spacing in Angstrom^-1 (physical units). If None, uses preset value.
+                     The workflow automatically handles the 2π normalization when converting to k-points.
+                     Example: kspacing=0.20 will give the same k-points as
+                     ase.io.espresso.kspacing_to_grid(atoms, 0.20/(2*np.pi))
             input_data: Additional input parameters (merged with preset)
+            magnetic_config: Magnetic configuration. Can be:
+                           - 'ferro' or 'ferromagnetic': All atoms ferromagnetic
+                           - 'antiferro' or 'antiferromagnetic': Alternating spin
+                           - Dict: Element-based config, e.g. {'Fe': [1, -1], 'O': [0]}
+                           Also supports Hubbard parameters in the dict format
+            expand_cell: If True, expand cell to accommodate magnetic configuration
             **kwargs: Additional parameters passed to Espresso calculator
         """
-        self.atoms = atoms
-        self.pseudopotentials = pseudopotentials
+        self.atoms = atoms.copy()  # Work with a copy to avoid modifying original
+        self.original_pseudopotentials = pseudopotentials
         self.quality = quality
         self.extra_kwargs = kwargs
+        self.expand_cell = expand_cell
         
         # Get preset configuration
         if quality not in PRESETS:
@@ -110,13 +122,94 @@ class CalculationWorkflow:
         if kspacing is not None:
             self.preset['kspacing'] = kspacing
         
-        # Merge input_data with preset
+        # Initialize input_data early so it can be used in magnetic config
         self.input_data = self.preset.copy()
         if input_data:
             self.input_data.update(input_data)
         
+        # Handle magnetic configuration if provided
+        if magnetic_config is not None:
+            self._apply_magnetic_config(magnetic_config)
+        else:
+            self.pseudopotentials = pseudopotentials
+        
         # Remove kspacing from input_data as it will be converted to kpts
         self.kspacing = self.input_data.pop('kspacing', None)
+    
+    def _apply_magnetic_config(self, magnetic_config: Union[str, Dict]):
+        """Apply magnetic configuration using setup_magnetic_config."""
+        from xespresso.tools import set_ferromagnetic, set_antiferromagnetic
+        
+        if isinstance(magnetic_config, str):
+            magnetic_config = magnetic_config.lower()
+            if magnetic_config in ['ferro', 'ferromagnetic']:
+                # Simple ferromagnetic configuration
+                config = set_ferromagnetic(
+                    self.atoms, 
+                    magnetic_moment=1.0, 
+                    pseudopotentials=self.original_pseudopotentials
+                )
+                # atoms modified in-place, just update config
+                self.pseudopotentials = config.get('pseudopotentials', self.original_pseudopotentials.copy())
+                if 'input_ntyp' in config:
+                    if 'input_ntyp' not in self.input_data:
+                        self.input_data['input_ntyp'] = {}
+                    self.input_data['input_ntyp'].update(config['input_ntyp'])
+            elif magnetic_config in ['antiferro', 'antiferromagnetic']:
+                # Simple antiferromagnetic configuration
+                # For antiferromagnetic, we need to determine sublattices
+                # Simple approach: alternate atoms
+                n_atoms = len(self.atoms)
+                sublattice1 = list(range(0, n_atoms, 2))
+                sublattice2 = list(range(1, n_atoms, 2))
+                
+                config = set_antiferromagnetic(
+                    self.atoms,
+                    sublattice_indices=[sublattice1, sublattice2],
+                    magnetic_moment=1.0,
+                    pseudopotentials=self.original_pseudopotentials
+                )
+                # atoms modified in-place, just update config
+                self.pseudopotentials = config.get('pseudopotentials', self.original_pseudopotentials.copy())
+                if 'input_ntyp' in config:
+                    if 'input_ntyp' not in self.input_data:
+                        self.input_data['input_ntyp'] = {}
+                    self.input_data['input_ntyp'].update(config['input_ntyp'])
+            else:
+                raise ValueError(
+                    f"Unknown magnetic configuration: '{magnetic_config}'. "
+                    "Use 'ferro', 'antiferro', or a dict with element-based config."
+                )
+        elif isinstance(magnetic_config, dict):
+            # Element-based configuration with possible Hubbard parameters
+            config = setup_magnetic_config(
+                self.atoms,
+                magnetic_config,
+                pseudopotentials=self.original_pseudopotentials,
+                expand_cell=self.expand_cell
+            )
+            self.atoms = config['atoms']
+            self.pseudopotentials = config.get('pseudopotentials', self.original_pseudopotentials)
+            
+            # Merge special input_data from magnetic config
+            if 'input_ntyp' in config:
+                if 'input_ntyp' not in self.input_data:
+                    self.input_data['input_ntyp'] = {}
+                self.input_data['input_ntyp'].update(config['input_ntyp'])
+            
+            # Handle Hubbard parameters in new format
+            if 'hubbard' in config:
+                self.input_data['hubbard'] = config['hubbard']
+            if 'hubbard_v' in config:
+                self.input_data['hubbard_v'] = config['hubbard_v']
+            if 'qe_version' in config:
+                self.input_data['qe_version'] = config.get('qe_version')
+            if 'lda_plus_u' in config:
+                self.input_data['lda_plus_u'] = config['lda_plus_u']
+        else:
+            raise TypeError(
+                f"magnetic_config must be str or dict, got {type(magnetic_config)}"
+            )
     
     @classmethod
     def from_cif(
@@ -126,6 +219,8 @@ class CalculationWorkflow:
         quality: str = 'moderate',
         kspacing: Optional[float] = None,
         input_data: Optional[Dict] = None,
+        magnetic_config: Optional[Union[str, Dict]] = None,
+        expand_cell: bool = False,
         **kwargs
     ) -> 'CalculationWorkflow':
         """
@@ -135,15 +230,18 @@ class CalculationWorkflow:
             cif_file: Path to CIF file
             pseudopotentials: Dictionary mapping element symbols to pseudopotential files
             quality: Quality preset: 'fast', 'moderate', or 'accurate'
-            kspacing: K-point spacing in Angstrom^-1
+            kspacing: K-point spacing in Angstrom^-1 (physical units)
             input_data: Additional input parameters
+            magnetic_config: Magnetic configuration ('ferro', 'antiferro', or element dict)
+            expand_cell: If True, expand cell to accommodate magnetic configuration
             **kwargs: Additional parameters passed to Espresso calculator
             
         Returns:
             CalculationWorkflow: Initialized workflow object
         """
         atoms = read(str(cif_file))
-        return cls(atoms, pseudopotentials, quality, kspacing, input_data, **kwargs)
+        return cls(atoms, pseudopotentials, quality, kspacing, input_data, 
+                   magnetic_config, expand_cell, **kwargs)
     
     def _get_kpts(self) -> Union[Tuple[int, int, int], str]:
         """
@@ -267,6 +365,8 @@ def quick_scf(
     label: str = 'scf',
     quality: str = 'moderate',
     kspacing: Optional[float] = None,
+    magnetic_config: Optional[Union[str, Dict]] = None,
+    expand_cell: bool = False,
     **kwargs
 ) -> Espresso:
     """
@@ -277,7 +377,9 @@ def quick_scf(
         pseudopotentials: Dictionary mapping element symbols to pseudopotential files
         label: Directory/label for the calculation
         quality: Quality preset: 'fast', 'moderate', or 'accurate'
-        kspacing: K-point spacing in Angstrom^-1
+        kspacing: K-point spacing in Angstrom^-1 (physical units)
+        magnetic_config: Magnetic configuration ('ferro', 'antiferro', or element dict)
+        expand_cell: If True, expand cell to accommodate magnetic configuration
         **kwargs: Additional parameters for the calculator
         
     Returns:
@@ -289,14 +391,23 @@ def quick_scf(
         ...     {'Si': 'Si.pbe.UPF'},
         ...     quality='fast'
         ... )
+        >>> # With magnetic configuration
+        >>> calc = quick_scf(
+        ...     atoms,
+        ...     {'Fe': 'Fe.pbe-spn.UPF'},
+        ...     magnetic_config='antiferro',
+        ...     quality='moderate'
+        ... )
     """
     if isinstance(structure, (str, Path)):
         workflow = CalculationWorkflow.from_cif(
-            structure, pseudopotentials, quality, kspacing, **kwargs
+            structure, pseudopotentials, quality, kspacing, 
+            magnetic_config=magnetic_config, expand_cell=expand_cell, **kwargs
         )
     else:
         workflow = CalculationWorkflow(
-            structure, pseudopotentials, quality, kspacing, **kwargs
+            structure, pseudopotentials, quality, kspacing,
+            magnetic_config=magnetic_config, expand_cell=expand_cell, **kwargs
         )
     
     return workflow.run_scf(label=label)
@@ -309,6 +420,8 @@ def quick_relax(
     quality: str = 'moderate',
     kspacing: Optional[float] = None,
     relax_type: str = 'relax',
+    magnetic_config: Optional[Union[str, Dict]] = None,
+    expand_cell: bool = False,
     **kwargs
 ) -> Espresso:
     """
@@ -319,8 +432,10 @@ def quick_relax(
         pseudopotentials: Dictionary mapping element symbols to pseudopotential files
         label: Directory/label for the calculation
         quality: Quality preset: 'fast', 'moderate', or 'accurate'
-        kspacing: K-point spacing in Angstrom^-1
+        kspacing: K-point spacing in Angstrom^-1 (physical units)
         relax_type: Type of relaxation: 'relax' or 'vc-relax'
+        magnetic_config: Magnetic configuration ('ferro', 'antiferro', or element dict)
+        expand_cell: If True, expand cell to accommodate magnetic configuration
         **kwargs: Additional parameters for the calculator
         
     Returns:
@@ -333,14 +448,23 @@ def quick_relax(
         ...     quality='moderate',
         ...     relax_type='vc-relax'
         ... )
+        >>> # With Hubbard parameters
+        >>> calc = quick_relax(
+        ...     atoms,
+        ...     {'Fe': 'Fe.pbe-spn.UPF', 'O': 'O.pbe.UPF'},
+        ...     magnetic_config={'Fe': {'mag': [1, -1], 'U': {'3d': 4.3}}},
+        ...     quality='accurate'
+        ... )
     """
     if isinstance(structure, (str, Path)):
         workflow = CalculationWorkflow.from_cif(
-            structure, pseudopotentials, quality, kspacing, **kwargs
+            structure, pseudopotentials, quality, kspacing,
+            magnetic_config=magnetic_config, expand_cell=expand_cell, **kwargs
         )
     else:
         workflow = CalculationWorkflow(
-            structure, pseudopotentials, quality, kspacing, **kwargs
+            structure, pseudopotentials, quality, kspacing,
+            magnetic_config=magnetic_config, expand_cell=expand_cell, **kwargs
         )
     
     return workflow.run_relax(label=label, relax_type=relax_type)
