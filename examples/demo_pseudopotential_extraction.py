@@ -76,7 +76,8 @@ def demo_with_hubbard():
     
     atoms = bulk('Fe', cubic=True)
     
-    # Setup with Hubbard parameters
+    # Combine magnetic configuration with Hubbard U parameters
+    # This demonstrates how Hubbard U can be specified alongside magnetization
     config = setup_magnetic_config(
         atoms,
         {'Fe': {'mag': [1, -1], 'U': 4.3}},
@@ -157,7 +158,7 @@ def demo_multi_element():
                 in_species = True
             if in_species:
                 print(f"  {line.rstrip()}")
-                if line.strip() == '' and in_species:
+                if line.strip() == '':
                     break
 
 
