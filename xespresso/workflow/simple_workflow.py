@@ -13,6 +13,7 @@ from ase.io import read
 from ase.io.espresso import kspacing_to_grid
 from xespresso import Espresso
 from xespresso.tools import setup_magnetic_config
+from xespresso.machines import load_machine
 
 
 # Preset configurations for different calculation qualities
@@ -126,7 +127,6 @@ class CalculationWorkflow:
         
         if machine is not None:
             # Load machine configuration
-            from xespresso.machines import load_machine
             self.queue = load_machine(machine_name=machine)
         else:
             self.queue = queue
