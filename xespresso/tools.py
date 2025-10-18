@@ -94,7 +94,7 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
     >>> from ase.build import bulk
     >>> atoms = bulk('Fe', cubic=True)  # 2 Fe atoms
     >>> config = setup_magnetic_config(atoms, {'Fe': [1, -1]})
-    # Creates Fe (mag=1) and Fe1 (mag=-1)
+    # Creates Fe1 (mag=1) and Fe2 (mag=-1)
     
     # Example 2: FM with all equivalent
     >>> atoms = bulk('Fe', cubic=True)
@@ -128,7 +128,7 @@ def setup_magnetic_config(atoms, magnetic_config, pseudopotentials=None, expand_
     >>> pseudopotentials = {'Fe': 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'}
     >>> config = setup_magnetic_config(atoms, {'Fe': [1, -1]},
     ...                                pseudopotentials=pseudopotentials)
-    # Both Fe and Fe1 species will use 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+    # Both Fe1 and Fe2 species will use 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
     
     # Example 6: Expand cell if needed
     >>> atoms = bulk('Fe', cubic=True)  # 2 Fe
@@ -416,7 +416,7 @@ def set_magnetic_moments(atoms, magnetic_moments, pseudopotentials=None):
         - 'input_ntyp': dict with starting_magnetization
         - 'pseudopotentials': dict mapping species to pseudopotential files
         - 'species_map': dict mapping species labels to their base element symbols
-                         (e.g., {'Fe': 'Fe', 'Fe1': 'Fe'})
+                         (e.g., {'Fe1': 'Fe', 'Fe2': 'Fe'} or {'Fe': 'Fe'} if single species)
     
     Examples
     --------
@@ -449,6 +449,7 @@ def set_magnetic_moments(atoms, magnetic_moments, pseudopotentials=None):
     species_groups = {}
     species_counter = {}
     
+    # First pass: identify all unique species
     for i in range(len(atoms)):
         symbol = atoms[i].symbol
         mag = mag_dict.get(i, 0.0)
@@ -458,20 +459,41 @@ def set_magnetic_moments(atoms, magnetic_moments, pseudopotentials=None):
             # Count how many species of this element we already have
             if symbol not in species_counter:
                 species_counter[symbol] = 0
-                species_label = symbol
             else:
                 species_counter[symbol] += 1
-                species_label = f"{symbol}{species_counter[symbol]}"
-            species_groups[key] = species_label
-        
-        # Assign species label to atom
-        atoms.arrays['species'][i] = species_groups[key]
+            species_groups[key] = species_counter[symbol]
+    
+    # Now determine if we need to number species
+    # If an element has multiple species, number all of them (Fe1, Fe2, etc)
+    # If an element has only one species, keep it unnumbered (Fe)
+    element_species_count = {}
+    for (symbol, mag) in species_groups.keys():
+        element_species_count[symbol] = element_species_count.get(symbol, 0) + 1
+    
+    # Create final species labels
+    final_species_labels = {}
+    for (symbol, mag), counter in species_groups.items():
+        if element_species_count[symbol] > 1:
+            # Multiple species of this element - number all (Fe1, Fe2, ...)
+            species_label = f"{symbol}{counter + 1}"
+        else:
+            # Only one species of this element - no number (Fe)
+            species_label = symbol
+        final_species_labels[(symbol, mag)] = species_label
+    
+    # Second pass: assign final labels to atoms
+    for i in range(len(atoms)):
+        symbol = atoms[i].symbol
+        mag = mag_dict.get(i, 0.0)
+        key = (symbol, mag)
+        atoms.arrays['species'][i] = final_species_labels[key]
     
     # Create input_ntyp dictionary for starting_magnetization
     input_ntyp = {'starting_magnetization': {}}
     species_map = {}
     
-    for (symbol, mag), species_label in species_groups.items():
+    for key, species_label in final_species_labels.items():
+        symbol, mag = key
         if mag != 0.0:
             input_ntyp['starting_magnetization'][species_label] = mag
         # Map species_label back to base element symbol
@@ -481,14 +503,15 @@ def set_magnetic_moments(atoms, magnetic_moments, pseudopotentials=None):
     if pseudopotentials is None:
         # Return template that user should fill
         pseudo_dict = {}
-        for species_label in species_groups.values():
+        for species_label in final_species_labels.values():
             # Get the base element symbol
             base_symbol = ''.join([c for c in species_label if not c.isdigit()])
             pseudo_dict[species_label] = f"{base_symbol}.UPF"
     else:
         # Update existing pseudopotentials
         pseudo_dict = pseudopotentials.copy()
-        for (symbol, mag), species_label in species_groups.items():
+        for key, species_label in final_species_labels.items():
+            symbol, mag = key
             if species_label not in pseudo_dict:
                 # Try to find pseudopotential for base element
                 base_pseudo = pseudopotentials.get(symbol)

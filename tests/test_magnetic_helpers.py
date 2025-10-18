@@ -200,10 +200,10 @@ class TestSetupMagneticConfig:
         
         # Check pseudopotentials are updated
         pseudo = config['pseudopotentials']
-        assert 'Fe' in pseudo
         assert 'Fe1' in pseudo
-        assert pseudo['Fe'] == 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+        assert 'Fe2' in pseudo
         assert pseudo['Fe1'] == 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+        assert pseudo['Fe2'] == 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
     
     def test_simple_value_not_list(self):
         """Test that single values work (not in list)."""
@@ -230,10 +230,10 @@ class TestSetupMagneticConfig:
         # Check U parameters with orbital
         hubbard = config['hubbard']
         assert 'u' in hubbard
-        assert 'Fe-3d' in hubbard['u']
         assert 'Fe1-3d' in hubbard['u']
-        assert hubbard['u']['Fe-3d'] == 4.3
+        assert 'Fe2-3d' in hubbard['u']
         assert hubbard['u']['Fe1-3d'] == 4.3
+        assert hubbard['u']['Fe2-3d'] == 4.3
     
     def test_new_hubbard_format_different_u_per_species(self):
         """Test new format with different U for each species."""
@@ -244,8 +244,8 @@ class TestSetupMagneticConfig:
         }, qe_version='7.2')
         
         hubbard = config['hubbard']
-        assert hubbard['u']['Fe-3d'] == 4.3
-        assert hubbard['u']['Fe1-3d'] == 4.5
+        assert hubbard['u']['Fe1-3d'] == 4.3
+        assert hubbard['u']['Fe2-3d'] == 4.5
     
     def test_new_hubbard_format_with_v_parameter(self):
         """Test new format with V parameter (inter-site interaction)."""
@@ -283,8 +283,8 @@ class TestSetupMagneticConfig:
         # Should fall back to old format
         assert config['hubbard_format'] == 'old'
         assert 'Hubbard_U' in config['input_ntyp']
-        assert config['input_ntyp']['Hubbard_U']['Fe'] == 4.3
         assert config['input_ntyp']['Hubbard_U']['Fe1'] == 4.3
+        assert config['input_ntyp']['Hubbard_U']['Fe2'] == 4.3
     
     def test_new_format_error_without_orbital(self):
         """Test that new format requires orbital specification."""
@@ -400,11 +400,11 @@ class TestSetMagneticMoments:
         
         # Check that pseudopotentials are updated correctly
         pseudo = mag_config['pseudopotentials']
-        assert 'Fe' in pseudo
         assert 'Fe1' in pseudo
+        assert 'Fe2' in pseudo
         # Both should use the same pseudopotential file
-        assert pseudo['Fe'] == 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
         assert pseudo['Fe1'] == 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+        assert pseudo['Fe2'] == 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
     
     def test_zero_magnetic_moments(self):
         """Test atoms with zero magnetic moments are not included."""
@@ -516,14 +516,14 @@ class TestIntegrationWithEspresso:
         mag_config = set_antiferromagnetic(atoms, [[0], [1]], magnetic_moment=1.0)
         
         # Add actual pseudopotential names
-        mag_config['pseudopotentials']['Fe'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
         mag_config['pseudopotentials']['Fe1'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+        mag_config['pseudopotentials']['Fe2'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
         
         # Check that the configuration is correct
         assert 'input_ntyp' in mag_config
         assert 'starting_magnetization' in mag_config['input_ntyp']
-        assert 'Fe' in mag_config['pseudopotentials']
         assert 'Fe1' in mag_config['pseudopotentials']
+        assert 'Fe2' in mag_config['pseudopotentials']
         
         # Check magnetization values
         mag_dict = mag_config['input_ntyp']['starting_magnetization']
@@ -537,14 +537,14 @@ class TestIntegrationWithEspresso:
         atoms_old = bulk('Fe', cubic=True)
         atoms_new = bulk('Fe', cubic=True)
         
-        # Old method (manual)
+        # Old method (manual) - updated to match new numbering convention
         atoms_old.new_array('species', np.array(atoms_old.get_chemical_symbols(), dtype='U20'))
-        atoms_old.arrays['species'][0] = 'Fe'
-        atoms_old.arrays['species'][1] = 'Fe1'
+        atoms_old.arrays['species'][0] = 'Fe1'
+        atoms_old.arrays['species'][1] = 'Fe2'
         input_ntyp_old = {
             'starting_magnetization': {
-                'Fe': 1.0,
-                'Fe1': -1.0,
+                'Fe1': 1.0,
+                'Fe2': -1.0,
             }
         }
         
