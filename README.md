@@ -110,7 +110,18 @@ config = setup_magnetic_config(
     expand_cell=True
 )
 
-# Use in calculator
+# Use in calculator - NOW EVEN SIMPLER! 🎉
+# Method 1: Pass entire config (recommended)
+config = setup_magnetic_config(atoms, {'Fe': [1, -1]}, 
+                               pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'})
+calc = Espresso(
+    atoms=config['atoms'],
+    input_data=config,  # Pass entire dict - no manual extraction!
+    nspin=2,
+    ecutwfc=40
+)
+
+# Method 2: Old way still works
 config['pseudopotentials']['Fe'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
 config['pseudopotentials']['Fe1'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
 calc = Espresso(
@@ -119,6 +130,8 @@ calc = Espresso(
     nspin=2
 )
 ```
+
+**✨ New Feature**: Pseudopotentials can now be passed inside `input_data`! The calculator automatically extracts them, making it super convenient to use `setup_magnetic_config`. See `PSEUDOPOTENTIAL_AUTO_EXTRACTION.md` for details.
 
 **Also available:** `set_antiferromagnetic()`, `set_ferromagnetic()`, `set_magnetic_moments()`
 
