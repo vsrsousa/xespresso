@@ -314,6 +314,37 @@ calc.plot()
 
 
 ## Workflow
+### Elastic Constants Calculation
+
+Calculate elastic constants (C11, C12, C44, bulk modulus) for crystalline materials using the energy-strain method.
+
+The workflow:
+* Generates strained structures (volumetric, uniaxial, orthorhombic, monoclinic)
+* Calculates energies for each strained structure
+* Fits energy-strain data to extract elastic constants
+* Supports cubic and general crystal systems
+
+```python
+from ase.build import bulk
+from xespresso.workflow.elastic import Elastic
+
+atoms = bulk('Si', 'diamond', a=5.43)
+calculator = {
+    'pseudopotentials': {'Si': 'Si.pbe.UPF'},
+    'ecutwfc': 40.0,
+    'kpts': (8, 8, 8),
+}
+
+elastic = Elastic(
+    atoms,
+    label='elastic/si',
+    calculator=calculator,
+    crystal_system='cubic',
+)
+elastic.run()
+print(elastic.results['elastic_constants'])
+```
+
 ### Oxygen evolution reaction (OER) calculation
 
 The workflow includes four modules:

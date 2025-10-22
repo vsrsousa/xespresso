@@ -135,3 +135,7 @@ tests/images/*
 
 # Espresso calculation directories
 calculations/
+
+# Test output directories
+test_*/
+
