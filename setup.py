@@ -25,5 +25,13 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=["ase", "numpy", "scipy", "matplotlib"],
+    extras_require={
+        "gui": ["streamlit>=1.28.0", "plotly>=5.17.0"],
+    },
+    entry_points={
+        "console_scripts": [
+            "xespresso-gui=xespresso.gui.__main__:main",
+        ],
+    },
     python_requires=">=3.5",
 )
