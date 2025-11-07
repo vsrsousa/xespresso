@@ -432,10 +432,9 @@ class Espresso(FileIOCalculator):
             lines = f.readlines()
             if len(lines) == 0:
                 return 1, "pwo file has nothing"
-            stime = lines[1].split("starts on")[1]
             nlines = len(lines)
             n = min([200, nlines])
-            lastlines = lines[-n:-1]
+            lastlines = lines[-n:]
             for line in lastlines:
                 if line.rfind("too many bands are not converged") > -1:
                     logger.debug("Need restart")
@@ -614,7 +613,7 @@ class Espresso(FileIOCalculator):
         else:
             ax.plot(xaxis, axy)
             ax.plot([min(xaxis), max(xaxis)], [ef, ef], "k:")
-        ax.set_xlabel("Position along z-axis ($\AA$)")
+        ax.set_xlabel(r"Position along z-axis ($\AA$)")
         ax.set_ylabel("Potential (eV)")
         if output:
             plt.savefig("%s" % output)
