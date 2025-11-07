@@ -19,6 +19,7 @@ For the introduction of ASE , please visit https://wiki.fysik.dtu.dk/ase/index.h
 * **NEW: Simplified workflow with quality presets**
 * **NEW: K-spacing support for easy k-point specification**
 * **NEW: Pseudopotential configuration management**
+* **NEW: Streamlit GUI for easy configuration and job submission** 🚀
 
 ### Author
 * Xing Wang  <xingwang1991@gmail.com>
@@ -32,7 +33,12 @@ For the introduction of ASE , please visit https://wiki.fysik.dtu.dk/ase/index.h
 * matplotlib
 
 ### Installation using pip
+```bash
 pip install --upgrade --user xespresso
+
+# Install with GUI support
+pip install --upgrade --user xespresso[gui]
+```
 
 ### Installation from source
 You can get the source using git:
@@ -46,6 +52,27 @@ export PYTHONPATH="/path/to/xespresso":$PYTHONPATH
 export ASE_ESPRESSO_COMMAND="/path/to/PACKAGE.x  PARALLEL  -in  PREFIX.PACKAGEi  >  PREFIX.PACKAGEo"
 export ESPRESSO_PSEUDO="/path/to/pseudo"
 ```
+
+### GUI Interface (NEW!) 🎨
+
+xespresso now includes a user-friendly Streamlit-based GUI for easy configuration and job submission!
+
+**Launch the GUI:**
+```bash
+xespresso-gui
+# or
+python -m xespresso.gui
+```
+
+**Features:**
+- 🖥️ Configure machines (local/remote) with scheduler support
+- ⚙️ Auto-detect Quantum ESPRESSO codes
+- 🔬 Upload and visualize structures in 3D
+- 📊 Configure calculations with quality presets
+- 🔄 Build workflows with easy parameter selection
+- 🚀 Submit jobs to configured machines
+
+See [GUI_IMPLEMENTATION.md](GUI_IMPLEMENTATION.md) for detailed documentation.
 
 
 ### Examples
