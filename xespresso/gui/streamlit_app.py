@@ -74,10 +74,16 @@ if 'current_structure' not in st.session_state:
     st.session_state.current_structure = None
 if 'current_machine' not in st.session_state:
     st.session_state.current_machine = None
+if 'current_machine_name' not in st.session_state:
+    st.session_state.current_machine_name = None
 if 'current_codes' not in st.session_state:
     st.session_state.current_codes = None
+if 'selected_code_version' not in st.session_state:
+    st.session_state.selected_code_version = None
 if 'workflow_config' not in st.session_state:
     st.session_state.workflow_config = {}
+if 'local_workdir' not in st.session_state:
+    st.session_state.local_workdir = os.getcwd()
 
 # Sidebar navigation
 st.sidebar.title("Navigation")
@@ -89,7 +95,8 @@ page = st.sidebar.radio(
         "🔬 Structure Viewer",
         "📊 Calculation Setup",
         "🔄 Workflow Builder",
-        "🚀 Job Submission"
+        "🚀 Job Submission",
+        "📈 Results & Post-Processing"
     ]
 )
 
@@ -205,6 +212,9 @@ if page == "🖥️ Machine Configuration":
     st.markdown("""
     Configure the computational machine/cluster where calculations will run.
     Supports both local and remote (SSH) execution environments.
+    
+    **Note:** Saving a machine configuration creates/updates machine-specific JSON files in `~/.xespresso/machines/`.
+    Pre-configured machines in `machines.json` are not modified.
     """)
     
     if not XESPRESSO_AVAILABLE:
@@ -215,10 +225,21 @@ if page == "🖥️ Machine Configuration":
         try:
             machines_list = list_machines(DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR)
             if machines_list:
+                # Use session state for persistent selection
+                default_idx = 0
+                if st.session_state.current_machine_name and st.session_state.current_machine_name in machines_list:
+                    default_idx = machines_list.index(st.session_state.current_machine_name) + 1
+                
                 selected_machine = st.selectbox(
                     "Select a machine to edit or view:",
-                    ["[Create New]"] + machines_list
+                    ["[Create New]"] + machines_list,
+                    index=default_idx,
+                    key="machine_selector"
                 )
+                
+                # Update session state
+                if selected_machine != "[Create New]":
+                    st.session_state.current_machine_name = selected_machine
             else:
                 st.info("No machines configured yet. Create your first machine below.")
                 selected_machine = "[Create New]"
@@ -233,7 +254,21 @@ if page == "🖥️ Machine Configuration":
         if selected_machine != "[Create New]":
             try:
                 machine = load_machine(DEFAULT_CONFIG_PATH, selected_machine, DEFAULT_MACHINES_DIR, return_object=True)
-                st.success(f"Loaded machine: {selected_machine}")
+                st.success(f"✅ Loaded machine: {selected_machine}")
+                st.session_state.current_machine = machine
+                
+                # Display current configuration
+                with st.expander("📋 View Current Configuration", expanded=False):
+                    st.json({
+                        "name": machine.name,
+                        "execution": machine.execution,
+                        "scheduler": machine.scheduler,
+                        "workdir": machine.workdir,
+                        "nprocs": machine.nprocs,
+                        "launcher": machine.launcher,
+                        "use_modules": machine.use_modules if hasattr(machine, 'use_modules') else False,
+                        "modules": machine.modules if hasattr(machine, 'modules') else [],
+                    })
             except Exception as e:
                 st.error(f"Error loading machine: {e}")
                 machine = None
@@ -416,10 +451,83 @@ if page == "🖥️ Machine Configuration":
                 save_machine(new_machine, DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR)
                 
                 st.success(f"✅ Machine '{machine_name}' saved successfully!")
+                st.info(f"💾 Configuration saved to: ~/.xespresso/machines/{machine_name}.json")
                 st.session_state.current_machine = new_machine
+                st.session_state.current_machine_name = machine_name
                 
             except Exception as e:
                 st.error(f"❌ Error saving machine: {e}")
+                st.code(traceback.format_exc())
+        
+        # Handle test connection
+        if test:
+            st.subheader("Connection Test Results")
+            try:
+                # Build minimal machine config for testing
+                test_config = {
+                    "name": machine_name,
+                    "execution": execution,
+                    "scheduler": "direct",  # Use direct for testing
+                    "workdir": workdir,
+                    "nprocs": 1,
+                }
+                
+                if execution == "remote":
+                    test_config["host"] = host
+                    test_config["username"] = username
+                    test_config["port"] = port
+                    test_config["auth"] = {
+                        "method": "key",
+                        "ssh_key": ssh_key
+                    }
+                
+                test_machine = Machine(**test_config)
+                
+                # Test connection
+                if execution == "local":
+                    st.success("✅ Local machine - connection OK")
+                    st.info(f"Working directory: {workdir}")
+                    st.info(f"Current user: {os.environ.get('USER', 'unknown')}")
+                else:
+                    # Test remote connection
+                    with st.spinner("Testing SSH connection..."):
+                        try:
+                            # Try to establish SSH connection
+                            import paramiko
+                            ssh = paramiko.SSHClient()
+                            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                            
+                            # Expand ssh_key path
+                            key_path = os.path.expanduser(ssh_key)
+                            
+                            ssh.connect(
+                                hostname=host,
+                                username=username,
+                                port=port,
+                                key_filename=key_path,
+                                timeout=10
+                            )
+                            
+                            # Test command execution
+                            stdin, stdout, stderr = ssh.exec_command('echo "Connection test successful"')
+                            output = stdout.read().decode().strip()
+                            
+                            ssh.close()
+                            
+                            st.success(f"✅ SSH connection successful!")
+                            st.info(f"Connected to: {username}@{host}:{port}")
+                            st.info(f"Test output: {output}")
+                        except paramiko.AuthenticationException:
+                            st.error("❌ Authentication failed. Check username and SSH key.")
+                        except paramiko.SSHException as e:
+                            st.error(f"❌ SSH error: {e}")
+                        except FileNotFoundError:
+                            st.error(f"❌ SSH key not found: {key_path}")
+                        except Exception as e:
+                            st.error(f"❌ Connection failed: {e}")
+                            
+            except Exception as e:
+                st.error(f"❌ Test failed: {e}")
                 st.code(traceback.format_exc())
 
 # Page 2: Codes Configuration
@@ -463,9 +571,13 @@ elif page == "⚙️ Codes Configuration":
                         "QE Installation Prefix (optional)",
                         help="e.g., /opt/qe-7.2/bin"
                     )
+                    version_label = st.text_input(
+                        "Version Label (optional)",
+                        help="Custom label for this version (e.g., 'qe-7.2', 'qe-dev')"
+                    )
                     modules_str = st.text_area(
                         "Modules to Load (optional, one per line)",
-                        help="Environment modules needed to access QE"
+                        help="Version-specific modules (e.g., 'qe/7.2' or 'quantum_espresso-7.4.1')"
                     )
                 
                 with col2:
@@ -492,6 +604,11 @@ elif page == "⚙️ Codes Configuration":
                         
                         if codes_config and codes_config.codes:
                             st.success(f"✅ Detected {len(codes_config.codes)} codes!")
+                            
+                            # Add version label if provided
+                            if version_label:
+                                codes_config.version_label = version_label
+                            
                             st.session_state.current_codes = codes_config
                             
                             # Display detected codes
@@ -501,11 +618,19 @@ elif page == "⚙️ Codes Configuration":
                                 codes_data.append({
                                     "Code": name,
                                     "Path": code.path,
-                                    "Version": code.version or "Unknown"
+                                    "Version": code.version or "Unknown",
+                                    "Label": version_label or "default"
                                 })
                             st.table(codes_data)
                             
-                            # Save option
+                            # Save option with clear explanation
+                            st.info("""
+                            **💾 Saving Codes:**
+                            - Detected codes will be **merged** with existing configurations
+                            - Multiple versions on the same machine are supported
+                            - Existing codes with different paths/versions will be kept
+                            """)
+                            
                             if st.button("💾 Save Codes Configuration"):
                                 try:
                                     from xespresso.codes.manager import CodesManager
@@ -516,8 +641,10 @@ elif page == "⚙️ Codes Configuration":
                                         merge=True
                                     )
                                     st.success(f"✅ Codes saved to: {filepath}")
+                                    st.info("Multiple versions are preserved. Reload the page to see all versions.")
                                 except Exception as e:
                                     st.error(f"Error saving codes: {e}")
+                                    st.code(traceback.format_exc())
                         else:
                             st.warning("⚠️ No codes detected. Check paths and modules.")
                     except Exception as e:
@@ -536,11 +663,30 @@ elif page == "⚙️ Codes Configuration":
                         codes_data.append({
                             "Code": name,
                             "Path": code.path,
-                            "Version": code.version or "Unknown"
+                            "Version": code.version or "Unknown",
+                            "Modules": ", ".join(code.modules) if hasattr(code, 'modules') and code.modules else "None"
                         })
                     st.table(codes_data)
                     
                     st.session_state.current_codes = existing_codes
+                    
+                    # Code/version selection for calculations
+                    st.subheader("Select Code Version for Calculations")
+                    if existing_codes.codes:
+                        code_options = list(existing_codes.codes.keys())
+                        selected_code = st.selectbox(
+                            "Select QE version to use:",
+                            code_options,
+                            help="Choose which version of QE to use for your calculations"
+                        )
+                        st.session_state.selected_code_version = selected_code
+                        
+                        selected_code_obj = existing_codes.codes[selected_code]
+                        st.info(f"""
+                        **Selected Code Details:**
+                        - Path: `{selected_code_obj.path}`
+                        - Version: {selected_code_obj.version or 'Unknown'}
+                        """)
                 else:
                     st.info("ℹ️ No codes configuration found for this machine.")
             except Exception as e:
@@ -554,13 +700,17 @@ elif page == "🔬 Structure Viewer":
     Supports CIF, POSCAR, XYZ, and other ASE-compatible formats.
     """)
     
+    # Show currently loaded structure if available
+    if st.session_state.current_structure is not None:
+        st.success(f"✅ Current structure: {st.session_state.current_structure.get_chemical_formula()} ({len(st.session_state.current_structure)} atoms)")
+    
     if not ASE_AVAILABLE:
         st.error("ASE not available. Structure viewing is disabled.")
     else:
         # Structure source selection
         structure_source = st.radio(
             "Structure Source:",
-            ["Upload File", "Build Structure", "Load from File"]
+            ["Upload File", "Build Structure", "Load from File", "ASE Database"]
         )
         
         atoms = None
@@ -633,7 +783,7 @@ elif page == "🔬 Structure Viewer":
                     except Exception as e:
                         st.error(f"❌ Error building molecule: {e}")
         
-        else:  # Load from File
+        elif structure_source == "Load from File":
             file_path = st.text_input(
                 "File Path",
                 help="Enter full path to structure file"
@@ -646,17 +796,121 @@ elif page == "🔬 Structure Viewer":
                 except Exception as e:
                     st.error(f"❌ Error loading file: {e}")
         
-        # Display structure if loaded
-        if atoms is not None:
-            st.session_state.current_structure = atoms
+        else:  # ASE Database
+            st.subheader("ASE Database")
+            
+            db_path = st.text_input(
+                "Database Path",
+                value=st.session_state.get('ase_db_path', os.path.expanduser("~/.xespresso/structures.db")),
+                help="Path to ASE database file"
+            )
+            st.session_state['ase_db_path'] = db_path
+            
+            # Database operations
+            db_operation = st.radio(
+                "Operation:",
+                ["Load from Database", "Save to Database"]
+            )
+            
+            if db_operation == "Load from Database":
+                if os.path.exists(db_path):
+                    try:
+                        from ase.db import connect
+                        db = connect(db_path)
+                        
+                        # List structures in database
+                        rows = list(db.select())
+                        if rows:
+                            st.write(f"Found {len(rows)} structures in database")
+                            
+                            # Create selection table
+                            structures_info = []
+                            for row in rows:
+                                structures_info.append({
+                                    "ID": row.id,
+                                    "Formula": row.formula,
+                                    "Atoms": row.natoms,
+                                    "Tags": ", ".join(row.key_value_pairs.keys()) if row.key_value_pairs else ""
+                                })
+                            
+                            st.table(structures_info)
+                            
+                            selected_id = st.number_input(
+                                "Select structure ID to load:",
+                                min_value=1,
+                                max_value=len(rows),
+                                value=1
+                            )
+                            
+                            if st.button("Load Selected Structure"):
+                                try:
+                                    row = db.get(id=selected_id)
+                                    atoms = row.toatoms()
+                                    st.success(f"✅ Loaded structure ID {selected_id}: {atoms.get_chemical_formula()}")
+                                except Exception as e:
+                                    st.error(f"❌ Error loading structure: {e}")
+                        else:
+                            st.info("Database is empty. Save structures to start building your library.")
+                    except Exception as e:
+                        st.error(f"❌ Error reading database: {e}")
+                else:
+                    st.info(f"Database does not exist yet. It will be created when you save your first structure.")
+            
+            else:  # Save to Database
+                if st.session_state.current_structure is not None:
+                    current_atoms = st.session_state.current_structure
+                    st.info(f"Ready to save: {current_atoms.get_chemical_formula()} ({len(current_atoms)} atoms)")
+                    
+                    # Add metadata
+                    save_tags = st.text_input(
+                        "Tags (comma-separated)",
+                        help="Add tags to help identify this structure later"
+                    )
+                    
+                    save_description = st.text_area(
+                        "Description (optional)",
+                        help="Add notes about this structure"
+                    )
+                    
+                    if st.button("💾 Save to Database"):
+                        try:
+                            from ase.db import connect
+                            db = connect(db_path)
+                            
+                            # Parse tags
+                            key_value_pairs = {}
+                            if save_tags:
+                                for tag in save_tags.split(','):
+                                    tag = tag.strip()
+                                    if tag:
+                                        key_value_pairs[tag] = True
+                            
+                            if save_description:
+                                key_value_pairs['description'] = save_description
+                            
+                            # Save to database
+                            db.write(current_atoms, **key_value_pairs)
+                            st.success(f"✅ Structure saved to database: {db_path}")
+                        except Exception as e:
+                            st.error(f"❌ Error saving to database: {e}")
+                else:
+                    st.warning("⚠️ No structure loaded. Load a structure first before saving to database.")
+        
+        # Display structure if loaded (or show current structure)
+        display_atoms = atoms if atoms is not None else st.session_state.current_structure
+        
+        if display_atoms is not None:
+            # Update session state if new structure was loaded
+            if atoms is not None:
+                st.session_state.current_structure = atoms
             
             # Display structure info
-            display_structure_info(atoms)
+            display_structure_info(display_atoms)
             
             # 3D Visualization
             st.subheader("3D Visualization")
             if PLOTLY_AVAILABLE:
-                fig = create_3d_structure_plot(atoms)
+                fig = create_3d_structure_plot(display_atoms)
                 if fig:
                     st.plotly_chart(fig, use_container_width=True)
             else:
@@ -681,7 +935,7 @@ elif page == "🔬 Structure Viewer":
             if st.button("💾 Export Structure"):
                 try:
                     export_path = os.path.join(tempfile.gettempdir(), export_filename)
-                    io.write(export_path, atoms, format=export_format)
+                    io.write(export_path, display_atoms, format=export_format)
                     
                     with open(export_path, 'r') as f:
                         file_content = f.read()
@@ -779,42 +1033,98 @@ elif page == "📊 Calculation Setup":
         col1, col2 = st.columns(2)
         
         with col1:
+            # Use session state for persistence
+            default_ecutwfc = st.session_state.workflow_config.get('ecutwfc', 50.0)
             ecutwfc = st.number_input(
                 "Kinetic Energy Cutoff (ecutwfc) [Ry]",
                 min_value=10.0,
                 max_value=200.0,
-                value=50.0,
+                value=float(default_ecutwfc),
                 step=5.0,
                 help="Plane-wave cutoff energy"
             )
             
+            # Add dual parameter
+            default_dual = st.session_state.workflow_config.get('dual', 4.0)
+            dual = st.number_input(
+                "Dual Parameter (ecutrho/ecutwfc ratio)",
+                min_value=1.0,
+                max_value=12.0,
+                value=float(default_dual),
+                step=0.5,
+                help="Ratio between charge density and wavefunction cutoffs (typically 4-8)"
+            )
+            
             if calc_type.startswith("SCF") or calc_type.startswith("Relaxation"):
+                default_conv_thr = st.session_state.workflow_config.get('conv_thr', 1e-6)
                 conv_thr = st.number_input(
                     "Convergence Threshold",
                     min_value=1e-10,
                     max_value=1e-4,
-                    value=1e-6,
+                    value=float(default_conv_thr),
                     format="%.1e",
                     help="SCF convergence threshold"
                 )
         
         with col2:
-            ecutrho = st.number_input(
+            # Calculate ecutrho from dual
+            ecutrho = ecutwfc * dual
+            st.number_input(
                 "Charge Density Cutoff (ecutrho) [Ry]",
                 min_value=10.0,
                 max_value=800.0,
-                value=ecutwfc * 4,
+                value=ecutrho,
                 step=10.0,
-                help="Charge density cutoff (usually 4-8 × ecutwfc)"
+                help="Charge density cutoff = dual × ecutwfc",
+                disabled=True
             )
         
         st.session_state.workflow_config.update({
             'ecutwfc': ecutwfc,
             'ecutrho': ecutrho,
+            'dual': dual,
         })
         
         if calc_type.startswith("SCF") or calc_type.startswith("Relaxation"):
             st.session_state.workflow_config['conv_thr'] = conv_thr
+        
+        # Smearing options
+        st.subheader("Electronic Occupations")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            occupations = st.selectbox(
+                "Occupation Type",
+                ["smearing", "fixed", "tetrahedra"],
+                index=["smearing", "fixed", "tetrahedra"].index(
+                    st.session_state.workflow_config.get('occupations', 'smearing')
+                ),
+                help="Method for determining electronic occupations"
+            )
+            st.session_state.workflow_config['occupations'] = occupations
+        
+        with col2:
+            if occupations == "smearing":
+                smearing_type = st.selectbox(
+                    "Smearing Type",
+                    ["gaussian", "methfessel-paxton", "marzari-vanderbilt", "fermi-dirac"],
+                    index=["gaussian", "methfessel-paxton", "marzari-vanderbilt", "fermi-dirac"].index(
+                        st.session_state.workflow_config.get('smearing', 'gaussian')
+                    ),
+                    help="Type of smearing function"
+                )
+                st.session_state.workflow_config['smearing'] = smearing_type
+                
+                degauss = st.number_input(
+                    "Smearing Width (degauss) [Ry]",
+                    min_value=0.001,
+                    max_value=0.1,
+                    value=st.session_state.workflow_config.get('degauss', 0.02),
+                    step=0.001,
+                    format="%.3f",
+                    help="Width of smearing (typically 0.01-0.03 Ry)"
+                )
+                st.session_state.workflow_config['degauss'] = degauss
         
         # K-points
         st.subheader("K-point Sampling")
@@ -855,16 +1165,93 @@ elif page == "📊 Calculation Setup":
         
         # Spin polarization
         st.subheader("Spin Polarization")
+        default_nspin = st.session_state.workflow_config.get('nspin', 1)
         nspin = st.selectbox(
             "Spin Treatment",
             [1, 2, 4],
+            index=[1, 2, 4].index(default_nspin),
             format_func=lambda x: {
                 1: "Non-spin-polarized",
                 2: "Spin-polarized (collinear)",
                 4: "Non-collinear + spin-orbit"
-            }[x]
+            }[x],
+            help="Spin treatment for magnetic systems"
         )
         st.session_state.workflow_config['nspin'] = nspin
+        
+        # DFT+U section
+        st.subheader("DFT+U Configuration")
+        use_dft_u = st.checkbox(
+            "Enable DFT+U",
+            value=st.session_state.workflow_config.get('use_dft_u', False),
+            help="Add Hubbard U correction for strongly correlated systems"
+        )
+        st.session_state.workflow_config['use_dft_u'] = use_dft_u
+        
+        if use_dft_u:
+            st.info("Configure Hubbard U parameters for each element")
+            
+            atoms = st.session_state.current_structure
+            unique_elements = list(set(atoms.get_chemical_symbols()))
+            
+            hubbard_u = st.session_state.workflow_config.get('hubbard_u', {})
+            
+            for element in unique_elements:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.write(f"**{element}**")
+                with col2:
+                    u_val = st.number_input(
+                        f"U value (eV)",
+                        min_value=0.0,
+                        max_value=10.0,
+                        value=hubbard_u.get(element, {}).get('U', 0.0),
+                        step=0.5,
+                        key=f"hubbard_u_{element}"
+                    )
+                with col3:
+                    orbital = st.selectbox(
+                        f"Orbital",
+                        ["2p", "3d", "4f"],
+                        index=["2p", "3d", "4f"].index(hubbard_u.get(element, {}).get('orbital', '3d')),
+                        key=f"hubbard_orbital_{element}"
+                    )
+                
+                if u_val > 0:
+                    hubbard_u[element] = {'U': u_val, 'orbital': orbital}
+            
+            st.session_state.workflow_config['hubbard_u'] = hubbard_u
+        
+        # Calculation-specific options
+        if calc_type.startswith("Bands"):
+            st.subheader("Band Structure Settings")
+            
+            band_path_method = st.radio(
+                "K-path Selection:",
+                ["Automatic (seekpath)", "Custom Path"]
+            )
+            
+            if band_path_method == "Automatic (seekpath)":
+                st.info("Will use automatic k-path detection based on crystal symmetry")
+                st.session_state.workflow_config['band_path'] = 'auto'
+            else:
+                st.write("Define custom k-path (e.g., 'GXMGRX' for cubic systems)")
+                custom_path = st.text_input(
+                    "K-path",
+                    value=st.session_state.workflow_config.get('custom_band_path', 'GXMGRX'),
+                    help="Specify high-symmetry points"
+                )
+                st.session_state.workflow_config['band_path'] = 'custom'
+                st.session_state.workflow_config['custom_band_path'] = custom_path
+                
+            npoints = st.number_input(
+                "Number of k-points along path",
+                min_value=10,
+                max_value=500,
+                value=st.session_state.workflow_config.get('band_npoints', 100),
+                help="Total number of k-points along the band path"
+            )
+            st.session_state.workflow_config['band_npoints'] = npoints
         
         st.success("✅ Calculation parameters configured!")
 
@@ -993,6 +1380,33 @@ elif page == "🚀 Job Submission":
         # Submission options
         st.subheader("Submission Options")
         
+        # Local working directory selection
+        st.write("**Local Working Directory:**")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            local_workdir = st.text_input(
+                "Working Directory",
+                value=st.session_state.local_workdir,
+                help="Directory where calculation files will be saved locally"
+            )
+            st.session_state.local_workdir = local_workdir
+        with col2:
+            if st.button("📁 Use Current"):
+                st.session_state.local_workdir = os.getcwd()
+                st.rerun()
+        
+        # Show where files will be saved
+        st.info(f"📂 Files will be saved to: `{local_workdir}`")
+        
+        # Create directory if it doesn't exist
+        if not os.path.exists(local_workdir):
+            if st.checkbox("Create directory if it doesn't exist", value=True):
+                try:
+                    os.makedirs(local_workdir, exist_ok=True)
+                    st.success(f"✅ Directory created: {local_workdir}")
+                except Exception as e:
+                    st.error(f"❌ Could not create directory: {e}")
+        
         dry_run = st.checkbox(
             "Dry Run (don't actually submit)",
             value=True,
@@ -1015,6 +1429,15 @@ elif page == "🚀 Job Submission":
                     st.write("4. ✓ Submit to scheduler (if configured)")
                     st.write("5. ✓ Monitor job status")
                     
+                    # Show file locations
+                    st.subheader("📂 File Locations")
+                    st.info(f"""
+                    **Input files:** `{local_workdir}/`
+                    - Structure file: `{local_workdir}/structure.cif`
+                    - QE input: `{local_workdir}/espresso.pwi`
+                    - Job script: `{local_workdir}/run.sh`
+                    """)
+                    
                     if dry_run:
                         st.success("✅ Dry run completed - no job submitted")
                     else:
@@ -1024,6 +1447,165 @@ elif page == "🚀 Job Submission":
                 except Exception as e:
                     st.error(f"❌ Error submitting job: {e}")
                     st.code(traceback.format_exc())
+
+# Page 7: Results & Post-Processing
+elif page == "📈 Results & Post-Processing":
+    st.header("Results & Post-Processing")
+    st.markdown("""
+    View calculation results, analyze output files, and perform post-processing.
+    """)
+    
+    # Working directory selection
+    st.subheader("Select Calculation Directory")
+    
+    results_dir = st.text_input(
+        "Results Directory",
+        value=st.session_state.local_workdir,
+        help="Path to directory containing calculation results"
+    )
+    
+    if os.path.exists(results_dir):
+        st.success(f"✅ Directory found: {results_dir}")
+        
+        # List output files
+        st.subheader("Output Files")
+        
+        try:
+            files = os.listdir(results_dir)
+            output_files = [f for f in files if f.endswith(('.out', '.pwo', '.xml', '.log'))]
+            
+            if output_files:
+                selected_file = st.selectbox(
+                    "Select output file to view:",
+                    output_files
+                )
+                
+                file_path = os.path.join(results_dir, selected_file)
+                
+                # Display file info
+                file_size = os.path.getsize(file_path)
+                st.info(f"File: {selected_file} | Size: {file_size / 1024:.2f} KB")
+                
+                # View file content
+                if st.button("📄 View File Content"):
+                    try:
+                        with open(file_path, 'r') as f:
+                            content = f.read()
+                        
+                        # Show in expandable text area
+                        with st.expander("File Content", expanded=True):
+                            st.text_area(
+                                "Output",
+                                value=content,
+                                height=400,
+                                key="file_content"
+                            )
+                        
+                        # Parse for key information
+                        st.subheader("Extracted Information")
+                        
+                        # Simple parsing for common outputs
+                        if "Final energy" in content or "!" in content:
+                            st.write("**Energy Information:**")
+                            for line in content.split('\n'):
+                                if "Final energy" in line or (line.strip().startswith("!") and "total energy" in line.lower()):
+                                    st.code(line.strip())
+                        
+                        if "convergence has been achieved" in content.lower():
+                            st.success("✅ Calculation converged successfully")
+                        elif "convergence NOT achieved" in content.lower():
+                            st.warning("⚠️ Calculation did not converge")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error reading file: {e}")
+                
+                # Download button
+                try:
+                    with open(file_path, 'r') as f:
+                        file_content = f.read()
+                    
+                    st.download_button(
+                        "📥 Download Output File",
+                        file_content,
+                        file_name=selected_file,
+                        mime="text/plain"
+                    )
+                except Exception as e:
+                    st.error(f"❌ Error preparing download: {e}")
+            else:
+                st.warning("⚠️ No output files found in this directory.")
+        
+        except Exception as e:
+            st.error(f"❌ Error listing files: {e}")
+        
+        # Structure visualization from results
+        st.subheader("Structure Visualization")
+        
+        try:
+            structure_files = [f for f in files if f.endswith(('.cif', '.xyz', '.pdb', '.poscar', 'CONTCAR'))]
+            
+            if structure_files and ASE_AVAILABLE:
+                selected_structure = st.selectbox(
+                    "Select structure file:",
+                    structure_files
+                )
+                
+                if st.button("🔬 Visualize Structure"):
+                    try:
+                        struct_path = os.path.join(results_dir, selected_structure)
+                        atoms = io.read(struct_path)
+                        
+                        st.success(f"✅ Loaded: {atoms.get_chemical_formula()} ({len(atoms)} atoms)")
+                        
+                        # Display structure info
+                        display_structure_info(atoms)
+                        
+                        # 3D Visualization
+                        if PLOTLY_AVAILABLE:
+                            fig = create_3d_structure_plot(atoms)
+                            if fig:
+                                st.plotly_chart(fig, use_container_width=True)
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error visualizing structure: {e}")
+            else:
+                st.info("No structure files found for visualization.")
+        
+        except Exception as e:
+            st.error(f"❌ Error searching for structure files: {e}")
+        
+        # Post-processing tools
+        st.subheader("Post-Processing Tools")
+        
+        post_tool = st.selectbox(
+            "Select Tool:",
+            [
+                "Energy Analysis",
+                "DOS Plotting",
+                "Band Structure Plotting",
+                "Structure Comparison"
+            ]
+        )
+        
+        if post_tool == "Energy Analysis":
+            st.info("📊 Energy analysis tools will extract and plot total energy convergence.")
+            st.write("*Feature coming soon*")
+        
+        elif post_tool == "DOS Plotting":
+            st.info("📈 DOS plotting tools will visualize density of states from dos.x output.")
+            st.write("*Feature coming soon*")
+        
+        elif post_tool == "Band Structure Plotting":
+            st.info("📉 Band structure plotting from bands.x output.")
+            st.write("*Feature coming soon*")
+        
+        elif post_tool == "Structure Comparison":
+            st.info("🔄 Compare initial and final structures from relaxation calculations.")
+            st.write("*Feature coming soon*")
+    
+    else:
+        st.error(f"❌ Directory not found: {results_dir}")
+        st.info("Please check the path or complete a calculation first.")
 
 # Footer
 st.sidebar.markdown("---")
