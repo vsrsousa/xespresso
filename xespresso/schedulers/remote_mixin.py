@@ -79,6 +79,7 @@ class RemoteExecutionMixin:
             search_dirs.append(os.path.join(os.environ["ESPRESSO_PSEUDO"]))
         search_dirs.append(os.path.expanduser("~/espresso/pseudo/"))
 
+        missing_pseudos = []
         for symbol, pseudo_file in pseudopotentials.items():
             found = False
             for attempt in range(max_retries + 1):
@@ -103,9 +104,18 @@ class RemoteExecutionMixin:
                 if found:
                     break
             if not found:
+                missing_pseudos.append((symbol, pseudo_file))
                 warnings.warn(f"Pseudopotential '{pseudo_file}' not found in any known directory.")
                 if hasattr(self, "logger"):
                     self.logger.warning(f"Missing pseudopotential: {pseudo_file} for {symbol}")
+
+        # Raise exception if any pseudopotentials are missing
+        if missing_pseudos:
+            missing_list = ", ".join([f"{symbol}: {pseudo_file}" for symbol, pseudo_file in missing_pseudos])
+            error_msg = f"Cannot proceed with calculation. Missing pseudopotentials: {missing_list}"
+            if hasattr(self, "logger"):
+                self.logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
 
         self.calc.parameters["input_data"]["CONTROL"]["pseudo_dir"] = "./pseudo"
         self.calc.write_input(self.calc.atoms)

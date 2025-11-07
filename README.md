@@ -16,7 +16,10 @@ For the introduction of ASE , please visit https://wiki.fysik.dtu.dk/ase/index.h
 * Automatic set up "nscf" calculation
 * Read and plot dos, pdos and layer resolved pdos
 * Plot NEB
-* **NEW:** Web-based GUI for configuration management (Streamlit)
+* **NEW: Simplified workflow with quality presets**
+* **NEW: K-spacing support for easy k-point specification**
+* **NEW: Pseudopotential configuration management**
+* **NEW: Web-based GUI for configuration management (Streamlit)**
 
 ### Author
 * Xing Wang  <xingwang1991@gmail.com>
@@ -77,6 +80,63 @@ Codes Configuration:
 
 ### Examples
 
+#### Simplified Workflow (NEW!)
+
+**🚀 NEW: Easy calculations with quality presets and k-spacing**
+
+Run calculations from CIF files with quality presets (`fast`, `moderate`, `accurate`):
+
+``` python
+from xespresso import quick_scf, quick_relax
+
+# Quick SCF calculation from CIF file
+calc = quick_scf(
+    'structure.cif',
+    {'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    label='scf/fe'
+)
+
+# Quick relaxation with k-spacing (instead of k-points)
+calc = quick_relax(
+    'structure.cif',
+    {'Fe': 'Fe.pbe-spn.UPF'},
+    quality='moderate',
+    kspacing=0.3,  # Angstrom^-1, converted automatically
+    relax_type='vc-relax',
+    label='relax/fe'
+)
+```
+
+**Quality Presets:**
+- `fast`: Quick calculations for testing (ecutwfc=30 Ry, kspacing=0.5)
+- `moderate`: Standard production runs (ecutwfc=50 Ry, kspacing=0.3)
+- `accurate`: High-precision results (ecutwfc=80 Ry, kspacing=0.15)
+
+**Pseudopotential Configuration Management:**
+
+Store and reuse pseudopotential configurations:
+
+``` python
+from xespresso.utils import save_pseudo_config, load_pseudo_config
+
+# Save configuration to ~/.xespresso/
+config = {
+    "name": "my_config",
+    "pseudopotentials": {
+        "Fe": "Fe.pbe-spn.UPF",
+        "O": "O.pbe.UPF"
+    }
+}
+save_pseudo_config("my_config", config)
+
+# Load and use
+config = load_pseudo_config("my_config")
+calc = quick_scf('structure.cif', config['pseudopotentials'], quality='moderate')
+```
+
+See [WORKFLOW_DOCUMENTATION.md](WORKFLOW_DOCUMENTATION.md) for complete documentation.
+
 #### Automatic submit job
 
 A example of setting parameters for the queue. See example/queue.py
@@ -106,7 +166,68 @@ calc = Espresso(label = 'scf/fe')
 calc = Espresso(debug = True)
 ```
 
-#### Add new species
+#### Magnetic configuration (New Simplified API!)
+
+**🎉 NEW: Element-based magnetic configuration** - The easiest way to set up magnetic systems!
+
+``` python
+from xespresso import setup_magnetic_config
+
+atoms = bulk('Fe', cubic=True)
+
+# All Fe equivalent with magnetization 1
+config = setup_magnetic_config(atoms, {'Fe': [1]})
+
+# AFM: two non-equivalent Fe
+config = setup_magnetic_config(atoms, {'Fe': [1, -1]})
+
+# With Hubbard U
+config = setup_magnetic_config(atoms, {
+    'Fe': {'mag': [1, -1], 'U': 4.3}
+})
+
+# Multiple elements (e.g., FeMnAl2)
+config = setup_magnetic_config(atoms, {
+    'Fe': [1],        # All Fe equivalent
+    'Mn': [1, -1],    # Mn antiferromagnetic
+    'Al': [0]         # Al non-magnetic
+})
+
+# Auto-expand cell if needed
+config = setup_magnetic_config(
+    atoms, 
+    {'Fe': [1, 1, -1, -1]},  # Need 4 Fe but only have 2
+    expand_cell=True
+)
+
+# Use in calculator - NOW EVEN SIMPLER! 🎉
+# Method 1: Pass entire config (recommended)
+config = setup_magnetic_config(atoms, {'Fe': [1, -1]}, 
+                               pseudopotentials={'Fe': 'Fe.pbe-spn.UPF'})
+calc = Espresso(
+    atoms=config['atoms'],
+    input_data=config,  # Pass entire dict - no manual extraction!
+    nspin=2,
+    ecutwfc=40
+)
+
+# Method 2: Old way still works
+config['pseudopotentials']['Fe'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+config['pseudopotentials']['Fe1'] = 'Fe.pbe-spn-rrkjus_psl.1.0.0.UPF'
+calc = Espresso(
+    pseudopotentials=config['pseudopotentials'],
+    input_data={'input_ntyp': config['input_ntyp']},
+    nspin=2
+)
+```
+
+**✨ New Feature**: Pseudopotentials can now be passed inside `input_data`! The calculator automatically extracts them, making it super convenient to use `setup_magnetic_config`. See `PSEUDOPOTENTIAL_AUTO_EXTRACTION.md` for details.
+
+**Also available:** `set_antiferromagnetic()`, `set_ferromagnetic()`, `set_magnetic_moments()`
+
+See `MAGNETIC_HELPERS.md` for complete documentation and examples.
+
+#### Add new species (Manual method)
 Some atoms are special:
 + atoms with different starting_magnetization
 + atoms with different U values

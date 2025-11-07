@@ -61,6 +61,20 @@ def write_espresso_in(
     - support atomic species
     - support Hubbard parameters (both old and new QE 7.x+ format)
     """
+    
+    # Extract pseudopotentials from input_data if present
+    # This allows users to pass the full config dict from setup_magnetic_config
+    if pseudopotentials is None and isinstance(input_data, dict):
+        pseudopotentials = input_data.get('pseudopotentials')
+    elif isinstance(input_data, dict) and 'pseudopotentials' in input_data:
+        # Merge: top-level pseudopotentials take precedence
+        input_pseudos = input_data.get('pseudopotentials', {})
+        if pseudopotentials is None:
+            pseudopotentials = {}
+        # Add from input_data, but don't override existing
+        for species, pseudo in input_pseudos.items():
+            if species not in pseudopotentials:
+                pseudopotentials[species] = pseudo
 
     # Convert to a namelist to make working with parameters much easier
     # Note that the name ``input_data`` is chosen to prevent clash with
@@ -497,6 +511,45 @@ def sort_qe_input(parameters, package="PW"):
     unuse_parameters = {}
     # section_names = ['CONTROL', 'SYSTEM', 'ELECTRONS', 'IONS', 'CELL', 'ATOMIC_SPECIES', 'K_POINTS', 'CELL_PARAMETERS', 'CONSTRAINTS', 'OCCUPATIONS', 'ATOMIC_VELECITIES', 'ATOMIC_FORCES']
     section_names = ["CONTROL", "SYSTEM", "ELECTRONS", "IONS", "CELL", "INPUT_NTYP"]
+    # Special parameters to preserve in input_data (not part of namelists)
+    special_parameters = ["qe_version", "hubbard", "hubbard_v", "hubbard_format"]
+    
+    # Extract pseudopotentials from input_data if present
+    # This allows users to pass the full config dict from setup_magnetic_config
+    if "pseudopotentials" in parameters.get("input_data", {}):
+        input_pseudos = parameters["input_data"]["pseudopotentials"]
+        # Merge with existing pseudopotentials parameter, preferring top-level ones
+        if "pseudopotentials" not in sorted_parameters:
+            sorted_parameters["pseudopotentials"] = {}
+        # Add pseudopotentials from input_data, but don't override existing ones
+        for species, pseudo in input_pseudos.items():
+            if species not in sorted_parameters["pseudopotentials"]:
+                sorted_parameters["pseudopotentials"][species] = pseudo
+        # Remove from input_data to avoid duplication
+        del sorted_parameters["input_data"]["pseudopotentials"]
+    
+    # Also extract species_map if present (used to map derived species back to base elements)
+    if "species_map" in parameters.get("input_data", {}):
+        # Store species_map for later use but don't add to sorted parameters
+        # It's metadata that helps derive pseudopotentials
+        species_map = sorted_parameters["input_data"]["species_map"]
+        del sorted_parameters["input_data"]["species_map"]
+        
+        # If we have a species_map and pseudopotentials, use it to auto-populate
+        # missing pseudopotentials for derived species (e.g., Fe1, Fe2 from Fe)
+        if "pseudopotentials" in sorted_parameters:
+            pseudos = sorted_parameters["pseudopotentials"]
+            for derived_species, base_element in species_map.items():
+                if derived_species not in pseudos and base_element in pseudos:
+                    # Auto-derive: Fe1 and Fe2 inherit from Fe
+                    pseudos[derived_species] = pseudos[base_element]
+    
+    # Remove other metadata fields from setup_magnetic_config that aren't QE parameters
+    metadata_fields = ["expanded", "hubbard_format", "atoms"]
+    for field in metadata_fields:
+        if field in sorted_parameters.get("input_data", {}):
+            del sorted_parameters["input_data"][field]
+    
     for section in section_names:
         if section not in sorted_parameters["input_data"]:
             sorted_parameters["input_data"][section] = {}
@@ -537,6 +590,9 @@ def sort_qe_input(parameters, package="PW"):
                 "input_data"
             ].pop(key)
             continue
+        # Preserve special parameters in input_data
+        if key in special_parameters:
+            continue
         for section in section_names:
             if section.upper() == "INPUT_NTYP":
                 continue
@@ -557,12 +613,18 @@ def check_qe_input(input_parameters, package="PW"):
     from xespresso.utils import check_type
 
     pw_parameters = qe_namespace[package]
+    # Special parameters to skip (not part of namelists)
+    special_parameters = ["qe_version", "hubbard", "hubbard_v", "hubbard_format"]
+    
     for section, parameters in input_parameters.items():
+        # Skip special parameters that are not namelists
+        if section in special_parameters:
+            continue
         if section == "INPUT_NTYP":
             for key, subparas in parameters.items():
                 for value in subparas.values():
                     check_type(key, value, pw_parameters)
-        else:
+        elif isinstance(parameters, dict):
             for key, value in parameters.items():
                 check_type(key, value, pw_parameters)
 

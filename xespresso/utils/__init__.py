@@ -1,5 +1,16 @@
 import numpy as np
 
+# Import pseudo configuration utilities
+from xespresso.utils.pseudo_config import (
+    get_config_dir,
+    ensure_config_dir,
+    save_pseudo_config,
+    load_pseudo_config,
+    list_pseudo_configs,
+    delete_pseudo_config,
+    get_pseudo_info,
+)
+
 
 def get_hash(file):
     import hashlib
@@ -140,6 +151,9 @@ def compare_parameters(para1, para2, ignore=[]):
         changed_parameters = ["all"]
         return changed_parameters, igonre_parameters
     default_parameters = default_parameters["PW"]
+    # Special parameters that are not namelists (stored in input_data but not QE sections)
+    special_parameters = ["qe_version", "hubbard", "hubbard_v", "hubbard_format"]
+    
     # pseudopotentials
     key = "pseudopotentials"
     try:
@@ -158,6 +172,21 @@ def compare_parameters(para1, para2, ignore=[]):
         changed_parameters.append(key)
     # input_data
     for section, paras in para1["input_data"].items():
+        # Skip special parameters that are not QE namelists
+        if section in special_parameters:
+            # For special parameters, just compare directly without default lookup
+            if section not in para2["input_data"]:
+                changed_parameters.append(section)
+            elif para1["input_data"][section] != para2["input_data"][section]:
+                changed_parameters.append(section)
+            continue
+        
+        # Check if section exists in para2
+        if section not in para2["input_data"]:
+            # Section is missing in para2, mark all its parameters as changed
+            changed_parameters.append(section)
+            continue
+        
         if section == "INPUT_NTYP":
             changed_parameters1, igonre_parameters1 = compare_dict(
                 para1["input_data"][section],
