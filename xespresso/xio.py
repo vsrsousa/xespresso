@@ -627,6 +627,11 @@ def check_qe_input(input_parameters, package="PW"):
         elif isinstance(parameters, dict):
             for key, value in parameters.items():
                 check_type(key, value, pw_parameters)
+        else:
+            # Handle unexpected parameter types gracefully
+            import warnings
+            warnings.warn(f"Unexpected parameter type for section '{section}': {type(parameters).__name__}. Expected dict. Skipping validation.")
+
 
 
 def read_espresso_asei(fileobj, package="PW"):

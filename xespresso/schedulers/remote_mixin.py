@@ -111,7 +111,15 @@ class RemoteExecutionMixin:
 
         # Raise exception if any pseudopotentials are missing
         if missing_pseudos:
-            missing_list = ", ".join([f"{symbol}: {pseudo_file}" for symbol, pseudo_file in missing_pseudos])
+            # Limit the length of error message for readability
+            max_display = 10
+            if len(missing_pseudos) > max_display:
+                displayed_missing = missing_pseudos[:max_display]
+                missing_list = ", ".join([f"{symbol}: {pseudo_file}" for symbol, pseudo_file in displayed_missing])
+                missing_list += f", ... and {len(missing_pseudos) - max_display} more"
+            else:
+                missing_list = ", ".join([f"{symbol}: {pseudo_file}" for symbol, pseudo_file in missing_pseudos])
+            
             error_msg = f"Cannot proceed with calculation. Missing pseudopotentials: {missing_list}"
             if hasattr(self, "logger"):
                 self.logger.error(error_msg)
