@@ -237,6 +237,76 @@ def load_machine(
     else:
         return machine.to_queue()
 
+def save_machine(
+    machine: Machine,
+    config_path: str = DEFAULT_CONFIG_PATH,
+    machines_dir: str = DEFAULT_MACHINES_DIR,
+    use_individual_file: bool = True
+) -> str:
+    """
+    Save a Machine configuration to disk.
+    
+    Supports two save formats:
+    1. Individual file: Save to ~/.xespresso/machines/{machine_name}.json (default)
+    2. Machines.json: Add to ~/.xespresso/machines.json
+    
+    Parameters:
+        machine (Machine): Machine object to save
+        config_path (str): Path to machines.json file
+        machines_dir (str): Directory for individual machine files
+        use_individual_file (bool): If True, save as individual file (recommended)
+        
+    Returns:
+        str: Path to the saved file
+        
+    Raises:
+        ValueError: If machine is not a Machine object
+        IOError: If unable to save the file
+    """
+    if not isinstance(machine, Machine):
+        raise ValueError("Expected Machine object")
+    
+    if use_individual_file:
+        # Save as individual file (recommended)
+        os.makedirs(machines_dir, exist_ok=True)
+        filepath = os.path.join(machines_dir, f"{machine.name}.json")
+        
+        try:
+            machine.to_file(filepath)
+            logger.info(f"Machine '{machine.name}' saved to individual file: {filepath}")
+            return filepath
+        except Exception as e:
+            logger.error(f"Failed to save machine to {filepath}: {e}")
+            raise IOError(f"Failed to save machine: {e}")
+    else:
+        # Save to machines.json (traditional format)
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        
+        # Load existing config or create new one
+        config = {"machines": {}}
+        if os.path.exists(config_path):
+            try:
+                with open(config_path) as f:
+                    config = json.load(f)
+                if "machines" not in config:
+                    config["machines"] = {}
+            except Exception as e:
+                logger.warning(f"Could not load existing config from {config_path}: {e}")
+                config = {"machines": {}}
+        
+        # Add/update machine in config
+        config["machines"][machine.name] = machine.to_dict()
+        
+        try:
+            with open(config_path, "w") as f:
+                json.dump(config, f, indent=2)
+            logger.info(f"Machine '{machine.name}' saved to {config_path}")
+            return config_path
+        except Exception as e:
+            logger.error(f"Failed to save machine to {config_path}: {e}")
+            raise IOError(f"Failed to save machine: {e}")
+
+
 def list_machines(config_path: str = DEFAULT_CONFIG_PATH, machines_dir: str = DEFAULT_MACHINES_DIR) -> list[str]:
     """
     Returns a list of machine names defined in config files.
