@@ -100,6 +100,41 @@ page = st.sidebar.radio(
     ]
 )
 
+# Helper function for path validation
+def validate_path(path, allow_creation=False):
+    """
+    Validate and sanitize file paths to prevent path injection.
+    
+    Args:
+        path: Path to validate
+        allow_creation: If True, allow non-existent paths (for file creation)
+    
+    Returns:
+        Tuple of (is_valid, normalized_path, error_message)
+    """
+    if not path:
+        return False, None, "Path cannot be empty"
+    
+    try:
+        # Normalize and resolve the path
+        normalized = os.path.abspath(os.path.expanduser(path))
+        
+        # Check for path traversal attempts
+        if '..' in os.path.relpath(normalized, os.path.expanduser('~')):
+            # Allow if it's an absolute path or in allowed directories
+            allowed_dirs = ['/tmp', '/home', '/Users', os.path.expanduser('~')]
+            if not any(normalized.startswith(d) for d in allowed_dirs):
+                return False, None, "Path traversal not allowed"
+        
+        # Check if path exists (if required)
+        if not allow_creation and not os.path.exists(normalized):
+            return False, normalized, f"Path does not exist: {normalized}"
+        
+        return True, normalized, None
+        
+    except Exception as e:
+        return False, None, f"Invalid path: {str(e)}"
+
 # Helper functions for structure visualization
 def create_3d_structure_plot(atoms):
     """Create a 3D plotly visualization of atomic structure."""
@@ -495,18 +530,30 @@ if page == "🖥️ Machine Configuration":
                             # Try to establish SSH connection
                             import paramiko
                             ssh = paramiko.SSHClient()
-                            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                            # Load known hosts for security
+                            try:
+                                ssh.load_system_host_keys()
+                            except Exception:
+                                pass  # Known hosts file may not exist
                             
-                            # Expand ssh_key path
+                            # Use WarningPolicy - warns but allows connection for testing
+                            # Note: For production, use RejectPolicy and pre-configure host keys
+                            ssh.set_missing_host_key_policy(paramiko.WarningPolicy())
+                            
+                            # Expand ssh_key path and validate
                             key_path = os.path.expanduser(ssh_key)
                             
-                            ssh.connect(
-                                hostname=host,
-                                username=username,
-                                port=port,
-                                key_filename=key_path,
-                                timeout=10
-                            )
+                            if not os.path.isfile(key_path):
+                                st.error(f"❌ SSH key not found: {key_path}")
+                                st.info("💡 Check the SSH key path")
+                            else:
+                                ssh.connect(
+                                    hostname=host,
+                                    username=username,
+                                    port=port,
+                                    key_filename=key_path,
+                                    timeout=10
+                                )
                             
                             # Test command execution
                             stdin, stdout, stderr = ssh.exec_command('echo "Connection test successful"')
@@ -804,7 +851,14 @@ elif page == "🔬 Structure Viewer":
                 value=st.session_state.get('ase_db_path', os.path.expanduser("~/.xespresso/structures.db")),
                 help="Path to ASE database file"
             )
-            st.session_state['ase_db_path'] = db_path
+            
+            # Validate database path
+            is_valid, normalized_db_path, error_msg = validate_path(db_path, allow_creation=True)
+            if not is_valid:
+                st.error(f"❌ Invalid database path: {error_msg}")
+                normalized_db_path = None
+            else:
+                st.session_state['ase_db_path'] = normalized_db_path
             
             # Database operations
             db_operation = st.radio(
@@ -812,16 +866,17 @@ elif page == "🔬 Structure Viewer":
                 ["Load from Database", "Save to Database"]
             )
             
-            if db_operation == "Load from Database":
-                if os.path.exists(db_path):
-                    try:
-                        from ase.db import connect
-                        db = connect(db_path)
-                        
-                        # List structures in database
-                        rows = list(db.select())
-                        if rows:
-                            st.write(f"Found {len(rows)} structures in database")
+            if normalized_db_path and is_valid:
+                if db_operation == "Load from Database":
+                    if os.path.exists(normalized_db_path):
+                        try:
+                            from ase.db import connect
+                            db = connect(normalized_db_path)
+                            
+                            # List structures in database
+                            rows = list(db.select())
+                            if rows:
+                                st.write(f"Found {len(rows)} structures in database")
                             
                             # Create selection table
                             structures_info = []
@@ -849,52 +904,52 @@ elif page == "🔬 Structure Viewer":
                                     st.success(f"✅ Loaded structure ID {selected_id}: {atoms.get_chemical_formula()}")
                                 except Exception as e:
                                     st.error(f"❌ Error loading structure: {e}")
-                        else:
-                            st.info("Database is empty. Save structures to start building your library.")
-                    except Exception as e:
-                        st.error(f"❌ Error reading database: {e}")
-                else:
-                    st.info(f"Database does not exist yet. It will be created when you save your first structure.")
-            
-            else:  # Save to Database
-                if st.session_state.current_structure is not None:
-                    current_atoms = st.session_state.current_structure
-                    st.info(f"Ready to save: {current_atoms.get_chemical_formula()} ({len(current_atoms)} atoms)")
-                    
-                    # Add metadata
-                    save_tags = st.text_input(
-                        "Tags (comma-separated)",
-                        help="Add tags to help identify this structure later"
-                    )
-                    
-                    save_description = st.text_area(
-                        "Description (optional)",
-                        help="Add notes about this structure"
-                    )
-                    
-                    if st.button("💾 Save to Database"):
-                        try:
-                            from ase.db import connect
-                            db = connect(db_path)
-                            
-                            # Parse tags
-                            key_value_pairs = {}
-                            if save_tags:
-                                for tag in save_tags.split(','):
-                                    tag = tag.strip()
-                                    if tag:
-                                        key_value_pairs[tag] = True
-                            
-                            if save_description:
-                                key_value_pairs['description'] = save_description
-                            
-                            # Save to database
-                            db.write(current_atoms, **key_value_pairs)
-                            st.success(f"✅ Structure saved to database: {db_path}")
+                            else:
+                                st.info("Database is empty. Save structures to start building your library.")
                         except Exception as e:
-                            st.error(f"❌ Error saving to database: {e}")
-                else:
-                    st.warning("⚠️ No structure loaded. Load a structure first before saving to database.")
+                            st.error(f"❌ Error reading database: {e}")
+                    else:
+                        st.info(f"Database does not exist yet. It will be created when you save your first structure.")
+                
+                else:  # Save to Database
+                    if st.session_state.current_structure is not None:
+                        current_atoms = st.session_state.current_structure
+                        st.info(f"Ready to save: {current_atoms.get_chemical_formula()} ({len(current_atoms)} atoms)")
+                        
+                        # Add metadata
+                        save_tags = st.text_input(
+                            "Tags (comma-separated)",
+                            help="Add tags to help identify this structure later"
+                        )
+                        
+                        save_description = st.text_area(
+                            "Description (optional)",
+                            help="Add notes about this structure"
+                        )
+                        
+                        if st.button("💾 Save to Database"):
+                            try:
+                                from ase.db import connect
+                                db = connect(normalized_db_path)
+                                
+                                # Parse tags
+                                key_value_pairs = {}
+                                if save_tags:
+                                    for tag in save_tags.split(','):
+                                        tag = tag.strip()
+                                        if tag:
+                                            key_value_pairs[tag] = True
+                                
+                                if save_description:
+                                    key_value_pairs['description'] = save_description
+                                
+                                # Save to database
+                                db.write(current_atoms, **key_value_pairs)
+                                st.success(f"✅ Structure saved to database: {normalized_db_path}")
+                            except Exception as e:
+                                st.error(f"❌ Error saving to database: {e}")
+                    else:
+                        st.warning("⚠️ No structure loaded. Load a structure first before saving to database.")
         
         # Display structure if loaded (or show current structure)
         display_atoms = atoms if atoms is not None else st.session_state.current_structure
@@ -1395,17 +1450,22 @@ elif page == "🚀 Job Submission":
                 st.session_state.local_workdir = os.getcwd()
                 st.rerun()
         
-        # Show where files will be saved
-        st.info(f"📂 Files will be saved to: `{local_workdir}`")
-        
-        # Create directory if it doesn't exist
-        if not os.path.exists(local_workdir):
-            if st.checkbox("Create directory if it doesn't exist", value=True):
-                try:
-                    os.makedirs(local_workdir, exist_ok=True)
-                    st.success(f"✅ Directory created: {local_workdir}")
-                except Exception as e:
-                    st.error(f"❌ Could not create directory: {e}")
+        # Show where files will be saved  
+        # Validate local workdir path
+        is_valid_workdir, normalized_workdir, error_msg = validate_path(local_workdir, allow_creation=True)
+        if not is_valid_workdir:
+            st.error(f"❌ Invalid working directory: {error_msg}")
+        else:
+            st.info(f"📂 Files will be saved to: `{normalized_workdir}`")
+            
+            # Create directory if it doesn't exist
+            if not os.path.exists(normalized_workdir):
+                if st.checkbox("Create directory if it doesn't exist", value=True):
+                    try:
+                        os.makedirs(normalized_workdir, exist_ok=True)
+                        st.success(f"✅ Directory created: {normalized_workdir}")
+                    except Exception as e:
+                        st.error(f"❌ Could not create directory: {e}")
         
         dry_run = st.checkbox(
             "Dry Run (don't actually submit)",
@@ -1429,13 +1489,14 @@ elif page == "🚀 Job Submission":
                     st.write("4. ✓ Submit to scheduler (if configured)")
                     st.write("5. ✓ Monitor job status")
                     
-                    # Show file locations
+                    # Show file locations (use normalized path if valid)
+                    display_workdir = normalized_workdir if is_valid_workdir else local_workdir
                     st.subheader("📂 File Locations")
                     st.info(f"""
-                    **Input files:** `{local_workdir}/`
-                    - Structure file: `{local_workdir}/structure.cif`
-                    - QE input: `{local_workdir}/espresso.pwi`
-                    - Job script: `{local_workdir}/run.sh`
+                    **Input files:** `{display_workdir}/`
+                    - Structure file: `{display_workdir}/structure.cif`
+                    - QE input: `{display_workdir}/espresso.pwi`
+                    - Job script: `{display_workdir}/run.sh`
                     """)
                     
                     if dry_run:
@@ -1464,14 +1525,19 @@ elif page == "📈 Results & Post-Processing":
         help="Path to directory containing calculation results"
     )
     
-    if os.path.exists(results_dir):
-        st.success(f"✅ Directory found: {results_dir}")
+    # Validate results directory path
+    is_valid_results, normalized_results_dir, error_msg = validate_path(results_dir, allow_creation=False)
+    
+    if not is_valid_results:
+        st.error(f"❌ Invalid results directory: {error_msg}")
+    elif os.path.exists(normalized_results_dir):
+        st.success(f"✅ Directory found: {normalized_results_dir}")
         
         # List output files
         st.subheader("Output Files")
         
         try:
-            files = os.listdir(results_dir)
+            files = os.listdir(normalized_results_dir)
             output_files = [f for f in files if f.endswith(('.out', '.pwo', '.xml', '.log'))]
             
             if output_files:
@@ -1480,58 +1546,62 @@ elif page == "📈 Results & Post-Processing":
                     output_files
                 )
                 
-                file_path = os.path.join(results_dir, selected_file)
+                # Validate selected filename (no path traversal)
+                if '..' in selected_file or '/' in selected_file or '\\' in selected_file:
+                    st.error("❌ Invalid filename")
+                else:
+                    file_path = os.path.join(normalized_results_dir, selected_file)
                 
-                # Display file info
-                file_size = os.path.getsize(file_path)
-                st.info(f"File: {selected_file} | Size: {file_size / 1024:.2f} KB")
-                
-                # View file content
-                if st.button("📄 View File Content"):
+                    # Display file info
+                    file_size = os.path.getsize(file_path)
+                    st.info(f"File: {selected_file} | Size: {file_size / 1024:.2f} KB")
+                    
+                    # View file content
+                    if st.button("📄 View File Content"):
+                        try:
+                            with open(file_path, 'r') as f:
+                                content = f.read()
+                            
+                            # Show in expandable text area
+                            with st.expander("File Content", expanded=True):
+                                st.text_area(
+                                    "Output",
+                                    value=content,
+                                    height=400,
+                                    key="file_content"
+                                )
+                            
+                            # Parse for key information
+                            st.subheader("Extracted Information")
+                            
+                            # Simple parsing for common outputs
+                            if "Final energy" in content or "!" in content:
+                                st.write("**Energy Information:**")
+                                for line in content.split('\n'):
+                                    if "Final energy" in line or (line.strip().startswith("!") and "total energy" in line.lower()):
+                                        st.code(line.strip())
+                            
+                            if "convergence has been achieved" in content.lower():
+                                st.success("✅ Calculation converged successfully")
+                            elif "convergence NOT achieved" in content.lower():
+                                st.warning("⚠️ Calculation did not converge")
+                            
+                        except Exception as e:
+                            st.error(f"❌ Error reading file: {e}")
+                    
+                    # Download button
                     try:
                         with open(file_path, 'r') as f:
-                            content = f.read()
+                            file_content = f.read()
                         
-                        # Show in expandable text area
-                        with st.expander("File Content", expanded=True):
-                            st.text_area(
-                                "Output",
-                                value=content,
-                                height=400,
-                                key="file_content"
-                            )
-                        
-                        # Parse for key information
-                        st.subheader("Extracted Information")
-                        
-                        # Simple parsing for common outputs
-                        if "Final energy" in content or "!" in content:
-                            st.write("**Energy Information:**")
-                            for line in content.split('\n'):
-                                if "Final energy" in line or (line.strip().startswith("!") and "total energy" in line.lower()):
-                                    st.code(line.strip())
-                        
-                        if "convergence has been achieved" in content.lower():
-                            st.success("✅ Calculation converged successfully")
-                        elif "convergence NOT achieved" in content.lower():
-                            st.warning("⚠️ Calculation did not converge")
-                        
+                        st.download_button(
+                            "📥 Download Output File",
+                            file_content,
+                            file_name=selected_file,
+                            mime="text/plain"
+                        )
                     except Exception as e:
-                        st.error(f"❌ Error reading file: {e}")
-                
-                # Download button
-                try:
-                    with open(file_path, 'r') as f:
-                        file_content = f.read()
-                    
-                    st.download_button(
-                        "📥 Download Output File",
-                        file_content,
-                        file_name=selected_file,
-                        mime="text/plain"
-                    )
-                except Exception as e:
-                    st.error(f"❌ Error preparing download: {e}")
+                        st.error(f"❌ Error preparing download: {e}")
             else:
                 st.warning("⚠️ No output files found in this directory.")
         
@@ -1550,9 +1620,12 @@ elif page == "📈 Results & Post-Processing":
                     structure_files
                 )
                 
-                if st.button("🔬 Visualize Structure"):
+                # Validate structure filename
+                if '..' in selected_structure or '/' in selected_structure or '\\' in selected_structure:
+                    st.error("❌ Invalid structure filename")
+                elif st.button("🔬 Visualize Structure"):
                     try:
-                        struct_path = os.path.join(results_dir, selected_structure)
+                        struct_path = os.path.join(normalized_results_dir, selected_structure)
                         atoms = io.read(struct_path)
                         
                         st.success(f"✅ Loaded: {atoms.get_chemical_formula()} ({len(atoms)} atoms)")
