@@ -1,237 +1,257 @@
-# Implementation Summary: GUI Calculation Button
+# Implementation Summary - Structure Viewers and Improvements
 
-## Problem Addressed
+## Overview
+This implementation successfully addresses all requirements:
+1. ✅ Added non-WebGL structure viewers (JMol, py3Dmol, ASE native)
+2. ✅ Fixed job file generation to use xespresso's scheduler system
+3. ✅ Improved folder navigation with dropdown menu
 
-The user complained that the GUI was "quite stupid" because:
-1. It lacked a button to run calculations
-2. It depended on pre-existing input files
-3. It didn't properly wrap xespresso functions like `get_potential_energy()`
-4. The workflow was disconnected from how xespresso actually works
+## 1. Structure Viewers - Before vs After
 
-## Solution Implemented
+### Before
+- Only 3 viewer options (Plotly, X3D, Simple)
+- Both Plotly and X3D require WebGL
+- Limited compatibility for users without WebGL support
 
-### ✅ Added "Run Calculation" Button
+### After
+Now 6 viewer options available:
 
-Located in: **Calculation Setup Page → Run Calculation Tab**
+| Viewer | Technology | WebGL Required | Best For |
+|--------|-----------|----------------|----------|
+| **Plotly** | WebGL 3D | ✅ Yes | Modern browsers, interactive exploration |
+| **JMol** | JavaScript (JSmol) | ❌ No | Maximum compatibility, older systems |
+| **py3Dmol** | JavaScript | ❌ No | Lightweight, molecular visualization |
+| **ASE Native** | External window | ❌ No | Desktop environments, full ASE features |
+| **X3D** | WebGL | ✅ Yes | Embedded 3D viewing |
+| **Simple** | Text | ❌ No | Text-only terminals, accessibility |
 
-**Functionality**:
+### Code Changes
+**File: `xespresso/gui/utils/visualization.py`**
+- Added `create_jmol_viewer()` - Generates JSmol HTML viewer
+- Added `create_py3dmol_viewer()` - Uses py3Dmol library
+- Added `launch_ase_viewer()` - Opens ASE's native viewer
+- Updated `render_structure_viewer()` to support all viewer types
+
+**File: `xespresso/gui/streamlit_app.py`**
+- Updated viewer selection UI with 6 options
+- Added helpful descriptions for each viewer type
+
+## 2. Job File Generation - Before vs After
+
+### Before
 ```python
-def run_calculation(atoms, config, label):
-    # 1. Create Espresso calculator from GUI parameters
-    calc = Espresso(**calc_params)
-    
-    # 2. Set calculator on atoms
-    atoms.calc = calc
-    
-    # 3. Run calculation - this auto-generates files and runs!
-    energy = atoms.get_potential_energy()
-    
-    # 4. Display results
+# Manual job script creation in dry_run.py
+def create_job_script(workdir, machine_config, code_path, input_file, nprocs=1):
+    # Manually builds bash script with hardcoded SLURM/PBS directives
+    script_lines = ["#!/bin/bash", ...]
+    # Does not use xespresso's scheduler system
 ```
 
-This is **exactly** how xespresso examples work (see `examples/ex01-scf.py`).
+**Problems:**
+- Bypasses xespresso's scheduler system
+- Duplicates scheduler functionality
+- Doesn't respect environment setup (modules, prepend, etc.)
+- Manual command construction
 
-### ✅ Independent of Input Files
-
-The GUI now:
-1. Creates ASE Atoms object from structure loaded in Structure Viewer
-2. Creates Espresso calculator from parameters configured in GUI
-3. Runs directly with `get_potential_energy()`
-
-**No pre-existing input files needed!** xespresso handles file generation automatically.
-
-### ✅ Proper xespresso Wrapper
-
-The GUI workflow now mirrors command-line xespresso:
-
-**Command Line (`ex01-scf.py`)**:
+### After
 ```python
-atoms = bulk("Fe")
-calc = Espresso(
-    pseudopotentials={"Fe": "Fe.pbe-spn-rrkjus_psl.1.0.0.UPF"},
-    ecutwfc=40,
-    kpts=(6, 6, 6)
-)
-atoms.calc = calc
-e = atoms.get_potential_energy()  # Runs everything!
+# Uses xespresso's scheduler system
+def generate_input_files(atoms, calc_params, workdir, ...):
+    calc = Espresso(**calc_params)  # includes queue configuration
+    calc.write_input(atoms)  # automatically calls scheduler.write_script()
+    # Job file created at: workdir/job_file
 ```
 
-**GUI (New Implementation)**:
+**Benefits:**
+- Uses xespresso's built-in `set_queue()` and `scheduler.write_script()`
+- Respects all scheduler configuration options
+- Handles environment setup automatically (modules, prepend, postpend)
+- Supports multiple schedulers (direct, SLURM, PBS, SGE)
+- Command escaping and validation handled by scheduler system
+
+### Scheduler Configuration Example
 ```python
-# Structure Viewer loads atoms
-atoms = st.session_state.current_structure
-
-# Configuration tab sets up parameters
-config = st.session_state.workflow_config
-
-# Run Calculation button:
-calc = Espresso(**calc_params_from_gui)
-atoms.calc = calc
-e = atoms.get_potential_energy()  # Runs everything!
-```
-
-**Same workflow!**
-
-### ✅ Kept Dry Run
-
-The user requested: "you can leave the dry run as it is"
-
-We kept the dry run functionality and added a dedicated button:
-- **"Generate Files (Dry Run)"** button creates input files with `calc.write_input()`
-- Users can review/edit files before running
-- Optional workflow for those who want it
-
-## Code Changes
-
-### New File: `xespresso/gui/pages/calculation_setup.py`
-
-**640 lines** of new code implementing:
-- `render_calculation_setup_page()` - Main page entry point
-- `render_configuration_section()` - Configuration UI
-- `render_run_calculation_section()` - Execution UI
-- `run_calculation()` - Runs calc with get_potential_energy()
-- `generate_input_files()` - Dry run with write_input()
-
-### Modified: `xespresso/gui/streamlit_app.py`
-
-**Removed 366 lines** of inline code, replaced with:
-```python
-elif page == "📊 Calculation Setup":
-    if PAGES_AVAILABLE:
-        render_calculation_setup_page()
-```
-
-Much cleaner!
-
-## User Journey
-
-### Before (Problematic)
-1. User loads structure ✓
-2. User configures parameters ✓
-3. User generates input files
-4. User navigates to Job Submission page
-5. User selects folder with input files
-6. User runs calculation
-7. System reads input files to create calculator ❌
-8. System runs calculation
-
-**Problem**: Steps 3-7 are unnecessary! xespresso can do this automatically.
-
-### After (Correct)
-1. User loads structure ✓
-2. User configures parameters ✓
-3. User clicks "Run Calculation" ✓
-4. Done! ✓
-
-OR (if user wants dry run):
-1. User loads structure ✓
-2. User configures parameters ✓
-3. User clicks "Generate Files (Dry Run)" ✓
-4. User reviews/edits files
-5. User clicks "Run Calculation" ✓
-
-## Technical Details
-
-### Atoms Object Creation
-```python
-# From Structure Viewer page
-atoms = st.session_state.current_structure  # ASE Atoms object
-```
-
-### Calculator Creation
-```python
-# From Configuration tab
-config = st.session_state.workflow_config
-
-# Build calculator parameters
-calc_params = {
-    'pseudopotentials': config['pseudopotentials'],
-    'label': label,
-    'ecutwfc': config['ecutwfc'],
-    'kpts': config['kpts'],
-    'input_data': {...},  # Built from config
-    # ... all other parameters from GUI
+queue = {
+    'scheduler': 'slurm',
+    'execution': 'local',  # or 'remote'
+    'launcher': 'mpirun -np {nprocs}',
+    'modules': ['quantum-espresso/7.0'],
+    'use_modules': True,
+    'resources': {
+        'nodes': 1,
+        'ntasks-per-node': 20,
+        'time': '24:00:00'
+    },
+    'prepend': 'source /path/to/env.sh',  # Optional
+    'postpend': 'echo "Job completed"'     # Optional
 }
-
-# Create calculator
-calc = Espresso(**calc_params)
 ```
 
-### Execution
+## 3. Folder Navigator - Before vs After
+
+### Before
+```
+┌─────────────────────────────────────┐
+│ Directory Path: /home/user/work    │  [Text input only]
+│ [Current] [Home]                    │  [Limited buttons]
+└─────────────────────────────────────┘
+```
+
+**Problems:**
+- Users must type full paths
+- No visual navigation
+- Difficult to explore directories
+
+### After
+```
+┌──────────────────────────────────────────────────────┐
+│ Directory Path: /home/user/work                      │
+│ [Current] [Home] [Parent]                            │
+├──────────────────────────────────────────────────────┤
+│ 📂 Folder Navigator                                  │
+│ Select subfolder: [calculations ▼]  [Navigate →]    │
+│ 📁 calculations contains: 5 folders, 12 files        │
+├──────────────────────────────────────────────────────┤
+│ 📋 Directory Contents (Full View)                    │
+│ Total: 17 items | Dirs: 5 | Files: 12               │
+└──────────────────────────────────────────────────────┘
+```
+
+**Benefits:**
+- Dropdown menu to select subfolders
+- Parent directory navigation button
+- Quick access buttons (Home, Current)
+- Visual preview of directory contents
+- Statistics display (folders, files count)
+- Navigate without typing paths
+
+### Code Changes
+**File: `xespresso/gui/utils/selectors.py`**
+- Enhanced `render_workdir_browser()` with subfolder dropdown
+- Added parent directory navigation
+- Added visual directory contents preview
+- Implemented security measures (path validation, traversal prevention)
+
+### Security Features
+- Path validation with `os.path.exists()` and `os.path.isdir()`
+- Absolute path requirement
+- Symlink resolution with `os.path.realpath()`
+- Directory traversal prevention (filters `..`, `/`, `\`)
+- Containment checks with `os.path.commonpath()`
+
+## 4. Testing
+
+### Test Files Added
+1. **`tests/test_visualization.py`**
+   - Tests all viewer availability checks
+   - Tests JMol HTML generation
+   - Tests X3D HTML generation
+   - Validates viewer function existence
+
+2. **`tests/test_dry_run_scheduler.py`**
+   - Tests scheduler integration
+   - Tests job_file creation
+   - Validates scheduler system usage
+
+### Test Results
+```
+Testing Visualization Utilities
+============================================================
+✓ All visualization functions are defined
+✓ ASE viewer availability: True
+✓ Plotly availability: True
+✓ py3Dmol availability: False (optional)
+✓ JMol viewer HTML generated successfully
+✓ X3D viewer HTML generated successfully
+
+Results: 6/6 tests passed
+============================================================
+```
+
+## 5. Dependencies
+
+### Added
+- **py3Dmol >= 2.0.0** (optional, in GUI extras)
+
+### Updated
+- `requirements.txt` - Added py3Dmol
+- `setup.py` - Added py3Dmol to `extras_require["gui"]`
+
+### Installation
+```bash
+# Basic installation
+pip install xespresso
+
+# With GUI support (includes py3Dmol)
+pip install xespresso[gui]
+```
+
+## 6. Usage Examples
+
+### Using JMol Viewer
 ```python
-# Set calculator on atoms
+from xespresso.gui.utils.visualization import render_structure_viewer
+from ase.build import bulk
+
+atoms = bulk('Fe', 'bcc', a=2.87)
+render_structure_viewer(atoms, viewer_type='jmol', key='my_viewer')
+```
+
+### Using Scheduler System
+```python
+from xespresso import Espresso
+from ase.build import bulk
+
+atoms = bulk('Al', 'fcc', a=4.05)
+
+# Configure with queue parameter
+calc = Espresso(
+    input_data={'control': {'calculation': 'scf'}},
+    pseudopotentials={'Al': 'Al.pbe-n-kjpaw_psl.1.0.0.UPF'},
+    kpts=(4, 4, 4),
+    queue={
+        'scheduler': 'slurm',
+        'resources': {'ntasks': 20, 'time': '24:00:00'}
+    },
+    directory='/path/to/workdir'
+)
+
 atoms.calc = calc
+calc.write_input(atoms)  # Creates input file AND job_file
 
-# Run calculation - xespresso handles everything!
-energy = atoms.get_potential_energy()
+# Job file is now at: /path/to/workdir/job_file
 ```
 
-This is **identical** to the xespresso examples!
+### Using Enhanced Folder Navigator
+In the GUI (Structure Viewer page or Job Submission page):
+1. Click "Home" or "Current" to start at a known location
+2. Use the dropdown menu to select a subfolder
+3. Click "Navigate" to move into that folder
+4. Use "Parent" button to go up one level
+5. View directory contents in the expander
 
-## Configuration Supported
+## 7. Security
 
-The GUI now supports comprehensive configuration:
+### CodeQL Analysis
+- 5 path injection alerts identified (expected for file browser)
+- All are false positives with appropriate mitigations
+- Full analysis in `SECURITY_SUMMARY.md`
 
-- **Calculation types**: SCF, Relax, VC-Relax, Bands, DOS, NSCF
-- **Pseudopotentials**: Manual entry or load from saved configs
-- **Energy cutoffs**: ecutwfc, ecutrho (with dual parameter)
-- **Convergence**: conv_thr for SCF/relaxation
-- **Occupations**: smearing (gaussian, methfessel-paxton, etc.), fixed, tetrahedra
-- **Smearing width**: degauss parameter
-- **K-points**: k-spacing or Monkhorst-Pack grid
-- **Spin**: Non-polarized, collinear, or non-collinear
-
-All stored in `st.session_state.workflow_config` with persistence.
-
-## Security
-
-- Path validation prevents directory traversal attacks
-- Only allows calculations under home directory or /tmp
-- Input sanitization on all user inputs
-- Safe file path handling with `os.path.realpath()`
-
-## Compatibility
-
-- Job Submission page still works for existing workflows
-- No breaking changes
-- Backward compatible
-- Users can choose their preferred workflow
-
-## Documentation Added
-
-1. **`GUI_CALCULATION_BUTTON_IMPLEMENTATION.md`**
-   - Complete technical documentation
-   - Problem statement mapping
-   - Code structure
-   - Usage examples
-
-2. **`GUI_VISUAL_STRUCTURE.md`**
-   - ASCII mockups of GUI pages
-   - Visual layout guide
-   - UI element descriptions
-
-## Testing
-
-Created test scripts demonstrating:
-```
-✅ Module imports successful
-✅ Workflow matches xespresso examples
-✅ Calculator creation from GUI params works
-✅ No dependency on pre-existing files
-✅ All functions compile without errors
-```
+### Mitigation Measures
+- Path validation and sanitization
+- Symlink resolution
+- Directory traversal prevention
+- Containment checks
+- No privilege escalation
 
 ## Conclusion
 
-The GUI now **properly wraps xespresso functionality** as requested:
+All requirements have been successfully implemented:
+- ✅ Non-WebGL structure viewers (JMol, py3Dmol, ASE native)
+- ✅ Fixed job file generation to use xespresso's scheduler system
+- ✅ Enhanced folder navigation with dropdown menu
+- ✅ Security analysis completed
+- ✅ Tests added and passing
+- ✅ Documentation updated
 
-1. ✅ Button to run calculations
-2. ✅ Activates `calc.get_potential_energy()`
-3. ✅ Independent of input files
-4. ✅ Creates Espresso instance from GUI params
-5. ✅ Creates ASE Atoms from GUI structure
-6. ✅ Passes all parameters to calculator
-7. ✅ Keeps dry run functionality
-8. ✅ Acts as wrapper for xespresso functions
-
-**The GUI is no longer "quite stupid" - it now properly implements the xespresso workflow!**
+The implementation is complete, secure, and ready for use.
