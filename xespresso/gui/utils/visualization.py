@@ -280,7 +280,7 @@ def render_structure_viewer(atoms, viewer_type='plotly', show_conventional=False
     
     Args:
         atoms: ASE Atoms object
-        viewer_type: Type of viewer ('plotly', 'py3dmol', 'simple') - only embeddable viewers
+        viewer_type: Type of viewer ('plotly', 'x3d', 'jmol', 'py3dmol', 'simple')
         show_conventional: If True, show conventional cell instead of primitive
         white_background: If True, use white background
         key: Unique key for widgets
@@ -295,6 +295,22 @@ def render_structure_viewer(atoms, viewer_type='plotly', show_conventional=False
                 st.error("Could not create Plotly visualization")
         else:
             st.error("⚠️ Plotly not available. Please install plotly: pip install plotly")
+    
+    elif viewer_type == 'x3d':
+        st.info("💡 X3D viewer provides an embedded 3D view using WebGL")
+        html_content = create_x3d_viewer(atoms)
+        if html_content:
+            st.components.v1.html(html_content, height=500, scrolling=True)
+        else:
+            st.error("Could not create X3D viewer")
+    
+    elif viewer_type == 'jmol':
+        st.info("💡 JMol viewer uses JSmol (JavaScript version) - embeddable, works without WebGL")
+        html_content = create_jmol_viewer(atoms)
+        if html_content:
+            st.components.v1.html(html_content, height=550, scrolling=False)
+        else:
+            st.error("Could not create JMol viewer")
     
     elif viewer_type == 'py3dmol':
         if PY3DMOL_AVAILABLE:

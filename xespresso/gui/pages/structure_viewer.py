@@ -134,9 +134,11 @@ def render_structure_controls_and_viewer(atoms):
     with col1:
         viewer_type = st.selectbox(
             "Viewer Type:",
-            options=['plotly', 'py3dmol', 'simple'],
+            options=['plotly', 'x3d', 'jmol', 'py3dmol', 'simple'],
             format_func=lambda x: {
                 'plotly': '📊 Plotly (Interactive 3D)',
+                'x3d': '🎨 X3D (WebGL)',
+                'jmol': '⚛️ JMol (JavaScript)',
                 'py3dmol': '🧬 py3Dmol (Molecular)',
                 'simple': '📝 Simple Text'
             }.get(x, x),
