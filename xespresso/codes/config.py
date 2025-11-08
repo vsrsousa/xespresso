@@ -200,12 +200,21 @@ class CodesConfig:
         }
         if self.qe_prefix:
             result['qe_prefix'] = self.qe_prefix
+        
+        # qe_version can be kept at top level as it indicates the default/active version
+        # even when multiple versions exist
         if self.qe_version:
             result['qe_version'] = self.qe_version
-        if self.label:
+        
+        # Only include top-level label and modules if no versions structure exists
+        # (backward compatibility for single-version configs)
+        has_versions = self.versions and len(self.versions) > 0
+        
+        if self.label and not has_versions:
             result['label'] = self.label
-        if self.modules:
+        if self.modules and not has_versions:
             result['modules'] = self.modules
+            
         if self.environment:
             result['environment'] = self.environment
         if self.versions:
