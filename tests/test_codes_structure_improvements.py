@@ -5,6 +5,8 @@ These tests validate the fixes for the issues reported in the problem statement:
 1. No redundant top-level modules when versions structure exists
 2. Auto-detection of common qe_prefix for codes in same directory
 3. Proper storage of version-specific modules and qe_prefix
+
+All tests ensure backward compatibility with existing single-version configs.
 """
 
 import pytest
