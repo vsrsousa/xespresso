@@ -317,15 +317,12 @@ class CodesManager:
         os.makedirs(output_dir, exist_ok=True)
         
         if not filename:
-            # Generate filename based on machine name and label/version
+            # Generate filename based on machine name and label
             if config.label:
                 # Use label in filename to avoid overwriting different configurations
                 filename = f"{config.machine_name}-{config.label}.json"
-            elif config.qe_version:
-                # Fallback to version if no label
-                filename = f"{config.machine_name}-{config.qe_version}.json"
             else:
-                # Default to just machine name
+                # Default to just machine name (backward compatible)
                 filename = f"{config.machine_name}.json"
         
         filepath = os.path.join(output_dir, filename)
