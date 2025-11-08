@@ -167,6 +167,10 @@ def render_codes_config_page():
             if existing_codes:
                 st.success(f"✅ Loaded existing configuration")
                 
+                # Show version label if present
+                if existing_codes.version_label:
+                    st.info(f"🏷️ Version Label: **{existing_codes.version_label}**")
+                
                 # Feature 2: Version Selection - Show available versions
                 if existing_codes.versions:
                     available_versions = existing_codes.list_versions()
