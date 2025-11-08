@@ -987,21 +987,29 @@ elif page == "🚀 Job Submission":
                             
                             # Set ASE_ESPRESSO_COMMAND from codes configuration
                             # This is required for ASE's FileIOCalculator to work without a profile
+                            # Format: "LAUNCHER PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
+                            # xespresso will replace PACKAGE.x with the actual package (pw.x, ph.x, etc.)
                             if st.session_state.current_codes:
                                 codes = st.session_state.current_codes
                                 if 'pw' in codes.codes:
-                                    pw_path = codes.codes['pw'].path
-                                    # Set the command in ASE's expected format
-                                    # xespresso will replace PACKAGE.x with pw.x, etc.
-                                    os.environ['ASE_ESPRESSO_COMMAND'] = f"{pw_path} -in PREFIX.pwi > PREFIX.pwo"
+                                    pw_code = codes.codes['pw']
+                                    # Extract the directory path from pw.x executable
+                                    pw_dir = os.path.dirname(pw_code.path)
+                                    # Get launcher command if available (e.g., mpirun, srun)
+                                    launcher = ""
+                                    if hasattr(pw_code, 'parallel_command') and pw_code.parallel_command:
+                                        launcher = pw_code.parallel_command + " "
+                                    # Construct generic command with PACKAGE.x placeholder
+                                    # xespresso will substitute PACKAGE with actual package name (pw, ph, dos, etc.)
+                                    os.environ['ASE_ESPRESSO_COMMAND'] = f"{launcher}{pw_dir}/PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
                                 else:
                                     st.warning("⚠️ No 'pw' code found in codes configuration. Using default command.")
-                                    # Fallback to generic command
-                                    os.environ['ASE_ESPRESSO_COMMAND'] = "pw.x -in PREFIX.pwi > PREFIX.pwo"
+                                    # Fallback to generic command with PACKAGE.x placeholder
+                                    os.environ['ASE_ESPRESSO_COMMAND'] = "PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
                             else:
                                 st.warning("⚠️ No codes configuration loaded. Using default command.")
-                                # Fallback to generic command  
-                                os.environ['ASE_ESPRESSO_COMMAND'] = "pw.x -in PREFIX.pwi > PREFIX.pwo"
+                                # Fallback to generic command with PACKAGE.x placeholder
+                                os.environ['ASE_ESPRESSO_COMMAND'] = "PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
                             
                             # Create Espresso calculator
                             calc = Espresso(

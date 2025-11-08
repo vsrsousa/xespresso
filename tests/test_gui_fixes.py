@@ -59,13 +59,17 @@ def test_ase_espresso_command_set_from_codes():
     
     # Simulate what the GUI does: set environment variable from codes config
     if 'pw' in codes_config.codes:
-        pw_path = codes_config.codes['pw'].path
-        os.environ['ASE_ESPRESSO_COMMAND'] = f"{pw_path} -in PREFIX.pwi > PREFIX.pwo"
+        pw_code = codes_config.codes['pw']
+        pw_dir = os.path.dirname(pw_code.path)
+        launcher = ""
+        if hasattr(pw_code, 'parallel_command') and pw_code.parallel_command:
+            launcher = pw_code.parallel_command + " "
+        os.environ['ASE_ESPRESSO_COMMAND'] = f"{launcher}{pw_dir}/PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
     
     # Verify the environment variable is set correctly
     assert 'ASE_ESPRESSO_COMMAND' in os.environ
-    assert '/opt/qe/bin/pw.x' in os.environ['ASE_ESPRESSO_COMMAND']
-    assert '-in PREFIX.pwi > PREFIX.pwo' in os.environ['ASE_ESPRESSO_COMMAND']
+    assert '/opt/qe/bin/PACKAGE.x' in os.environ['ASE_ESPRESSO_COMMAND']
+    assert 'PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo' in os.environ['ASE_ESPRESSO_COMMAND']
 
 
 def test_espresso_calculator_works_with_codes_config():
@@ -82,8 +86,12 @@ def test_espresso_calculator_works_with_codes_config():
     )
     
     # Set environment variables (simulating GUI behavior)
-    pw_path = codes_config.codes['pw'].path
-    os.environ['ASE_ESPRESSO_COMMAND'] = f"{pw_path} -in PREFIX.pwi > PREFIX.pwo"
+    pw_code = codes_config.codes['pw']
+    pw_dir = os.path.dirname(pw_code.path)
+    launcher = ""
+    if hasattr(pw_code, 'parallel_command') and pw_code.parallel_command:
+        launcher = pw_code.parallel_command + " "
+    os.environ['ASE_ESPRESSO_COMMAND'] = f"{launcher}{pw_dir}/PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
     os.environ['ESPRESSO_PSEUDO'] = '/tmp/pseudo'
     
     # Create test structure
