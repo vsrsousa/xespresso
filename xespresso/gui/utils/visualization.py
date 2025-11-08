@@ -20,6 +20,12 @@ try:
 except ImportError:
     ASE_VIEWER_AVAILABLE = False
 
+try:
+    import py3Dmol
+    PY3DMOL_AVAILABLE = True
+except ImportError:
+    PY3DMOL_AVAILABLE = False
+
 
 def create_3d_structure_plot(atoms):
     """Create a 3D plotly visualization of atomic structure."""
@@ -112,13 +118,112 @@ def create_x3d_viewer(atoms):
         return None
 
 
+def create_jmol_viewer(atoms):
+    """Create a JMol HTML viewer for the structure (embeddable, no WebGL required)."""
+    try:
+        # Create temporary file for structure
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as tmp:
+            tmp_path = tmp.name
+        
+        # Write structure in XYZ format
+        io.write(tmp_path, atoms, format='xyz')
+        
+        # Read XYZ content
+        with open(tmp_path, 'r') as f:
+            xyz_content = f.read()
+        
+        os.unlink(tmp_path)
+        
+        # Create JMol HTML using JSmol (JavaScript version)
+        html_template = """
+<!DOCTYPE html>
+<html>
+<head>
+    <script type="text/javascript" src="https://chemapps.stolaf.edu/jmol/jsmol/JSmol.min.js"></script>
+    <script type="text/javascript">
+        var Info = {
+            width: '100%',
+            height: 500,
+            color: '#FFFFFF',
+            use: 'HTML5',
+            j2sPath: 'https://chemapps.stolaf.edu/jmol/jsmol/j2s',
+            serverURL: 'https://chemapps.stolaf.edu/jmol/jsmol/php/jsmol.php',
+            disableJ2SLoadMonitor: true,
+            disableInitialConsole: true,
+            script: 'load inline "xyz_data_placeholder"; spacefill 25%; wireframe 0.15; spin off;'
+        };
+    </script>
+</head>
+<body>
+    <script type="text/javascript">
+        // Replace placeholder with actual XYZ data
+        Info.script = Info.script.replace('xyz_data_placeholder', `XYZ_CONTENT_PLACEHOLDER`);
+        Jmol.getApplet("jmolApplet", Info);
+    </script>
+</body>
+</html>
+"""
+        # Escape XYZ content for JavaScript
+        xyz_escaped = xyz_content.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n')
+        html_content = html_template.replace('XYZ_CONTENT_PLACEHOLDER', xyz_escaped)
+        
+        return html_content
+    except Exception as e:
+        st.warning(f"Could not create JMol viewer: {e}")
+        return None
+
+
+def create_py3dmol_viewer(atoms):
+    """Create a py3Dmol viewer for the structure (JavaScript-based, lighter than WebGL)."""
+    if not PY3DMOL_AVAILABLE:
+        return None
+    
+    try:
+        # Create temporary file for structure
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as tmp:
+            tmp_path = tmp.name
+        
+        # Write structure in XYZ format
+        io.write(tmp_path, atoms, format='xyz')
+        
+        # Read XYZ content
+        with open(tmp_path, 'r') as f:
+            xyz_content = f.read()
+        
+        os.unlink(tmp_path)
+        
+        # Create py3Dmol viewer
+        view_3d = py3Dmol.view(width=800, height=500)
+        view_3d.addModel(xyz_content, 'xyz')
+        view_3d.setStyle({'sphere': {'radius': 0.3}, 'stick': {'radius': 0.15}})
+        view_3d.setBackgroundColor('white')
+        view_3d.zoomTo()
+        
+        return view_3d._make_html()
+    except Exception as e:
+        st.warning(f"Could not create py3Dmol viewer: {e}")
+        return None
+
+
+def launch_ase_viewer(atoms):
+    """Launch ASE's native viewer in a separate window (requires display)."""
+    if not ASE_VIEWER_AVAILABLE:
+        return False, "ASE viewer not available"
+    
+    try:
+        view(atoms)
+        return True, "ASE viewer launched successfully"
+    except Exception as e:
+        return False, f"Could not launch ASE viewer: {e}"
+
+
 def render_structure_viewer(atoms, viewer_type='plotly', key='structure_viewer'):
     """
     Render structure visualization with multiple viewer options.
     
     Args:
         atoms: ASE Atoms object
-        viewer_type: Type of viewer ('plotly', 'x3d', 'simple')
+        viewer_type: Type of viewer ('plotly', 'x3d', 'jmol', 'py3dmol', 'ase', 'simple')
         key: Unique key for widgets
     """
     if viewer_type == 'plotly':
@@ -138,6 +243,36 @@ def render_structure_viewer(atoms, viewer_type='plotly', key='structure_viewer')
             st.components.v1.html(html_content, height=500, scrolling=True)
         else:
             st.error("Could not create X3D viewer")
+    
+    elif viewer_type == 'jmol':
+        st.info("💡 JMol viewer uses JSmol (JavaScript version) - works without WebGL")
+        html_content = create_jmol_viewer(atoms)
+        if html_content:
+            st.components.v1.html(html_content, height=550, scrolling=False)
+        else:
+            st.error("Could not create JMol viewer")
+    
+    elif viewer_type == 'py3dmol':
+        if PY3DMOL_AVAILABLE:
+            st.info("💡 py3Dmol viewer - lightweight JavaScript-based visualization")
+            html_content = create_py3dmol_viewer(atoms)
+            if html_content:
+                st.components.v1.html(html_content, height=520, scrolling=False)
+            else:
+                st.error("Could not create py3Dmol viewer")
+        else:
+            st.error("⚠️ py3Dmol not available. Please install: pip install py3Dmol")
+    
+    elif viewer_type == 'ase':
+        st.info("💡 ASE native viewer - opens in a separate window (requires X11/display)")
+        if st.button("🚀 Launch ASE Viewer", key=f"{key}_ase_launch"):
+            success, message = launch_ase_viewer(atoms)
+            if success:
+                st.success(f"✅ {message}")
+                st.info("The viewer opened in a separate window. You may need to check your taskbar or desktop.")
+            else:
+                st.error(f"❌ {message}")
+                st.warning("Note: ASE viewer requires a display (X11). It may not work in headless environments or remote servers without X forwarding.")
     
     elif viewer_type == 'simple':
         # Simple text-based representation

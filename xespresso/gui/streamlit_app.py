@@ -379,13 +379,31 @@ elif page == "🔬 Structure Viewer":
             # Viewer type selector
             viewer_type = st.radio(
                 "Select Viewer:",
-                ["Plotly (Interactive 3D)", "X3D (WebGL)", "Simple (Text)"],
-                horizontal=True,
-                help="Choose your preferred structure viewer. If WebGL has issues, try Simple viewer."
+                [
+                    "Plotly (Interactive 3D)", 
+                    "JMol (No WebGL)", 
+                    "py3Dmol (Lightweight)", 
+                    "ASE Native (External Window)",
+                    "X3D (WebGL)", 
+                    "Simple (Text)"
+                ],
+                horizontal=False,
+                help="""Choose your preferred structure viewer:
+                
+• **Plotly**: Interactive 3D with WebGL (best for modern browsers)
+• **JMol**: Browser-based without WebGL requirements (good compatibility)
+• **py3Dmol**: Lightweight JavaScript viewer (requires py3Dmol package)
+• **ASE Native**: Opens in separate window (requires display/X11)
+• **X3D**: WebGL-based embedded viewer
+• **Simple**: Text-only representation (no graphics)
+                """
             )
             
             viewer_map = {
                 "Plotly (Interactive 3D)": "plotly",
+                "JMol (No WebGL)": "jmol",
+                "py3Dmol (Lightweight)": "py3dmol",
+                "ASE Native (External Window)": "ase",
                 "X3D (WebGL)": "x3d",
                 "Simple (Text)": "simple"
             }
