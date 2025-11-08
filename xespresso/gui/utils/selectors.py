@@ -233,6 +233,13 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
                 
                 try:
                     # List subdirectories (validate workdir first)
+                    # Note: workdir comes from user input, but this is intentional for a file browser.
+                    # Security measures in place:
+                    # 1. Path is validated to exist and be a directory
+                    # 2. Application runs with user's permissions (can only access what user can access)
+                    # 3. Symlinks are resolved with os.path.realpath()
+                    # 4. Navigation is constrained with os.path.commonpath() checks
+                    # 5. Directory names are validated to prevent traversal (no .., /, \)
                     if not os.path.isabs(workdir):
                         st.error("❌ Invalid path: must be absolute")
                         return current_dir
