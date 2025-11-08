@@ -52,16 +52,44 @@ def render_structure_viewer_page():
             workdir = os.path.abspath(os.path.expanduser(workdir))
         
         if os.path.exists(workdir) and os.path.isdir(workdir):
+            # Validate and normalize workdir to prevent path traversal
+            try:
+                workdir = os.path.realpath(workdir)
+                # Check if workdir is under a safe base directory (e.g., user's home or /tmp)
+                safe_bases = [os.path.realpath(os.path.expanduser("~")), os.path.realpath("/tmp")]
+                is_safe = any(workdir.startswith(base) for base in safe_bases)
+                
+                if not is_safe:
+                    st.warning("⚠️ For security, only directories under your home directory or /tmp are allowed")
+                    return
+            except (OSError, ValueError) as e:
+                st.error(f"❌ Invalid directory path: {e}")
+                return
+            
             # Find structure files
             structure_extensions = ['.cif', '.xyz', '.pdb', '.vasp', '.poscar', '.traj', '.json']
             structure_files = []
             
             for root, dirs, files in os.walk(workdir):
+                # Ensure we stay within workdir (prevent symlink attacks)
+                try:
+                    if not os.path.realpath(root).startswith(workdir):
+                        continue
+                except (OSError, ValueError):
+                    continue
+                    
                 depth = root[len(workdir):].count(os.sep)
                 if depth < 3:  # Limit recursion depth
                     for f in files:
                         if any(f.lower().endswith(ext) for ext in structure_extensions):
-                            structure_files.append(os.path.join(root, f))
+                            file_path = os.path.join(root, f)
+                            # Validate the constructed path
+                            try:
+                                real_path = os.path.realpath(file_path)
+                                if real_path.startswith(workdir):
+                                    structure_files.append(file_path)
+                            except (OSError, ValueError):
+                                continue
             
             if structure_files:
                 st.success(f"✅ Found {len(structure_files)} structure file(s)")

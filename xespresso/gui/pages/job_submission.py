@@ -276,9 +276,30 @@ def render_job_submission_tab():
     st.markdown("---")
     st.subheader("📂 Select Calculation to Submit")
     
+    # Validate and normalize workdir to prevent path traversal
+    try:
+        workdir = os.path.realpath(workdir)
+        # Check if workdir is under a safe base directory
+        safe_bases = [os.path.realpath(os.path.expanduser("~")), os.path.realpath("/tmp")]
+        is_safe = any(workdir.startswith(base) for base in safe_bases)
+        
+        if not is_safe:
+            st.warning("⚠️ For security, only directories under your home directory or /tmp are allowed")
+            return
+    except (OSError, ValueError) as e:
+        st.error(f"❌ Invalid directory path: {e}")
+        return
+    
     calc_folders_with_jobs = []
     try:
         for root, dirs, files in os.walk(workdir, topdown=True):
+            # Ensure we stay within workdir (prevent symlink attacks)
+            try:
+                if not os.path.realpath(root).startswith(workdir):
+                    continue
+            except (OSError, ValueError):
+                continue
+                
             depth = root[len(workdir):].count(os.sep)
             if depth < 4:
                 # Check for job files
