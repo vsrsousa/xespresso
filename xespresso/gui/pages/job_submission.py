@@ -11,7 +11,7 @@ def render_job_submission_page():
     
     - **Generate Files (Dry Run)**: Creates Espresso calculator and generates input files with `calc.write_input(atoms)` for review
     - **File Browser**: Browse, view, and edit existing calculation files
-    - **Run Calculation**: Creates Espresso calculator from input files and runs with `calc.run(atoms)`
+    - **Run Calculation**: Creates Espresso calculator and runs with `calc.get_potential_energy()`
     """)
     
     # Create tabs for different functionalities
@@ -575,24 +575,74 @@ def render_file_browser_tab():
 
 
 def render_job_submission_tab():
-    """Render the job submission tab for submitting calculations."""
+    """Render the job submission tab for running calculations with xespresso."""
     st.subheader("🚀 Run Calculation")
     st.markdown("""
-    Run a calculation using xespresso. You can either do a dry run (validate files only) 
-    or actually run the calculation by calling `calc.get_potential_energy()`.
+    Run a calculation using xespresso by calling `calc.get_potential_energy()`.
+    
+    This will:
+    - Create an Espresso calculator from your configuration
+    - Automatically generate input files if they don't exist
+    - Run the calculation and return the energy
     """)
     
-    # Working directory selection
+    # Check if structure is loaded
+    if 'current_structure' not in st.session_state or st.session_state.current_structure is None:
+        st.warning("⚠️ No structure loaded. Please load a structure first in the Structure Viewer page.")
+        return
+    
+    atoms = st.session_state.current_structure
+    st.success(f"✅ Structure loaded: {atoms.get_chemical_formula()} ({len(atoms)} atoms)")
+    
+    st.markdown("---")
+    
+    # Check if calculation is configured
+    if 'workflow_config' not in st.session_state or not st.session_state.workflow_config.get('pseudopotentials'):
+        st.warning("⚠️ No calculation configured. Please configure your calculation first in the Calculation Setup page.")
+        st.info("""
+        **Required configuration:**
+        - Pseudopotentials for all elements
+        - Calculation parameters (ecutwfc, kpts, etc.)
+        - Machine and codes selection
+        
+        Go to **📊 Calculation Setup** page to configure these.
+        """)
+        return
+    
+    # Show current configuration summary
+    st.subheader("📋 Current Configuration")
+    config = st.session_state.workflow_config
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Calculation Type", config.get('calc_type', 'scf').upper())
+        st.metric("Energy Cutoff", f"{config.get('ecutwfc', 50)} Ry")
+        if 'kspacing' in config:
+            st.metric("K-spacing", f"{config.get('kspacing')} Å⁻¹")
+        elif 'kpts' in config:
+            kpts = config.get('kpts')
+            st.metric("K-points", f"{kpts[0]}×{kpts[1]}×{kpts[2]}")
+    
+    with col2:
+        st.write("**Pseudopotentials:**")
+        for elem, pseudo in config.get('pseudopotentials', {}).items():
+            st.text(f"  {elem}: {pseudo}")
+    
+    st.markdown("---")
+    
+    # Working directory and label
+    st.subheader("📁 Output Location")
+    
     try:
         from xespresso.gui.utils.selectors import render_workdir_browser
-        workdir = render_workdir_browser(key="job_submit_workdir")
+        workdir = render_workdir_browser(key="run_calc_workdir")
     except ImportError:
-        workdir = st.text_input("Working Directory:", value=os.getcwd(), key="job_submit_workdir_input")
+        workdir = st.text_input(
+            "Working Directory:", 
+            value=os.path.join(os.getcwd(), "calculations"),
+            key="run_calc_workdir_input"
+        )
         workdir = os.path.abspath(os.path.expanduser(workdir))
-    
-    # Find calculation folders with job files
-    st.markdown("---")
-    st.subheader("📂 Select Calculation to Submit")
     
     # Validate and normalize workdir to prevent path traversal
     try:
@@ -608,253 +658,155 @@ def render_job_submission_tab():
         st.error(f"❌ Invalid directory path: {e}")
         return
     
-    calc_folders_with_jobs = []
-    try:
-        for root, dirs, files in os.walk(workdir, topdown=True):
-            # Ensure we stay within workdir (prevent symlink attacks)
-            try:
-                if not os.path.realpath(root).startswith(workdir):
-                    continue
-            except (OSError, ValueError):
-                continue
-                
-            depth = root[len(workdir):].count(os.sep)
-            if depth < 4:
-                # Check for job files
-                has_job_file = any(f == 'job_file' or f.endswith(('.sh', '.slurm')) for f in files)
-                # Check for input files
-                has_input = any(f.endswith(('.pwi', '.phi', '.ppi', '.in')) for f in files)
-                if has_job_file and has_input:
-                    calc_folders_with_jobs.append(root)
-        
-        if calc_folders_with_jobs:
-            st.success(f"✅ Found {len(calc_folders_with_jobs)} calculation(s) ready for submission")
-            
-            selected_calc = st.selectbox(
-                "Select calculation:",
-                calc_folders_with_jobs,
-                format_func=lambda x: os.path.relpath(x, workdir) if x != workdir else ".",
-                key="submit_calc_selector"
-            )
-            
-            if selected_calc:
-                st.info(f"📍 Selected: `{os.path.relpath(selected_calc, workdir)}`")
-                
-                # Show files in the calculation folder
-                files = os.listdir(selected_calc)
-                job_files = [f for f in files if f == 'job_file' or f.endswith(('.sh', '.slurm'))]
-                input_files = [f for f in files if f.endswith(('.pwi', '.phi', '.ppi', '.in'))]
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("**Job Scripts:**")
-                    for jf in job_files:
-                        st.markdown(f"- `{jf}`")
-                with col2:
-                    st.markdown("**Input Files:**")
-                    for inf in input_files:
-                        st.markdown(f"- `{inf}`")
-                
-                st.markdown("---")
-                
-                # Submission options
-                st.subheader("⚙️ Submission Options")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    dry_run = st.checkbox(
-                        "🧪 Dry Run (don't actually submit)",
-                        value=False,
-                        help="If checked, will only validate files without submitting the job"
-                    )
-                
-                with col2:
-                    if job_files:
-                        selected_job_file = st.selectbox(
-                            "Job script to use:",
-                            job_files,
-                            key="selected_job_script"
-                        )
-                    else:
-                        selected_job_file = None
-                        st.warning("No job files found")
-                
-                # Submission button
-                st.markdown("---")
-                
-                col1, col2, col3 = st.columns([2, 1, 1])
-                
-                with col1:
-                    submit_button = st.button(
-                        "🚀 Run Calculation" if not dry_run else "🧪 Validate (Dry Run)",
-                        type="primary",
-                        disabled=(selected_job_file is None),
-                        key="submit_job_button"
-                    )
-                
-                if submit_button and selected_job_file:
-                    job_file_path = os.path.join(selected_calc, selected_job_file)
-                    
-                    if dry_run:
-                        # Dry run - just validate files
-                        st.info("🧪 **Dry Run Mode** - Validating files...")
-                        
-                        with st.spinner("Validating..."):
-                            try:
-                                # Check if files exist and are readable
-                                validation_results = []
-                                
-                                # Check job file
-                                if os.path.exists(job_file_path):
-                                    with open(job_file_path, 'r') as f:
-                                        job_content = f.read()
-                                    validation_results.append(("✅", "Job script", f"{selected_job_file} ({len(job_content)} bytes)"))
-                                else:
-                                    validation_results.append(("❌", "Job script", f"{selected_job_file} not found"))
-                                
-                                # Check input files
-                                for inf in input_files:
-                                    inf_path = os.path.join(selected_calc, inf)
-                                    if os.path.exists(inf_path):
-                                        file_size = os.path.getsize(inf_path)
-                                        validation_results.append(("✅", "Input file", f"{inf} ({file_size} bytes)"))
-                                    else:
-                                        validation_results.append(("❌", "Input file", f"{inf} not found"))
-                                
-                                # Display validation results
-                                st.success("✅ Validation complete!")
-                                st.subheader("Validation Results")
-                                
-                                for status, file_type, details in validation_results:
-                                    st.markdown(f"{status} **{file_type}:** {details}")
-                                
-                                # Show what would be submitted
-                                st.markdown("---")
-                                st.subheader("📋 Job Submission Preview")
-                                st.info(f"""
-                                **Job would be submitted with the following details:**
-                                - **Working Directory:** `{selected_calc}`
-                                - **Job Script:** `{selected_job_file}`
-                                - **Input Files:** {len(input_files)} file(s)
-                                - **Command:** `bash {selected_job_file}` (or `sbatch {selected_job_file}` for SLURM)
-                                """)
-                                
-                                # Preview job script content
-                                with st.expander("👁️ View Job Script"):
-                                    st.code(job_content, language="bash", line_numbers=True)
-                                
-                            except Exception as e:
-                                st.error(f"❌ Validation error: {e}")
-                                import traceback
-                                with st.expander("Error Details"):
-                                    st.code(traceback.format_exc())
-                    
-                    else:
-                        # Actually run the calculation using xespresso
-                        st.warning("⚠️ **Live Calculation** - Running calculation with xespresso")
-                        
-                        with st.spinner("Running calculation..."):
-                            try:
-                                from xespresso import Espresso
-                                from xespresso.xio import read_espresso_input
-                                from ase import io as ase_io
-                                
-                                # Find input file
-                                if not input_files:
-                                    st.error("❌ No input files found")
-                                    return
-                                
-                                # Use the first .pwi or .in file found
-                                input_file = None
-                                for inf in input_files:
-                                    if inf.endswith(('.pwi', '.in')):
-                                        input_file = inf
-                                        break
-                                
-                                if not input_file:
-                                    st.error("❌ No suitable input file (.pwi or .in) found")
-                                    return
-                                
-                                input_file_path = os.path.join(selected_calc, input_file)
-                                
-                                # Parse the input file to get structure and parameters
-                                st.info(f"📖 Reading input file: {input_file}")
-                                atoms, input_data, pseudopotentials, kpts = read_espresso_input(input_file_path)
-                                
-                                st.info(f"✅ Loaded structure: {atoms.get_chemical_formula()} ({len(atoms)} atoms)")
-                                
-                                # Parse kpts if it's a string
-                                if isinstance(kpts, str):
-                                    kpts_parts = kpts.split()
-                                    if len(kpts_parts) >= 3:
-                                        kpts = tuple(int(x) for x in kpts_parts[:3])
-                                
-                                # Get the label from the directory structure
-                                label = selected_calc
-                                
-                                # Create the Espresso calculator with parsed parameters
-                                st.info("🔧 Creating calculator with parsed parameters...")
-                                calc = Espresso(
-                                    pseudopotentials=pseudopotentials,
-                                    input_data=input_data,
-                                    kpts=kpts,
-                                    label=label,
-                                )
-                                
-                                # Run the calculation using xespresso's run method
-                                st.info("🚀 Running calculation with calc.run(atoms)...")
-                                calc.run(atoms)
-                                
-                                # Get the energy from the results
-                                energy = atoms.get_potential_energy()
-                                
-                                # Display results
-                                st.success("✅ Calculation completed successfully!")
-                                st.subheader("Calculation Results")
-                                
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    st.metric("Total Energy", f"{energy:.6f} eV")
-                                with col2:
-                                    st.metric("Structure", atoms.get_chemical_formula())
-                                
-                                # Show additional information
-                                with st.expander("📊 Detailed Results"):
-                                    st.write("**Input Parameters:**")
-                                    st.json(input_data)
-                                    
-                                    st.write("**Pseudopotentials:**")
-                                    for species, pseudo in pseudopotentials.items():
-                                        st.text(f"  {species}: {pseudo}")
-                                    
-                                    st.write("**K-points:**")
-                                    st.text(f"  {kpts}")
-                                
-                                # Check for output files
-                                output_files = [f for f in os.listdir(selected_calc) 
-                                               if f.endswith(('.out', '.pwo', '.log'))]
-                                if output_files:
-                                    st.info(f"📁 Output files generated: {', '.join(output_files)}")
-                                
-                            except Exception as e:
-                                st.error(f"❌ Calculation error: {e}")
-                                import traceback
-                                with st.expander("Error Details"):
-                                    st.code(traceback.format_exc())
-        
-        else:
-            st.warning("⚠️ No calculation folders with job scripts found")
-            st.info("""
-            **To submit a job, you need:**
-            1. A calculation folder with input files (`.pwi`, `.in`, etc.)
-            2. A job script (`job_file`, `*.sh`, or `*.slurm`)
-            
-            You can create these using the Calculation Setup page or by using the File Browser tab above.
-            """)
+    # Label for calculation
+    label = st.text_input(
+        "Calculation Label (subfolder):",
+        value=f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}",
+        help="Label for this calculation - will create subfolder under working directory",
+        key="run_calc_label"
+    )
     
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
-        import traceback
-        with st.expander("Error Details"):
-            st.code(traceback.format_exc())
+    # Full path where calculation will run
+    full_path = os.path.join(workdir, label)
+    
+    # Validate the full path to prevent path traversal in the label
+    try:
+        full_path = os.path.realpath(full_path)
+        # Ensure full_path is under workdir (prevent path traversal via label)
+        if not full_path.startswith(workdir):
+            st.error("❌ Invalid calculation label - path traversal detected")
+            return
+    except (OSError, ValueError) as e:
+        st.error(f"❌ Invalid path: {e}")
+        return
+    
+    st.info(f"📍 Calculation will run in: `{full_path}`")
+    
+    st.markdown("---")
+    
+    # Run calculation button
+    st.subheader("▶️ Execute Calculation")
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        run_button = st.button(
+            "🚀 Run Calculation",
+            type="primary",
+            help="Run calculation using calc.get_potential_energy()",
+            key="run_calculation_button"
+        )
+    
+    if run_button:
+        st.info("🚀 **Running Calculation** - Using xespresso's calc.get_potential_energy()...")
+        
+        with st.spinner("Running calculation..."):
+            try:
+                from xespresso import Espresso
+                
+                # Create output directory if it doesn't exist
+                os.makedirs(full_path, exist_ok=True)
+                
+                # Build calculator parameters from configuration
+                calc_params = {
+                    'pseudopotentials': config['pseudopotentials'],
+                    'label': os.path.join(full_path, 'espresso'),
+                }
+                
+                # Build input_data dictionary
+                input_data = {}
+                
+                # Add basic parameters
+                if 'ecutwfc' in config:
+                    input_data['ecutwfc'] = config['ecutwfc']
+                if 'ecutrho' in config:
+                    input_data['ecutrho'] = config['ecutrho']
+                if 'occupations' in config:
+                    input_data['occupations'] = config['occupations']
+                if 'conv_thr' in config:
+                    input_data['conv_thr'] = config['conv_thr']
+                
+                # Add smearing if applicable
+                if config.get('occupations') == 'smearing':
+                    input_data['smearing'] = config.get('smearing', 'gaussian')
+                    input_data['degauss'] = config.get('degauss', 0.02)
+                
+                # Add spin polarization
+                if 'nspin' in config:
+                    input_data['nspin'] = config['nspin']
+                
+                # Add calculation type
+                calc_type = config.get('calc_type', 'scf')
+                if calc_type in ['relax', 'vc-relax']:
+                    input_data['calculation'] = calc_type
+                else:
+                    input_data['calculation'] = 'scf'
+                
+                calc_params['input_data'] = input_data
+                
+                # Add k-points
+                if 'kspacing' in config:
+                    calc_params['kspacing'] = config['kspacing']
+                elif 'kpts' in config:
+                    calc_params['kpts'] = config['kpts']
+                
+                # Create Espresso calculator
+                st.info("🔧 Creating Espresso calculator...")
+                calc = Espresso(**calc_params)
+                
+                # Attach calculator to atoms
+                atoms.calc = calc
+                
+                # Run calculation using get_potential_energy()
+                st.info("⚡ Calling calc.get_potential_energy()...")
+                energy = atoms.get_potential_energy()
+                
+                # Display results
+                st.success("✅ Calculation completed successfully!")
+                st.markdown("---")
+                st.subheader("📊 Results")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Total Energy", f"{energy:.6f} eV")
+                with col2:
+                    st.metric("Structure", atoms.get_chemical_formula())
+                
+                # Show calculation details
+                with st.expander("📋 Calculation Details"):
+                    st.write("**Input Parameters:**")
+                    st.json(input_data)
+                    
+                    st.write("**Pseudopotentials:**")
+                    for species, pseudo in config['pseudopotentials'].items():
+                        st.text(f"  {species}: {pseudo}")
+                    
+                    if 'kpts' in calc_params:
+                        st.write("**K-points:**")
+                        st.text(f"  {calc_params['kpts']}")
+                    elif 'kspacing' in calc_params:
+                        st.write("**K-spacing:**")
+                        st.text(f"  {calc_params['kspacing']} Å⁻¹")
+                
+                # Show output location
+                st.markdown("---")
+                st.subheader("📁 Output Files")
+                st.info(f"Calculation files saved in: `{full_path}`")
+                
+                # List generated files
+                if os.path.exists(full_path):
+                    generated_files = []
+                    for f in os.listdir(full_path):
+                        if f.endswith(('.pwi', '.pwo', '.out', '.log')):
+                            generated_files.append(f)
+                    
+                    if generated_files:
+                        st.write("**Generated files:**")
+                        for f in generated_files:
+                            st.markdown(f"- `{f}`")
+                
+            except Exception as e:
+                st.error(f"❌ Calculation error: {e}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
