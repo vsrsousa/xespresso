@@ -14,11 +14,9 @@ except ImportError:
     PLOTLY_AVAILABLE = False
 
 try:
-    from ase.visualize import view
     from ase import io
-    ASE_VIEWER_AVAILABLE = True
 except ImportError:
-    ASE_VIEWER_AVAILABLE = False
+    io = None
 
 try:
     import py3Dmol
@@ -259,18 +257,6 @@ def create_py3dmol_viewer(atoms, show_conventional=False, white_background=True)
     except Exception as e:
         st.warning(f"Could not create py3Dmol viewer: {e}")
         return None
-
-
-def launch_ase_viewer(atoms):
-    """Launch ASE's native viewer in a separate window (requires display)."""
-    if not ASE_VIEWER_AVAILABLE:
-        return False, "ASE viewer not available"
-    
-    try:
-        view(atoms)
-        return True, "ASE viewer launched successfully"
-    except Exception as e:
-        return False, f"Could not launch ASE viewer: {e}"
 
 
 def render_structure_viewer(atoms, viewer_type='plotly', show_conventional=False, 
