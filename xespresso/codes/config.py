@@ -237,7 +237,7 @@ class CodesConfig:
         
         Args:
             name: Code name
-            version: Optional version string
+            version: Optional version string. If None, checks main codes and all versions.
         
         Returns:
             True if code is available
@@ -245,4 +245,15 @@ class CodesConfig:
         if version and self.versions and version in self.versions:
             codes = self.versions[version].get('codes', {})
             return name in codes
-        return name in self.codes
+        
+        # Check main codes
+        if name in self.codes:
+            return True
+        
+        # If no version specified, also check if code exists in any version
+        if not version and self.versions:
+            for version_config in self.versions.values():
+                if 'codes' in version_config and name in version_config['codes']:
+                    return True
+        
+        return False

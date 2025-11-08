@@ -55,10 +55,10 @@ def test_save_config_merge_with_interactive_false():
     from xespresso.codes.manager import CodesManager
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        # First save with same label
-        config1 = CodesConfig(
+        # First save with version 7.2
+        config1 = CodesManager.create_config(
             machine_name='test_machine',
-            codes={'pw': Code(name='pw', path='/usr/bin/pw.x', version='7.2')},
+            detected_codes={'pw': '/usr/bin/pw.x'},
             qe_version='7.2',
             label='production'
         )
@@ -69,12 +69,12 @@ def test_save_config_merge_with_interactive_false():
             interactive=False
         )
         
-        # Second save with merge and same label (should merge into same file)
-        config2 = CodesConfig(
+        # Second save with version 7.3 and merge=True (should add new version)
+        config2 = CodesManager.create_config(
             machine_name='test_machine',
-            codes={'ph': Code(name='ph', path='/usr/bin/ph.x', version='7.2')},
-            qe_version='7.2',
-            label='production'  # Same label as config1
+            detected_codes={'ph': '/usr/bin/ph.x'},
+            qe_version='7.3',
+            label='dev'
         )
         
         filepath = CodesManager.save_config(
@@ -84,27 +84,28 @@ def test_save_config_merge_with_interactive_false():
             interactive=False
         )
         
-        # Verify merge worked - should have both codes now
+        # Verify merge worked - should have both versions now
         loaded_config = CodesConfig.from_json(filepath)
-        assert len(loaded_config.codes) == 2
-        assert 'pw' in loaded_config.codes
-        assert 'ph' in loaded_config.codes
-        assert loaded_config.label == 'production'
+        assert loaded_config.versions is not None
+        assert '7.2' in loaded_config.versions
+        assert '7.3' in loaded_config.versions
+        assert loaded_config.versions['7.2']['label'] == 'production'
+        assert loaded_config.versions['7.3']['label'] == 'dev'
 
 
-def test_save_config_different_labels_create_separate_files():
-    """Test that different labels create separate files instead of merging."""
+def test_save_config_same_machine_different_versions():
+    """Test that different versions for same machine are stored in same file."""
     from xespresso.codes.config import Code, CodesConfig
     from xespresso.codes.manager import CodesManager
     import os
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        # First save with label1
-        config1 = CodesConfig(
+        # First save with version 7.2
+        config1 = CodesManager.create_config(
             machine_name='test_machine',
-            codes={'pw': Code(name='pw', path='/usr/bin/pw.x', version='7.2')},
+            detected_codes={'pw': '/usr/bin/pw-7.2.x'},
             qe_version='7.2',
-            label='label1'
+            label='stable'
         )
         
         filepath1 = CodesManager.save_config(
@@ -113,37 +114,30 @@ def test_save_config_different_labels_create_separate_files():
             interactive=False
         )
         
-        # Second save with label2 - even with merge=True, creates separate file
-        config2 = CodesConfig(
+        # Second save with version 7.3 - should go to same file
+        config2 = CodesManager.create_config(
             machine_name='test_machine',
-            codes={'ph': Code(name='ph', path='/usr/bin/ph.x', version='7.2')},
-            qe_version='7.2',
-            label='label2'
+            detected_codes={'pw': '/usr/bin/pw-7.3.x'},
+            qe_version='7.3',
+            label='latest'
         )
         
         filepath2 = CodesManager.save_config(
             config2,
             output_dir=tmpdir,
-            merge=True,  # Won't merge because labels are different
+            merge=True,
             interactive=False
         )
         
-        # Verify separate files were created
-        assert filepath1 != filepath2
-        assert os.path.exists(filepath1)
-        assert os.path.exists(filepath2)
+        # Both should point to the same file
+        assert filepath1 == filepath2
+        assert os.path.basename(filepath1) == 'test_machine.json'
         
-        # Verify each file has only its own codes
-        loaded_config1 = CodesConfig.from_json(filepath1)
-        assert len(loaded_config1.codes) == 1
-        assert 'pw' in loaded_config1.codes
-        assert loaded_config1.label == 'label1'
-        
-        loaded_config2 = CodesConfig.from_json(filepath2)
-        assert len(loaded_config2.codes) == 1
-        assert 'ph' in loaded_config2.codes
-        assert loaded_config2.label == 'label2'
-
+        # Verify both versions exist in the file
+        loaded_config = CodesConfig.from_json(filepath1)
+        assert loaded_config.versions is not None
+        assert '7.2' in loaded_config.versions
+        assert '7.3' in loaded_config.versions
 
 def test_save_config_file_exists_error_with_interactive_false():
     """Test that save_config raises error when file exists without merge/overwrite."""
