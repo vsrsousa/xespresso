@@ -7,11 +7,11 @@ def render_job_submission_page():
     """Render the job submission page with enhanced job file viewer, editor, and submission."""
     st.header("Job Submission & File Management")
     st.markdown("""
-    **Generate calculation files, browse directories, and submit jobs.**
+    **Generate calculation files, browse directories, and run calculations using xespresso.**
     
-    - **Generate Files (Dry Run)**: Create input and job files from your configuration without submitting
+    - **Generate Files (Dry Run)**: Creates Espresso calculator and generates input files with `calc.write_input(atoms)` for review
     - **File Browser**: Browse, view, and edit existing calculation files
-    - **Run Calculation**: Run calculations using xespresso
+    - **Run Calculation**: Creates Espresso calculator from input files and runs with `calc.run(atoms)`
     """)
     
     # Create tabs for different functionalities
@@ -169,21 +169,58 @@ def render_dry_run_tab():
         )
     
     if generate_button:
-        st.info("🧪 **Dry Run Mode** - Generating files without submission...")
+        st.info("🧪 **Dry Run Mode** - Generating files using xespresso calculator...")
         
         with st.spinner("Generating files..."):
             try:
-                from xespresso.gui.utils.dry_run import generate_input_files
                 from xespresso import Espresso
+                from ase import io as ase_io
                 
-                # Build calculator parameters
+                # Create output directory if it doesn't exist
+                os.makedirs(full_path, exist_ok=True)
+                
+                # Save structure file
+                structure_filename = f"{atoms.get_chemical_formula()}.cif"
+                structure_path = os.path.join(full_path, structure_filename)
+                ase_io.write(structure_path, atoms)
+                st.info(f"💾 Saved structure: {structure_filename}")
+                
+                # Build calculator parameters from configuration
                 calc_params = {
                     'pseudopotentials': config['pseudopotentials'],
-                    'ecutwfc': config.get('ecutwfc', 50),
-                    'ecutrho': config.get('ecutrho', 400),
-                    'occupations': config.get('occupations', 'smearing'),
-                    'label': label,
+                    'label': os.path.join(full_path, 'espresso'),
                 }
+                
+                # Build input_data dictionary
+                input_data = {}
+                
+                # Add basic parameters
+                if 'ecutwfc' in config:
+                    input_data['ecutwfc'] = config['ecutwfc']
+                if 'ecutrho' in config:
+                    input_data['ecutrho'] = config['ecutrho']
+                if 'occupations' in config:
+                    input_data['occupations'] = config['occupations']
+                if 'conv_thr' in config:
+                    input_data['conv_thr'] = config['conv_thr']
+                
+                # Add smearing if applicable
+                if config.get('occupations') == 'smearing':
+                    input_data['smearing'] = config.get('smearing', 'gaussian')
+                    input_data['degauss'] = config.get('degauss', 0.02)
+                
+                # Add spin polarization
+                if 'nspin' in config:
+                    input_data['nspin'] = config['nspin']
+                
+                # Add calculation type
+                calc_type = config.get('calc_type', 'scf')
+                if calc_type in ['relax', 'vc-relax']:
+                    input_data['calculation'] = calc_type
+                else:
+                    input_data['calculation'] = 'scf'
+                
+                calc_params['input_data'] = input_data
                 
                 # Add k-points
                 if 'kspacing' in config:
@@ -191,127 +228,108 @@ def render_dry_run_tab():
                 elif 'kpts' in config:
                     calc_params['kpts'] = config['kpts']
                 
-                # Add smearing if applicable
-                if config.get('occupations') == 'smearing':
-                    calc_params['smearing'] = config.get('smearing', 'gaussian')
-                    calc_params['degauss'] = config.get('degauss', 0.02)
-                
-                # Add convergence threshold
-                if 'conv_thr' in config:
-                    calc_params['conv_thr'] = config['conv_thr']
-                
-                # Add spin polarization
-                if 'nspin' in config:
-                    calc_params['nspin'] = config['nspin']
-                
-                # Add calculation type
-                calc_type = config.get('calc_type', 'scf')
-                if calc_type in ['relax', 'vc-relax']:
-                    calc_params['calculation'] = calc_type
-                else:
-                    calc_params['calculation'] = 'scf'
-                
                 # Add machine/queue if available
                 if machine and hasattr(machine, 'queue'):
                     calc_params['queue'] = machine.queue
                 
-                # Generate files
-                result = generate_input_files(
-                    atoms=atoms,
-                    calc_params=calc_params,
-                    workdir=full_path,
-                    structure_filename=f"{atoms.get_chemical_formula()}.cif"
-                )
+                # Create Espresso calculator with all parameters
+                st.info("🔧 Creating Espresso calculator...")
+                calc = Espresso(**calc_params)
                 
-                if result:
-                    st.success("✅ Files generated successfully!")
-                    
-                    # Display results
-                    st.subheader("📄 Generated Files")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write("**Files created:**")
-                        if 'structure' in result:
-                            st.markdown(f"- ✅ Structure: `{os.path.basename(result['structure'])}`")
-                        if 'input' in result:
-                            st.markdown(f"- ✅ Input file: `{os.path.basename(result['input'])}`")
-                        if 'job_file' in result:
-                            st.markdown(f"- ✅ Job script: `{os.path.basename(result['job_file'])}`")
-                    
-                    with col2:
-                        st.write("**Location:**")
-                        st.code(result['workdir'])
-                    
-                    st.markdown("---")
-                    
-                    # Preview input file
-                    if 'input' in result and os.path.exists(result['input']):
-                        st.subheader("👁️ Input File Preview")
-                        try:
-                            # Validate path is under full_path for security
-                            input_path = os.path.realpath(result['input'])
-                            if not input_path.startswith(full_path):
-                                st.error("❌ Security error: input file path is outside expected directory")
-                            else:
-                                with open(input_path, 'r') as f:
-                                    input_content = f.read()
-                                
-                                with st.expander("View Input File", expanded=True):
-                                    st.code(input_content, language='fortran', line_numbers=True)
-                                    
-                                    # Download button
-                                    st.download_button(
-                                        label="⬇️ Download Input File",
-                                        data=input_content,
-                                        file_name=os.path.basename(result['input']),
-                                        mime="text/plain"
-                                    )
-                        except Exception as e:
-                            st.error(f"Error reading input file: {e}")
-                    
-                    # Preview job file
-                    if 'job_file' in result and os.path.exists(result['job_file']):
-                        st.subheader("👁️ Job Script Preview")
-                        try:
-                            # Validate path is under full_path for security
-                            job_path = os.path.realpath(result['job_file'])
-                            if not job_path.startswith(full_path):
-                                st.error("❌ Security error: job file path is outside expected directory")
-                            else:
-                                with open(job_path, 'r') as f:
-                                    job_content = f.read()
-                                
-                                with st.expander("View Job Script", expanded=False):
-                                    st.code(job_content, language='bash', line_numbers=True)
-                                    
-                                    # Download button
-                                    st.download_button(
-                                        label="⬇️ Download Job Script",
-                                        data=job_content,
-                                        file_name=os.path.basename(result['job_file']),
-                                        mime="text/plain"
-                                    )
-                        except Exception as e:
-                            st.error(f"Error reading job file: {e}")
-                    
-                    st.markdown("---")
-                    
-                    # Next steps
-                    st.subheader("✨ Next Steps")
-                    st.info("""
-                    **Files have been generated!** You can now:
-                    
-                    1. **Review the files** using the File Browser tab above
-                    2. **Edit the files** if needed (use Edit mode in File Browser)
-                    3. **Submit the job** using the Job Submission tab
-                    4. **Transfer files** to another system if needed
-                    
-                    The generated files are ready to run - no additional configuration needed!
-                    """)
+                # Generate input files using xespresso's write_input method
+                st.info("📝 Writing input files with calc.write_input(atoms)...")
+                calc.write_input(atoms)
                 
-                else:
-                    st.error("❌ Failed to generate files. Check the error messages above.")
+                st.success("✅ Files generated successfully using xespresso!")
+                
+                # Display results
+                st.subheader("📄 Generated Files")
+                
+                # List generated files
+                generated_files = []
+                if os.path.exists(full_path):
+                    for f in os.listdir(full_path):
+                        if f.endswith(('.pwi', '.asei', '.cif', 'job_file', '.sh', '.slurm')):
+                            generated_files.append(f)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("**Files created:**")
+                    for f in generated_files:
+                        st.markdown(f"- ✅ {f}")
+                
+                with col2:
+                    st.write("**Location:**")
+                    st.code(full_path)
+                
+                st.markdown("---")
+                
+                # Preview input file
+                input_file_path = os.path.join(full_path, 'espresso.pwi')
+                if os.path.exists(input_file_path):
+                    st.subheader("👁️ Input File Preview")
+                    try:
+                        # Validate path is under full_path for security
+                        input_path = os.path.realpath(input_file_path)
+                        if not input_path.startswith(full_path):
+                            st.error("❌ Security error: input file path is outside expected directory")
+                        else:
+                            with open(input_path, 'r') as f:
+                                input_content = f.read()
+                            
+                            with st.expander("View Input File", expanded=True):
+                                st.code(input_content, language='fortran', line_numbers=True)
+                                
+                                # Download button
+                                st.download_button(
+                                    label="⬇️ Download Input File",
+                                    data=input_content,
+                                    file_name='espresso.pwi',
+                                    mime="text/plain"
+                                )
+                    except Exception as e:
+                        st.error(f"Error reading input file: {e}")
+                
+                # Preview job file if it exists
+                job_file_path = os.path.join(full_path, 'job_file')
+                if os.path.exists(job_file_path):
+                    st.subheader("👁️ Job Script Preview")
+                    try:
+                        # Validate path is under full_path for security
+                        job_path = os.path.realpath(job_file_path)
+                        if not job_path.startswith(full_path):
+                            st.error("❌ Security error: job file path is outside expected directory")
+                        else:
+                            with open(job_path, 'r') as f:
+                                job_content = f.read()
+                            
+                            with st.expander("View Job Script", expanded=False):
+                                st.code(job_content, language='bash', line_numbers=True)
+                                
+                                # Download button
+                                st.download_button(
+                                    label="⬇️ Download Job Script",
+                                    data=job_content,
+                                    file_name='job_file',
+                                    mime="text/plain"
+                                )
+                    except Exception as e:
+                        st.error(f"Error reading job file: {e}")
+                
+                st.markdown("---")
+                
+                # Next steps
+                st.subheader("✨ Next Steps")
+                st.info("""
+                **Files have been generated using xespresso!** You can now:
+                
+                1. **Review the files** using the File Browser tab above
+                2. **Edit the files** if needed (use Edit mode in File Browser)
+                3. **Run the calculation** using the Run Calculation tab
+                4. **Transfer files** to another system if needed
+                
+                The Espresso calculator was created with your configuration and used to generate these files.
+                """)
                     
             except Exception as e:
                 st.error(f"❌ Error generating files: {e}")
