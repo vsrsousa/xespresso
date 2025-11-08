@@ -28,10 +28,22 @@ except ImportError:
 
 def render_codes_config_page():
     """Render the codes configuration page."""
-    st.header("Quantum ESPRESSO Codes Configuration")
+    st.header("⚙️ Quantum ESPRESSO Codes Configuration")
     st.markdown("""
-    Configure Quantum ESPRESSO executable paths for different machines.
+    **Configure and auto-detect** Quantum ESPRESSO executable paths.
+    
+    This page is for **configuration only** - once codes are saved, you can select versions
+    in the Calculation Setup or Workflow Builder pages.
+    
     Auto-detection is supported for both local and remote systems.
+    """)
+    
+    st.info("""
+    💡 **Configuration vs. Selection:**
+    - **Configure** codes here (auto-detect and save)
+    - **Select** code versions in Calculation Setup or Workflow Builder
+    - Multiple QE versions can coexist for the same machine
+    - Configurations are saved to `~/.xespresso/codes/`
     """)
     
     if not XESPRESSO_AVAILABLE:
@@ -43,9 +55,9 @@ def render_codes_config_page():
         machines_list = list_machines(DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR)
         if machines_list:
             selected_machine = st.selectbox(
-                "Select Machine:",
+                "Select Machine to Configure:",
                 machines_list,
-                help="Choose the machine to configure codes for"
+                help="Choose the machine to configure QE codes for"
             )
         else:
             st.warning("⚠️ No machines configured. Please configure a machine first.")
