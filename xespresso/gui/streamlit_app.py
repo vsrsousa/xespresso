@@ -442,17 +442,47 @@ elif page == "🔬 Structure Viewer":
 elif page == "📊 Calculation Setup":
     st.header("Calculation Setup")
     st.markdown("""
-    Configure the type of calculation and basic parameters.
+    Configure calculations: select machine, codes, and set calculation parameters.
     """)
     
+    # Machine and Codes Selection Section
+    st.subheader("🖥️ Machine & Codes Selection")
+    st.info("💡 Select a configured machine and code version for your calculations")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        try:
+            from xespresso.gui.utils.selectors import render_machine_selector
+            machine_name, machine = render_machine_selector(key="calc_setup_machine")
+        except ImportError:
+            st.warning("Machine selector not available")
+            machine_name, machine = None, None
+    
+    with col2:
+        if machine_name:
+            try:
+                from xespresso.gui.utils.selectors import render_codes_selector
+                codes = render_codes_selector(machine_name, key="calc_setup_codes")
+            except ImportError:
+                st.warning("Codes selector not available")
+                codes = None
+        else:
+            st.info("Select a machine first to choose codes")
+            codes = None
+    
+    st.markdown("---")
+    
+    # Structure Check
     if st.session_state.current_structure is None:
         st.warning("⚠️ No structure loaded. Please load a structure first in the Structure Viewer.")
     else:
-        st.info(f"✅ Working with: {st.session_state.current_structure.get_chemical_formula()}")
+        st.success(f"✅ Structure loaded: {st.session_state.current_structure.get_chemical_formula()}")
         
         # Calculation type
+        st.subheader("Calculation Type")
         calc_type = st.selectbox(
-            "Calculation Type",
+            "Select Calculation:",
             [
                 "SCF (Self-Consistent Field)",
                 "Relaxation (Geometry Optimization)",
@@ -475,42 +505,78 @@ elif page == "📊 Calculation Setup":
         
         st.write(f"**Elements in structure:** {', '.join(unique_elements)}")
         
-        pseudo_method = st.radio(
-            "Pseudopotential Selection:",
-            ["Manual Entry", "Load Configuration"]
+        # Pseudopotential family selector
+        st.info("💡 **Pseudopotential families** vary based on functional (LDA, GGA-PBE, GGA-PBESOL) and type")
+        pp_family = st.selectbox(
+            "Pseudopotential Family:",
+            [
+                "PBE - PAW (pbe-n-kjpaw_psl)",
+                "PBE - Ultrasoft (pbe-n-rrkjus_psl)",
+                "PBE - Norm-conserving (pbe-n-nc)",
+                "PBESOL - PAW (pbesol-n-kjpaw_psl)",
+                "PBESOL - Ultrasoft (pbesol-n-rrkjus_psl)",
+                "LDA - Ultrasoft (lda)",
+                "Custom (Manual Entry)"
+            ],
+            help="Select the pseudopotential family matching your functional"
         )
+        
+        # Parse family info
+        pp_mapping = {
+            "PBE - PAW (pbe-n-kjpaw_psl)": ("pbe", "kjpaw_psl", "1.0.0"),
+            "PBE - Ultrasoft (pbe-n-rrkjus_psl)": ("pbe", "rrkjus_psl", "1.0.0"),
+            "PBE - Norm-conserving (pbe-n-nc)": ("pbe", "nc", "1.0.0"),
+            "PBESOL - PAW (pbesol-n-kjpaw_psl)": ("pbesol", "kjpaw_psl", "1.0.0"),
+            "PBESOL - Ultrasoft (pbesol-n-rrkjus_psl)": ("pbesol", "rrkjus_psl", "1.0.0"),
+            "LDA - Ultrasoft (lda)": ("lda", "pz", "2.0.1"),
+        }
         
         pseudopotentials = {}
         
-        if pseudo_method == "Manual Entry":
-            st.write("Enter pseudopotential file for each element:")
+        if pp_family == "Custom (Manual Entry)":
+            st.write("**Manual Entry:** Enter pseudopotential file for each element:")
             for element in unique_elements:
                 pseudo = st.text_input(
-                    f"{element}",
+                    f"{element}:",
                     value=f"{element}.pbe-n-kjpaw_psl.1.0.0.UPF",
-                    key=f"pseudo_{element}"
+                    key=f"pseudo_{element}",
+                    help="Full pseudopotential filename (e.g., Fe.pbe-n-kjpaw_psl.1.0.0.UPF)"
                 )
                 pseudopotentials[element] = pseudo
         else:
-            try:
-                from xespresso.utils import list_pseudo_configs, load_pseudo_config
-                configs = list_pseudo_configs()
-                
-                if configs:
-                    selected_config = st.selectbox(
-                        "Select Configuration:",
-                        configs
+            # Auto-generate pseudo names based on family
+            functional, pp_type, version = pp_mapping[pp_family]
+            
+            st.write(f"**Auto-generated pseudopotentials** (Family: {functional}, Type: {pp_type}):")
+            
+            # Allow user to override specific elements if needed
+            override_elements = st.multiselect(
+                "Override specific elements (optional):",
+                unique_elements,
+                help="Select elements for which you want to manually specify the pseudopotential"
+            )
+            
+            for element in unique_elements:
+                if element in override_elements:
+                    # Manual override
+                    pseudo = st.text_input(
+                        f"{element} (Override):",
+                        value=f"{element}.{functional}-n-{pp_type}.{version}.UPF",
+                        key=f"pseudo_{element}"
                     )
-                    
-                    if st.button("Load Configuration"):
-                        config = load_pseudo_config(selected_config)
-                        pseudopotentials = config.get('pseudopotentials', {})
-                        st.success(f"✅ Loaded pseudopotentials from {selected_config}")
-                        st.json(pseudopotentials)
+                    pseudopotentials[element] = pseudo
                 else:
-                    st.warning("No saved pseudopotential configurations found.")
-            except Exception as e:
-                st.error(f"Error loading configurations: {e}")
+                    # Auto-generate
+                    pseudo = f"{element}.{functional}-n-{pp_type}.{version}.UPF"
+                    pseudopotentials[element] = pseudo
+                    st.text(f"{element}: {pseudo}")
+            
+            st.info("""
+            **Note on pseudopotentials:**
+            - Pseudopotentials must be available in your `ESPRESSO_PSEUDO` directory or specified path
+            - For remote calculations, xespresso handles transferring pseudopotential files automatically
+            - Different families are optimized for different functionals (LDA, PBE, PBESOL)
+            """)
         
         st.session_state.workflow_config['pseudopotentials'] = pseudopotentials
         
@@ -749,12 +815,40 @@ elif page == "🔄 Workflow Builder":
     Build complete calculation workflows using quality presets.
     """)
     
+    # Machine and Codes Selection Section
+    st.subheader("🖥️ Machine & Codes Selection")
+    st.info("💡 Select machine and code version before configuring workflow")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        try:
+            from xespresso.gui.utils.selectors import render_machine_selector
+            machine_name, machine = render_machine_selector(key="workflow_machine")
+        except ImportError:
+            st.warning("Machine selector not available")
+            machine_name, machine = None, None
+    
+    with col2:
+        if machine_name:
+            try:
+                from xespresso.gui.utils.selectors import render_codes_selector
+                codes = render_codes_selector(machine_name, key="workflow_codes")
+            except ImportError:
+                st.warning("Codes selector not available")
+                codes = None
+        else:
+            st.info("Select a machine first to choose codes")
+            codes = None
+    
+    st.markdown("---")
+    
     if not XESPRESSO_AVAILABLE:
         st.error("xespresso modules not available.")
     elif st.session_state.current_structure is None:
         st.warning("⚠️ No structure loaded. Please load a structure first.")
     else:
-        st.info(f"✅ Working with: {st.session_state.current_structure.get_chemical_formula()}")
+        st.success(f"✅ Structure loaded: {st.session_state.current_structure.get_chemical_formula()}")
         
         # Quality presets
         st.subheader("Quality Presets")
@@ -830,14 +924,25 @@ elif page == "📈 Results & Post-Processing":
     View calculation results, analyze output files, and perform post-processing.
     """)
     
-    # Working directory selection
-    st.subheader("Select Calculation Directory")
+    # Working directory browser
+    st.subheader("📁 Results Directory")
+    st.info("💡 **Note:** The results folder is the same as the calculation folder (label-based directory)")
     
-    results_dir = st.text_input(
-        "Results Directory",
-        value=st.session_state.local_workdir,
-        help="Path to directory containing calculation results"
-    )
+    try:
+        from xespresso.gui.utils.selectors import render_workdir_browser
+        results_dir = render_workdir_browser(
+            current_dir=st.session_state.get('local_workdir', os.getcwd()),
+            key="results_workdir"
+        )
+    except ImportError:
+        results_dir = st.text_input(
+            "Results Directory",
+            value=st.session_state.local_workdir,
+            help="Path to directory containing calculation results (same as calculation working directory)"
+        )
+        results_dir = os.path.abspath(os.path.expanduser(results_dir))
+    
+    st.markdown("---")
     
     # Validate results directory path
     is_valid_results, normalized_results_dir, error_msg = validate_path(results_dir, allow_creation=False)
