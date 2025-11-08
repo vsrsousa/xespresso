@@ -707,58 +707,70 @@ def render_job_submission_tab():
                 # Create output directory if it doesn't exist
                 os.makedirs(full_path, exist_ok=True)
                 
-                # Build calculator parameters from configuration
-                calc_params = {
-                    'pseudopotentials': config['pseudopotentials'],
-                    'label': os.path.join(full_path, 'espresso'),
-                }
-                
-                # Build input_data dictionary
-                input_data = {}
-                
-                # Add basic parameters
-                if 'ecutwfc' in config:
-                    input_data['ecutwfc'] = config['ecutwfc']
-                if 'ecutrho' in config:
-                    input_data['ecutrho'] = config['ecutrho']
-                if 'occupations' in config:
-                    input_data['occupations'] = config['occupations']
-                if 'conv_thr' in config:
-                    input_data['conv_thr'] = config['conv_thr']
-                
-                # Add smearing if applicable
-                if config.get('occupations') == 'smearing':
-                    input_data['smearing'] = config.get('smearing', 'gaussian')
-                    input_data['degauss'] = config.get('degauss', 0.02)
-                
-                # Add spin polarization
-                if 'nspin' in config:
-                    input_data['nspin'] = config['nspin']
-                
-                # Add calculation type
-                calc_type = config.get('calc_type', 'scf')
-                if calc_type in ['relax', 'vc-relax']:
-                    input_data['calculation'] = calc_type
+                # Check if calculator already exists in session_state
+                # (created by Calculation Setup or Workflow Builder)
+                if 'espresso_calculator' in st.session_state and st.session_state.espresso_calculator is not None:
+                    st.info("📦 Using pre-configured calculator from Calculation Setup...")
+                    calc = st.session_state.espresso_calculator
+                    
+                    # Update the label to use the current output path
+                    calc.label = os.path.join(full_path, 'espresso')
                 else:
-                    input_data['calculation'] = 'scf'
-                
-                calc_params['input_data'] = input_data
-                
-                # Add k-points
-                if 'kspacing' in config:
-                    calc_params['kspacing'] = config['kspacing']
-                elif 'kpts' in config:
-                    calc_params['kpts'] = config['kpts']
-                
-                # Create Espresso calculator
-                st.info("🔧 Creating Espresso calculator...")
-                calc = Espresso(**calc_params)
+                    # Fallback: Create calculator from workflow_config
+                    st.info("🔧 Creating Espresso calculator from configuration...")
+                    
+                    # Build calculator parameters from configuration
+                    calc_params = {
+                        'pseudopotentials': config['pseudopotentials'],
+                        'label': os.path.join(full_path, 'espresso'),
+                    }
+                    
+                    # Build input_data dictionary
+                    input_data = {}
+                    
+                    # Add basic parameters
+                    if 'ecutwfc' in config:
+                        input_data['ecutwfc'] = config['ecutwfc']
+                    if 'ecutrho' in config:
+                        input_data['ecutrho'] = config['ecutrho']
+                    if 'occupations' in config:
+                        input_data['occupations'] = config['occupations']
+                    if 'conv_thr' in config:
+                        input_data['conv_thr'] = config['conv_thr']
+                    
+                    # Add smearing if applicable
+                    if config.get('occupations') == 'smearing':
+                        input_data['smearing'] = config.get('smearing', 'gaussian')
+                        input_data['degauss'] = config.get('degauss', 0.02)
+                    
+                    # Add spin polarization
+                    if 'nspin' in config:
+                        input_data['nspin'] = config['nspin']
+                    
+                    # Add calculation type
+                    calc_type = config.get('calc_type', 'scf')
+                    if calc_type in ['relax', 'vc-relax']:
+                        input_data['calculation'] = calc_type
+                    else:
+                        input_data['calculation'] = 'scf'
+                    
+                    calc_params['input_data'] = input_data
+                    
+                    # Add k-points
+                    if 'kspacing' in config:
+                        calc_params['kspacing'] = config['kspacing']
+                    elif 'kpts' in config:
+                        calc_params['kpts'] = config['kpts']
+                    
+                    # Create Espresso calculator
+                    calc = Espresso(**calc_params)
                 
                 # Attach calculator to atoms
+                st.info("🔗 Attaching calculator to atoms object...")
                 atoms.calc = calc
                 
                 # Run calculation using get_potential_energy()
-                st.info("⚡ Calling calc.get_potential_energy()...")
+                st.info("⚡ Calling atoms.get_potential_energy()...")
                 energy = atoms.get_potential_energy()
                 
                 # Display results
