@@ -56,65 +56,6 @@ def render_codes_config_page():
     if selected_machine:
         st.subheader(f"Codes Configuration for: {selected_machine}")
         
-        # Feature 1: Module Listing - Discover available modules
-        with st.expander("🔍 Discover Available Modules", expanded=False):
-            st.markdown("""
-            List available Quantum ESPRESSO modules on the selected machine.
-            This helps you find which QE versions are available before configuring codes.
-            """)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                search_pattern = st.text_input(
-                    "Search Pattern (optional)",
-                    value="espresso",
-                    help="Filter modules by pattern (e.g., 'espresso', 'qe', 'quantum')"
-                )
-            with col2:
-                env_setup_modules = st.text_input(
-                    "Environment Setup (optional)",
-                    placeholder="source /etc/profile",
-                    help="Shell commands to run before listing modules"
-                )
-            
-            if st.button("🔎 List Available Modules"):
-                with st.spinner("Discovering modules..."):
-                    try:
-                        # Get machine config to check if it's remote
-                        from xespresso.machines.config.loader import load_machine
-                        machine = load_machine(selected_machine, DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR)
-                        
-                        ssh_connection = None
-                        if machine and hasattr(machine, 'host') and machine.host:
-                            # Remote machine
-                            ssh_connection = {
-                                'host': machine.host,
-                                'username': machine.username,
-                                'port': getattr(machine, 'port', 22)
-                            }
-                        
-                        modules = CodesManager.list_available_modules(
-                            ssh_connection=ssh_connection,
-                            env_setup=env_setup_modules if env_setup_modules else None,
-                            search_pattern=search_pattern if search_pattern else None
-                        )
-                        
-                        if modules:
-                            st.success(f"✅ Found {len(modules)} modules!")
-                            st.session_state['discovered_modules'] = modules
-                            
-                            # Display as a nice list
-                            st.markdown("**Available Modules:**")
-                            for module in modules:
-                                st.markdown(f"- `{module}`")
-                            
-                            st.info("💡 Copy a module name and paste it in the 'Modules to Load' field below.")
-                        else:
-                            st.warning("⚠️ No modules found matching the pattern.")
-                    except Exception as e:
-                        st.error(f"❌ Error listing modules: {e}")
-                        st.code(traceback.format_exc())
-        
         # Auto-detection section
         st.subheader("Auto-Detect Codes")
         
@@ -126,7 +67,7 @@ def render_codes_config_page():
                     "QE Installation Prefix (optional)",
                     help="e.g., /opt/qe-7.2/bin"
                 )
-                # Feature 2: Explicit QE Version Specification
+                # Feature 1: Explicit QE Version Specification
                 qe_version = st.text_input(
                     "QE Version (optional but recommended)",
                     placeholder="e.g., 7.2, 7.1, 6.8",
@@ -138,7 +79,6 @@ def render_codes_config_page():
                 )
                 modules_str = st.text_area(
                     "Modules to Load (optional, one per line)",
-                    value="\n".join(st.session_state.get('discovered_modules', [])[:1]) if st.session_state.get('discovered_modules') else "",
                     help="Version-specific modules (e.g., 'qe/7.2' or 'quantum_espresso-7.4.1')"
                 )
             
@@ -226,7 +166,7 @@ def render_codes_config_page():
             if existing_codes:
                 st.success(f"✅ Loaded existing configuration")
                 
-                # Feature 3: Version Selection - Show available versions
+                # Feature 2: Version Selection - Show available versions
                 if existing_codes.versions:
                     available_versions = existing_codes.list_versions()
                     st.info(f"📦 Available QE versions: {', '.join(available_versions)}")
