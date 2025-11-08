@@ -127,7 +127,7 @@ class Espresso(FileIOCalculator):
         kwargs = self.check_input(kwargs, prefix=self.prefix)
         self.ase_parameters = kwargs
         FileIOCalculator.__init__(
-            self, restart=self.directory, label=self.label, atoms=atoms, **kwargs
+            self, restart=self.directory, label=self.label, atoms=atoms, command=self.command, **kwargs
         )
 
         self.queue = queue
