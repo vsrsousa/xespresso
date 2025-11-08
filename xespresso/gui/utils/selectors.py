@@ -232,9 +232,24 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
                 st.info("💡 Select a subfolder below to navigate into it")
                 
                 try:
-                    # List subdirectories
-                    contents = os.listdir(workdir)
-                    subdirs = [d for d in contents if os.path.isdir(os.path.join(workdir, d)) and not d.startswith('.')]
+                    # List subdirectories (validate workdir first)
+                    if not os.path.isabs(workdir):
+                        st.error("❌ Invalid path: must be absolute")
+                        return current_dir
+                    
+                    # Resolve any symlinks to get the real path
+                    real_workdir = os.path.realpath(workdir)
+                    
+                    contents = os.listdir(real_workdir)
+                    subdirs = []
+                    for d in contents:
+                        # Skip hidden directories and validate each subdirectory
+                        if d.startswith('.'):
+                            continue
+                        subdir_path = os.path.join(real_workdir, d)
+                        # Ensure the path doesn't escape the parent directory
+                        if os.path.isdir(subdir_path) and os.path.commonpath([real_workdir, os.path.realpath(subdir_path)]) == real_workdir:
+                            subdirs.append(d)
                     subdirs.sort()
                     
                     if subdirs:
@@ -254,21 +269,39 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
                             st.write("")  # Spacing
                             if st.button("➡️ Navigate", key=f"{key}_navigate", type="primary"):
                                 if selected_subdir != '(Stay in current directory)':
-                                    new_workdir = os.path.join(workdir, selected_subdir)
-                                    st.session_state.local_workdir = new_workdir
-                                    st.rerun()
+                                    # Validate selected subdirectory to prevent path traversal
+                                    if '..' in selected_subdir or '/' in selected_subdir or '\\' in selected_subdir:
+                                        st.error("❌ Invalid folder name")
+                                    else:
+                                        new_workdir = os.path.realpath(os.path.join(real_workdir, selected_subdir))
+                                        # Ensure the new path is within the parent directory
+                                        if os.path.commonpath([real_workdir, new_workdir]) == real_workdir:
+                                            st.session_state.local_workdir = new_workdir
+                                            st.rerun()
+                                        else:
+                                            st.error("❌ Invalid navigation path")
                         
                         # Show quick preview of selected subfolder
                         if selected_subdir != '(Stay in current directory)':
-                            subdir_path = os.path.join(workdir, selected_subdir)
-                            try:
-                                subdir_contents = os.listdir(subdir_path)
-                                subdir_subdirs = [d for d in subdir_contents if os.path.isdir(os.path.join(subdir_path, d))]
-                                subdir_files = [f for f in subdir_contents if os.path.isfile(os.path.join(subdir_path, f))]
-                                
-                                st.caption(f"📁 `{selected_subdir}` contains: {len(subdir_subdirs)} folders, {len(subdir_files)} files")
-                            except:
-                                pass
+                            # Validate before using
+                            if '..' not in selected_subdir and '/' not in selected_subdir and '\\' not in selected_subdir:
+                                subdir_path = os.path.realpath(os.path.join(real_workdir, selected_subdir))
+                                # Ensure path is within parent directory
+                                if os.path.commonpath([real_workdir, subdir_path]) == real_workdir:
+                                    try:
+                                        subdir_contents = os.listdir(subdir_path)
+                                        subdir_subdirs = []
+                                        subdir_files = []
+                                        for item in subdir_contents:
+                                            item_path = os.path.join(subdir_path, item)
+                                            if os.path.isdir(item_path):
+                                                subdir_subdirs.append(item)
+                                            elif os.path.isfile(item_path):
+                                                subdir_files.append(item)
+                                        
+                                        st.caption(f"📁 `{selected_subdir}` contains: {len(subdir_subdirs)} folders, {len(subdir_files)} files")
+                                    except:
+                                        pass
                     else:
                         st.info("ℹ️ No subfolders in current directory")
                     
