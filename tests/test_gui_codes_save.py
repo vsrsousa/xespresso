@@ -55,12 +55,12 @@ def test_save_config_merge_with_interactive_false():
     from xespresso.codes.manager import CodesManager
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        # First save
+        # First save with same label
         config1 = CodesConfig(
             machine_name='test_machine',
             codes={'pw': Code(name='pw', path='/usr/bin/pw.x', version='7.2')},
             qe_version='7.2',
-            label='label1'
+            label='production'
         )
         
         filepath = CodesManager.save_config(
@@ -69,12 +69,12 @@ def test_save_config_merge_with_interactive_false():
             interactive=False
         )
         
-        # Second save with merge (should not hang)
+        # Second save with merge and same label (should merge into same file)
         config2 = CodesConfig(
             machine_name='test_machine',
             codes={'ph': Code(name='ph', path='/usr/bin/ph.x', version='7.2')},
             qe_version='7.2',
-            label='label2'
+            label='production'  # Same label as config1
         )
         
         filepath = CodesManager.save_config(
@@ -84,12 +84,65 @@ def test_save_config_merge_with_interactive_false():
             interactive=False
         )
         
-        # Verify merge worked
+        # Verify merge worked - should have both codes now
         loaded_config = CodesConfig.from_json(filepath)
         assert len(loaded_config.codes) == 2
         assert 'pw' in loaded_config.codes
         assert 'ph' in loaded_config.codes
-        assert loaded_config.label == 'label2'  # Updated label
+        assert loaded_config.label == 'production'
+
+
+def test_save_config_different_labels_create_separate_files():
+    """Test that different labels create separate files instead of merging."""
+    from xespresso.codes.config import Code, CodesConfig
+    from xespresso.codes.manager import CodesManager
+    import os
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # First save with label1
+        config1 = CodesConfig(
+            machine_name='test_machine',
+            codes={'pw': Code(name='pw', path='/usr/bin/pw.x', version='7.2')},
+            qe_version='7.2',
+            label='label1'
+        )
+        
+        filepath1 = CodesManager.save_config(
+            config1,
+            output_dir=tmpdir,
+            interactive=False
+        )
+        
+        # Second save with label2 - even with merge=True, creates separate file
+        config2 = CodesConfig(
+            machine_name='test_machine',
+            codes={'ph': Code(name='ph', path='/usr/bin/ph.x', version='7.2')},
+            qe_version='7.2',
+            label='label2'
+        )
+        
+        filepath2 = CodesManager.save_config(
+            config2,
+            output_dir=tmpdir,
+            merge=True,  # Won't merge because labels are different
+            interactive=False
+        )
+        
+        # Verify separate files were created
+        assert filepath1 != filepath2
+        assert os.path.exists(filepath1)
+        assert os.path.exists(filepath2)
+        
+        # Verify each file has only its own codes
+        loaded_config1 = CodesConfig.from_json(filepath1)
+        assert len(loaded_config1.codes) == 1
+        assert 'pw' in loaded_config1.codes
+        assert loaded_config1.label == 'label1'
+        
+        loaded_config2 = CodesConfig.from_json(filepath2)
+        assert len(loaded_config2.codes) == 1
+        assert 'ph' in loaded_config2.codes
+        assert loaded_config2.label == 'label2'
 
 
 def test_save_config_file_exists_error_with_interactive_false():
