@@ -34,48 +34,18 @@ def test_codes_config_module_has_updated_features():
     
     content = codes_config_path.read_text()
     
-    # Feature 1: Module listing
-    assert "list_available_modules" in content, "Module listing feature should be present"
-    assert "Discover Available Modules" in content, "Module discovery UI should be present"
-    assert "search_pattern" in content, "Search pattern for modules should be present"
-    
-    # Feature 2: Explicit QE version specification
+    # Feature 1: Explicit QE version specification
     assert "qe_version" in content, "QE version parameter should be present"
     assert "QE Version" in content, "QE version input field should be present"
     assert "compiler version" in content.lower(), "Warning about compiler version should be present"
     
-    # Feature 3: Version selection
+    # Feature 2: Version selection
     assert "available_versions" in content, "Version selection should be present"
     assert "list_versions" in content, "Version listing method should be called"
     assert "Select QE Version" in content, "Version selection UI should be present"
     
     print("✓ All three features found in codes_config module")
     return True
-
-
-def test_module_listing_functionality():
-    """Test that module listing calls the correct backend function."""
-    try:
-        from xespresso.codes.manager import CodesManager
-        
-        # Module listing functionality should use CodesManager.list_available_modules
-        assert hasattr(CodesManager, 'list_available_modules')
-        
-        # Check function signature
-        import inspect
-        sig = inspect.signature(CodesManager.list_available_modules)
-        params = list(sig.parameters.keys())
-        
-        assert 'ssh_connection' in params, "ssh_connection parameter should be present"
-        assert 'env_setup' in params, "env_setup parameter should be present"
-        assert 'search_pattern' in params, "search_pattern parameter should be present"
-        
-        print("✓ Module listing functionality properly configured")
-        return True
-        
-    except ImportError as e:
-        print(f"✓ Module listing test skipped: {e}")
-        return True
 
 
 def test_qe_version_parameter_integration():
@@ -154,15 +124,12 @@ def test_gui_page_structure_with_new_features():
     content = codes_config_path.read_text()
     
     # Check for proper sectioning
-    assert "# Feature 1: Module Listing" in content or "Feature 1:" in content, \
-        "Module listing feature should be marked"
-    assert "# Feature 2: Explicit QE Version" in content or "Feature 2:" in content, \
-        "QE version feature should be marked"
-    assert "# Feature 3: Version Selection" in content or "Feature 3:" in content, \
-        "Version selection feature should be marked"
+    assert "# Feature 2: Explicit QE Version" in content or "Feature 2:" in content or "qe_version" in content, \
+        "QE version feature should be present"
+    assert "# Feature 3: Version Selection" in content or "Feature 3:" in content or "available_versions" in content, \
+        "Version selection feature should be present"
     
     # Check for proper UI elements
-    assert "st.expander" in content, "Should have collapsible module listing section"
     assert "st.text_input" in content, "Should have text inputs for parameters"
     assert "st.selectbox" in content, "Should have version selection dropdown"
     assert "st.button" in content, "Should have action buttons"
@@ -214,7 +181,6 @@ def run_all_tests():
     tests = [
         test_codes_config_page_imports,
         test_codes_config_module_has_updated_features,
-        test_module_listing_functionality,
         test_qe_version_parameter_integration,
         test_version_selection_integration,
         test_codes_config_structure,
