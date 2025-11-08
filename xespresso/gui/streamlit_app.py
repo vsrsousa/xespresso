@@ -455,10 +455,373 @@ elif page == "🔬 Structure Viewer":
 
 # Page 4: Calculation Setup
 elif page == "📊 Calculation Setup":
-    if PAGES_AVAILABLE:
-        render_calculation_setup_page()
+    st.header("Calculation Setup")
+    st.markdown("""
+    Configure calculations: select machine, codes, and set calculation parameters.
+    """)
+    
+    # Machine and Codes Selection Section
+    st.subheader("🖥️ Machine & Codes Selection")
+    st.info("💡 Select a configured machine and code version for your calculations")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        try:
+            from xespresso.gui.utils.selectors import render_machine_selector
+            machine_name, machine = render_machine_selector(key="calc_setup_machine")
+        except ImportError:
+            st.warning("Machine selector not available")
+            machine_name, machine = None, None
+    
+    with col2:
+        if machine_name:
+            try:
+                from xespresso.gui.utils.selectors import render_codes_selector
+                codes = render_codes_selector(machine_name, key="calc_setup_codes")
+            except ImportError:
+                st.warning("Codes selector not available")
+                codes = None
+        else:
+            st.info("Select a machine first to choose codes")
+            codes = None
+    
+    st.markdown("---")
+    
+    # Structure Check
+    if st.session_state.current_structure is None:
+        st.warning("⚠️ No structure loaded. Please load a structure first in the Structure Viewer.")
     else:
-        st.error("Page modules not available. Please check installation.")
+        st.success(f"✅ Structure loaded: {st.session_state.current_structure.get_chemical_formula()}")
+        
+        # Calculation type
+        st.subheader("Calculation Type")
+        calc_type = st.selectbox(
+            "Select Calculation:",
+            [
+                "SCF (Self-Consistent Field)",
+                "Relaxation (Geometry Optimization)",
+                "VC-Relax (Cell + Geometry Optimization)",
+                "Bands (Band Structure)",
+                "DOS (Density of States)",
+                "NSCF (Non-Self-Consistent)",
+                "Phonon",
+                "NEB (Nudged Elastic Band)"
+            ]
+        )
+        
+        st.session_state.workflow_config['calc_type'] = calc_type.split()[0].lower()
+        
+        # Pseudopotentials
+        st.subheader("Pseudopotentials")
+        
+        atoms = st.session_state.current_structure
+        unique_elements = list(set(atoms.get_chemical_symbols()))
+        
+        st.write(f"**Elements in structure:** {', '.join(unique_elements)}")
+        
+        # Pseudopotential family selector
+        st.info("💡 **Pseudopotential families** vary based on functional (LDA, GGA-PBE, GGA-PBESOL) and type")
+        pp_family = st.selectbox(
+            "Pseudopotential Family:",
+            [
+                "PBE - PAW (pbe-n-kjpaw_psl)",
+                "PBE - Ultrasoft (pbe-n-rrkjus_psl)",
+                "PBE - Norm-conserving (pbe-n-nc)",
+                "PBESOL - PAW (pbesol-n-kjpaw_psl)",
+                "PBESOL - Ultrasoft (pbesol-n-rrkjus_psl)",
+                "LDA - Ultrasoft (lda)",
+                "Custom (Manual Entry)"
+            ],
+            help="Select the pseudopotential family matching your functional"
+        )
+        
+        # Parse family info
+        pp_mapping = {
+            "PBE - PAW (pbe-n-kjpaw_psl)": ("pbe", "kjpaw_psl", "1.0.0"),
+            "PBE - Ultrasoft (pbe-n-rrkjus_psl)": ("pbe", "rrkjus_psl", "1.0.0"),
+            "PBE - Norm-conserving (pbe-n-nc)": ("pbe", "nc", "1.0.0"),
+            "PBESOL - PAW (pbesol-n-kjpaw_psl)": ("pbesol", "kjpaw_psl", "1.0.0"),
+            "PBESOL - Ultrasoft (pbesol-n-rrkjus_psl)": ("pbesol", "rrkjus_psl", "1.0.0"),
+            "LDA - Ultrasoft (lda)": ("lda", "pz", "2.0.1"),
+        }
+        
+        pseudopotentials = {}
+        
+        if pp_family == "Custom (Manual Entry)":
+            st.write("**Manual Entry:** Enter pseudopotential file for each element:")
+            for element in unique_elements:
+                pseudo = st.text_input(
+                    f"{element}:",
+                    value=f"{element}.pbe-n-kjpaw_psl.1.0.0.UPF",
+                    key=f"pseudo_{element}",
+                    help="Full pseudopotential filename (e.g., Fe.pbe-n-kjpaw_psl.1.0.0.UPF)"
+                )
+                pseudopotentials[element] = pseudo
+        else:
+            # Auto-generate pseudo names based on family
+            functional, pp_type, version = pp_mapping[pp_family]
+            
+            st.write(f"**Auto-generated pseudopotentials** (Family: {functional}, Type: {pp_type}):")
+            
+            # Allow user to override specific elements if needed
+            override_elements = st.multiselect(
+                "Override specific elements (optional):",
+                unique_elements,
+                help="Select elements for which you want to manually specify the pseudopotential"
+            )
+            
+            for element in unique_elements:
+                if element in override_elements:
+                    # Manual override
+                    pseudo = st.text_input(
+                        f"{element} (Override):",
+                        value=f"{element}.{functional}-n-{pp_type}.{version}.UPF",
+                        key=f"pseudo_{element}"
+                    )
+                    pseudopotentials[element] = pseudo
+                else:
+                    # Auto-generate
+                    pseudo = f"{element}.{functional}-n-{pp_type}.{version}.UPF"
+                    pseudopotentials[element] = pseudo
+                    st.text(f"{element}: {pseudo}")
+            
+            st.info("""
+            **Note on pseudopotentials:**
+            - Pseudopotentials must be available in your `ESPRESSO_PSEUDO` directory or specified path
+            - For remote calculations, xespresso handles transferring pseudopotential files automatically
+            - Different families are optimized for different functionals (LDA, PBE, PBESOL)
+            """)
+        
+        st.session_state.workflow_config['pseudopotentials'] = pseudopotentials
+        
+        # Basic parameters
+        st.subheader("Calculation Parameters")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Use session state for persistence
+            default_ecutwfc = st.session_state.workflow_config.get('ecutwfc', 50.0)
+            ecutwfc = st.number_input(
+                "Kinetic Energy Cutoff (ecutwfc) [Ry]",
+                min_value=10.0,
+                max_value=200.0,
+                value=float(default_ecutwfc),
+                step=5.0,
+                help="Plane-wave cutoff energy"
+            )
+            
+            # Add dual parameter
+            default_dual = st.session_state.workflow_config.get('dual', 4.0)
+            dual = st.number_input(
+                "Dual Parameter (ecutrho/ecutwfc ratio)",
+                min_value=1.0,
+                max_value=12.0,
+                value=float(default_dual),
+                step=0.5,
+                help="Ratio between charge density and wavefunction cutoffs (typically 4-8)"
+            )
+            
+            if calc_type.startswith("SCF") or calc_type.startswith("Relaxation"):
+                default_conv_thr = st.session_state.workflow_config.get('conv_thr', 1e-6)
+                conv_thr = st.number_input(
+                    "Convergence Threshold",
+                    min_value=1e-10,
+                    max_value=1e-4,
+                    value=float(default_conv_thr),
+                    format="%.1e",
+                    help="SCF convergence threshold"
+                )
+        
+        with col2:
+            # Calculate ecutrho from dual
+            ecutrho = ecutwfc * dual
+            st.number_input(
+                "Charge Density Cutoff (ecutrho) [Ry]",
+                min_value=10.0,
+                max_value=800.0,
+                value=ecutrho,
+                step=10.0,
+                help="Charge density cutoff = dual × ecutwfc",
+                disabled=True
+            )
+        
+        st.session_state.workflow_config.update({
+            'ecutwfc': ecutwfc,
+            'ecutrho': ecutrho,
+            'dual': dual,
+        })
+        
+        if calc_type.startswith("SCF") or calc_type.startswith("Relaxation"):
+            st.session_state.workflow_config['conv_thr'] = conv_thr
+        
+        # Smearing options
+        st.subheader("Electronic Occupations")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            occupations = st.selectbox(
+                "Occupation Type",
+                ["smearing", "fixed", "tetrahedra"],
+                index=["smearing", "fixed", "tetrahedra"].index(
+                    st.session_state.workflow_config.get('occupations', 'smearing')
+                ),
+                help="Method for determining electronic occupations"
+            )
+            st.session_state.workflow_config['occupations'] = occupations
+        
+        with col2:
+            if occupations == "smearing":
+                smearing_type = st.selectbox(
+                    "Smearing Type",
+                    ["gaussian", "methfessel-paxton", "marzari-vanderbilt", "fermi-dirac"],
+                    index=["gaussian", "methfessel-paxton", "marzari-vanderbilt", "fermi-dirac"].index(
+                        st.session_state.workflow_config.get('smearing', 'gaussian')
+                    ),
+                    help="Type of smearing function"
+                )
+                st.session_state.workflow_config['smearing'] = smearing_type
+                
+                degauss = st.number_input(
+                    "Smearing Width (degauss) [Ry]",
+                    min_value=0.001,
+                    max_value=0.1,
+                    value=st.session_state.workflow_config.get('degauss', 0.02),
+                    step=0.001,
+                    format="%.3f",
+                    help="Width of smearing (typically 0.01-0.03 Ry)"
+                )
+                st.session_state.workflow_config['degauss'] = degauss
+        
+        # K-points
+        st.subheader("K-point Sampling")
+        
+        kpt_method = st.radio(
+            "K-point Method:",
+            ["K-spacing", "Monkhorst-Pack Grid"]
+        )
+        
+        if kpt_method == "K-spacing":
+            kspacing = st.slider(
+                "K-spacing (Å⁻¹)",
+                min_value=0.1,
+                max_value=1.0,
+                value=0.3,
+                step=0.05,
+                help="Smaller values = denser k-point mesh"
+            )
+            st.session_state.workflow_config['kspacing'] = kspacing
+            
+            # Show equivalent grid
+            try:
+                from xespresso import kpts_from_spacing
+                kpts = kpts_from_spacing(atoms, kspacing)
+                st.info(f"Equivalent Monkhorst-Pack grid: {kpts[0]} × {kpts[1]} × {kpts[2]}")
+            except:
+                pass
+        else:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                k1 = st.number_input("k₁", min_value=1, value=4)
+            with col2:
+                k2 = st.number_input("k₂", min_value=1, value=4)
+            with col3:
+                k3 = st.number_input("k₃", min_value=1, value=4)
+            
+            st.session_state.workflow_config['kpts'] = (k1, k2, k3)
+        
+        # Spin polarization
+        st.subheader("Spin Polarization")
+        default_nspin = st.session_state.workflow_config.get('nspin', 1)
+        nspin = st.selectbox(
+            "Spin Treatment",
+            [1, 2, 4],
+            index=[1, 2, 4].index(default_nspin),
+            format_func=lambda x: {
+                1: "Non-spin-polarized",
+                2: "Spin-polarized (collinear)",
+                4: "Non-collinear + spin-orbit"
+            }[x],
+            help="Spin treatment for magnetic systems"
+        )
+        st.session_state.workflow_config['nspin'] = nspin
+        
+        # DFT+U section
+        st.subheader("DFT+U Configuration")
+        use_dft_u = st.checkbox(
+            "Enable DFT+U",
+            value=st.session_state.workflow_config.get('use_dft_u', False),
+            help="Add Hubbard U correction for strongly correlated systems"
+        )
+        st.session_state.workflow_config['use_dft_u'] = use_dft_u
+        
+        if use_dft_u:
+            st.info("Configure Hubbard U parameters for each element")
+            
+            atoms = st.session_state.current_structure
+            unique_elements = list(set(atoms.get_chemical_symbols()))
+            
+            hubbard_u = st.session_state.workflow_config.get('hubbard_u', {})
+            
+            for element in unique_elements:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.write(f"**{element}**")
+                with col2:
+                    u_val = st.number_input(
+                        f"U value (eV)",
+                        min_value=0.0,
+                        max_value=10.0,
+                        value=hubbard_u.get(element, {}).get('U', 0.0),
+                        step=0.5,
+                        key=f"hubbard_u_{element}"
+                    )
+                with col3:
+                    orbital = st.selectbox(
+                        f"Orbital",
+                        ["2p", "3d", "4f"],
+                        index=["2p", "3d", "4f"].index(hubbard_u.get(element, {}).get('orbital', '3d')),
+                        key=f"hubbard_orbital_{element}"
+                    )
+                
+                if u_val > 0:
+                    hubbard_u[element] = {'U': u_val, 'orbital': orbital}
+            
+            st.session_state.workflow_config['hubbard_u'] = hubbard_u
+        
+        # Calculation-specific options
+        if calc_type.startswith("Bands"):
+            st.subheader("Band Structure Settings")
+            
+            band_path_method = st.radio(
+                "K-path Selection:",
+                ["Automatic (seekpath)", "Custom Path"]
+            )
+            
+            if band_path_method == "Automatic (seekpath)":
+                st.info("Will use automatic k-path detection based on crystal symmetry")
+                st.session_state.workflow_config['band_path'] = 'auto'
+            else:
+                st.write("Define custom k-path (e.g., 'GXMGRX' for cubic systems)")
+                custom_path = st.text_input(
+                    "K-path",
+                    value=st.session_state.workflow_config.get('custom_band_path', 'GXMGRX'),
+                    help="Specify high-symmetry points"
+                )
+                st.session_state.workflow_config['band_path'] = 'custom'
+                st.session_state.workflow_config['custom_band_path'] = custom_path
+                
+            npoints = st.number_input(
+                "Number of k-points along path",
+                min_value=10,
+                max_value=500,
+                value=st.session_state.workflow_config.get('band_npoints', 100),
+                help="Total number of k-points along the band path"
+            )
+            st.session_state.workflow_config['band_npoints'] = npoints
+        
+        st.success("✅ Calculation parameters configured!")
 
 # Page 5: Workflow Builder
 elif page == "🔄 Workflow Builder":
