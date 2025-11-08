@@ -98,37 +98,37 @@ def render_job_submission_page():
                         st.code(job_content, language="bash", line_numbers=True)
                         
                         # Download button
-                    st.download_button(
-                        label="⬇️ Download Job File",
-                        data=job_content,
-                        file_name=os.path.basename(selected_job_file),
-                        mime="text/plain"
-                    )
-                    
-                    # Parse and display key information
-                    st.subheader("Job File Summary")
-                    
-                    # Extract SLURM directives if present
-                    slurm_directives = []
-                    commands = []
-                    for line in job_content.splitlines():
-                        line = line.strip()
-                        if line.startswith("#SBATCH"):
-                            slurm_directives.append(line)
-                        elif line and not line.startswith("#"):
-                            commands.append(line)
-                    
-                    if slurm_directives:
-                        st.markdown("**SLURM Directives:**")
-                        for directive in slurm_directives:
-                            st.markdown(f"- `{directive}`")
-                    
-                    if commands:
-                        st.markdown("**Commands:**")
-                        for cmd in commands[:10]:  # Show first 10 commands
-                            st.markdown(f"- `{cmd}`")
-                        if len(commands) > 10:
-                            st.markdown(f"... and {len(commands) - 10} more commands")
+                        st.download_button(
+                            label="⬇️ Download Job File",
+                            data=job_content,
+                            file_name=os.path.basename(selected_job_file),
+                            mime="text/plain"
+                        )
+                        
+                        # Parse and display key information
+                        st.subheader("Job File Summary")
+                        
+                        # Extract SLURM directives if present
+                        slurm_directives = []
+                        commands = []
+                        for line in job_content.splitlines():
+                            line = line.strip()
+                            if line.startswith("#SBATCH"):
+                                slurm_directives.append(line)
+                            elif line and not line.startswith("#"):
+                                commands.append(line)
+                        
+                        if slurm_directives:
+                            st.markdown("**SLURM Directives:**")
+                            for directive in slurm_directives:
+                                st.markdown(f"- `{directive}`")
+                        
+                        if commands:
+                            st.markdown("**Commands:**")
+                            for cmd in commands[:10]:  # Show first 10 commands
+                                st.markdown(f"- `{cmd}`")
+                            if len(commands) > 10:
+                                st.markdown(f"... and {len(commands) - 10} more commands")
                     
                     except Exception as e:
                         st.error(f"Error reading job file: {e}")
