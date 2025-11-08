@@ -317,7 +317,16 @@ class CodesManager:
         os.makedirs(output_dir, exist_ok=True)
         
         if not filename:
-            filename = f"{config.machine_name}.json"
+            # Generate filename based on machine name and label/version
+            if config.label:
+                # Use label in filename to avoid overwriting different configurations
+                filename = f"{config.machine_name}-{config.label}.json"
+            elif config.qe_version:
+                # Fallback to version if no label
+                filename = f"{config.machine_name}-{config.qe_version}.json"
+            else:
+                # Default to just machine name
+                filename = f"{config.machine_name}.json"
         
         filepath = os.path.join(output_dir, filename)
         
@@ -387,17 +396,30 @@ class CodesManager:
     
     @staticmethod
     def load_config(machine_name: str,
-                   codes_dir: str = DEFAULT_CODES_DIR) -> Optional[CodesConfig]:
+                   codes_dir: str = DEFAULT_CODES_DIR,
+                   label: Optional[str] = None) -> Optional[CodesConfig]:
         """
         Load a CodesConfig from JSON file.
         
         Args:
             machine_name: Name of the machine
             codes_dir: Directory containing codes configurations
+            label: Optional label to load a specific configuration.
+                  If provided, looks for {machine_name}-{label}.json
         
         Returns:
             CodesConfig object or None if not found
         """
+        # Try with label first if provided
+        if label:
+            filepath = os.path.join(codes_dir, f"{machine_name}-{label}.json")
+            if os.path.exists(filepath):
+                try:
+                    return CodesConfig.from_json(filepath)
+                except Exception as e:
+                    print(f"Error loading codes config with label '{label}': {e}")
+        
+        # Fallback to default filename
         filepath = os.path.join(codes_dir, f"{machine_name}.json")
         
         if not os.path.exists(filepath):
@@ -604,7 +626,8 @@ def create_codes_config(machine_name: str = "local",
 
 def load_codes_config(machine_name: str,
                      codes_dir: str = DEFAULT_CODES_DIR,
-                     version: Optional[str] = None) -> Optional[CodesConfig]:
+                     version: Optional[str] = None,
+                     label: Optional[str] = None) -> Optional[CodesConfig]:
     """
     Load a codes configuration from file.
     
@@ -612,11 +635,13 @@ def load_codes_config(machine_name: str,
         machine_name: Name of the machine
         codes_dir: Directory containing codes configurations
         version: Optional QE version to use. If None, uses default or main codes.
+        label: Optional label to load a specific configuration file.
+              If provided, looks for {machine_name}-{label}.json
     
     Returns:
         CodesConfig object or None if not found
     """
-    config = CodesManager.load_config(machine_name, codes_dir)
+    config = CodesManager.load_config(machine_name, codes_dir, label=label)
     
     if config:
         versions = config.list_versions()
@@ -636,6 +661,42 @@ def load_codes_config(machine_name: str,
         print(f"⚠️  No codes configuration found for '{machine_name}'")
     
     return config
+
+
+def list_machine_configs(machine_name: str, codes_dir: str = DEFAULT_CODES_DIR) -> List[str]:
+    """
+    List all configuration files for a given machine.
+    
+    Args:
+        machine_name: Name of the machine
+        codes_dir: Directory containing codes configurations
+    
+    Returns:
+        List of labels (empty strings for default config, actual labels for labeled configs)
+    
+    Example:
+        >>> configs = list_machine_configs("local")
+        >>> print(configs)  # ['', 'production', 'dev'] means local.json, local-production.json, local-dev.json exist
+    """
+    if not os.path.exists(codes_dir):
+        return []
+    
+    configs = []
+    # Check for default config (no label)
+    default_path = os.path.join(codes_dir, f"{machine_name}.json")
+    if os.path.exists(default_path):
+        configs.append('')  # Empty string represents default/no label
+    
+    # Check for labeled configs
+    import glob
+    pattern = os.path.join(codes_dir, f"{machine_name}-*.json")
+    for filepath in glob.glob(pattern):
+        filename = os.path.basename(filepath)
+        # Extract label from filename: machine_name-label.json -> label
+        label = filename.replace(f"{machine_name}-", "").replace(".json", "")
+        configs.append(label)
+    
+    return configs
 
 
 def add_version_to_config(machine_name: str,

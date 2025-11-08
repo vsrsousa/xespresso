@@ -10,6 +10,7 @@ allowing users to:
 
 import streamlit as st
 import traceback
+import os
 
 try:
     from xespresso.machines.config.loader import (
@@ -18,7 +19,7 @@ try:
     )
     from xespresso.codes.manager import (
         detect_qe_codes, load_codes_config, CodesManager,
-        DEFAULT_CODES_DIR
+        DEFAULT_CODES_DIR, list_machine_configs
     )
     XESPRESSO_AVAILABLE = True
 except ImportError:
@@ -143,9 +144,11 @@ def render_codes_config_page():
             # Save option with clear explanation
             st.info("""
             **💾 Saving Codes:**
-            - Detected codes will be **merged** with existing configurations
-            - Multiple versions on the same machine are supported
-            - Existing codes with different paths/versions will be kept
+            - If a **label** is provided, configuration will be saved to `{machine}-{label}.json`
+            - If no label, configuration will be saved to `{machine}.json`
+            - With merge enabled, codes will be merged with existing configurations in the same file
+            - Multiple configurations with different labels can coexist as separate files
+            - This prevents accidentally overwriting different setups (e.g., production vs dev)
             """)
             
             if st.button("💾 Save Codes Configuration"):
@@ -158,7 +161,14 @@ def render_codes_config_page():
                         interactive=False
                     )
                     st.success(f"✅ Codes saved to: {filepath}")
-                    st.info("Multiple versions are preserved. Reload the page to see all versions.")
+                    
+                    # Show filename pattern for clarity
+                    filename = os.path.basename(filepath)
+                    st.info(f"📁 Saved as: `{filename}`")
+                    
+                    if codes_config.label:
+                        st.info("💡 Your configuration is saved with a label. You can create additional configurations with different labels.")
+                    
                     # Clear the detected codes after successful save
                     st.session_state.detected_codes = None
                     st.session_state.current_codes = codes_config
@@ -168,8 +178,40 @@ def render_codes_config_page():
         
         # Load existing configuration
         st.subheader("Existing Codes Configuration")
+        
+        # Show available configurations for this machine
         try:
-            existing_codes = load_codes_config(selected_machine, DEFAULT_CODES_DIR)
+            available_configs = list_machine_configs(selected_machine, DEFAULT_CODES_DIR)
+            if available_configs:
+                st.info(f"📋 Found {len(available_configs)} configuration(s) for '{selected_machine}'")
+                
+                # Allow selection of configuration by label
+                config_options = []
+                for label in available_configs:
+                    if label == '':
+                        config_options.append("Default (no label)")
+                    else:
+                        config_options.append(f"Label: {label}")
+                
+                selected_config_display = st.selectbox(
+                    "Select Configuration to Load:",
+                    config_options,
+                    help="Choose which configuration to load and view"
+                )
+                
+                # Extract the actual label from the display string
+                selected_label = None
+                if selected_config_display != "Default (no label)":
+                    selected_label = selected_config_display.replace("Label: ", "")
+            else:
+                st.info("ℹ️ No codes configuration found for this machine.")
+                selected_label = None
+        except Exception as e:
+            st.warning(f"Could not list configurations: {e}")
+            selected_label = None
+        
+        try:
+            existing_codes = load_codes_config(selected_machine, DEFAULT_CODES_DIR, label=selected_label)
             if existing_codes:
                 st.success(f"✅ Loaded existing configuration")
                 
@@ -197,7 +239,8 @@ def render_codes_config_page():
                                 version_config = load_codes_config(
                                     selected_machine, 
                                     DEFAULT_CODES_DIR, 
-                                    version=selected_version
+                                    version=selected_version,
+                                    label=selected_label
                                 )
                                 
                                 if version_config:
