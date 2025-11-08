@@ -16,9 +16,22 @@ A comprehensive Streamlit-based GUI has been added to xespresso for easy configu
 - **Auto-Detection**: Automatically detect Quantum ESPRESSO executables
   - Local detection using PATH and search paths
   - Remote detection via SSH
+- **Module Discovery**: NEW! List available QE modules on remote systems before configuration
+  - Search by pattern (e.g., "espresso", "qe")
+  - Environment setup support
+  - Direct integration with auto-detection
+- **Explicit Version Specification**: NEW! Specify QE version to avoid compiler version confusion
+  - Manual version input field
+  - Prevents auto-detection from picking up compiler versions
+  - Ensures accurate version tracking
 - **Multiple Versions**: Support for multiple QE versions on the same machine
+  - Version selection dropdown
+  - Load specific version configurations
+  - Seamless switching between versions
 - **Module Integration**: Automatic module loading for code detection
 - **Save/Load**: Persistent storage of code configurations
+
+See [GUI_QE_FEATURES.md](GUI_QE_FEATURES.md) for detailed documentation of the new features.
 
 ### 3. Structure Viewer (🔬)
 - **File Upload**: Support for CIF, XYZ, POSCAR, PDB, and other ASE formats
