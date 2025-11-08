@@ -647,7 +647,7 @@ def render_job_submission_tab():
                 with col1:
                     dry_run = st.checkbox(
                         "🧪 Dry Run (don't actually submit)",
-                        value=True,
+                        value=False,
                         help="If checked, will only validate files without submitting the job"
                     )
                 
