@@ -4,12 +4,24 @@ import os
 from pathlib import Path
 
 def render_job_submission_page():
-    """Render the job submission page with enhanced job file viewer and editor."""
+    """Render the job submission page with enhanced job file viewer, editor, and submission."""
     st.header("Job Submission & File Management")
     st.markdown("""
-    Browse calculation directories, view job files, edit input files, and manage your calculations.
+    Browse calculation directories, view job files, edit input files, submit jobs, and manage your calculations.
     """)
     
+    # Create tabs for different functionalities
+    tab1, tab2 = st.tabs(["📂 File Browser", "🚀 Job Submission"])
+    
+    with tab1:
+        render_file_browser_tab()
+    
+    with tab2:
+        render_job_submission_tab()
+
+
+def render_file_browser_tab():
+    """Render the file browser tab."""
     # Working Directory Browser Section
     st.subheader("📁 Working Directory Browser")
     
@@ -243,3 +255,224 @@ def render_job_submission_page():
     - Changes are saved immediately when you click "Save Changes"
     """)
 
+
+def render_job_submission_tab():
+    """Render the job submission tab for submitting calculations."""
+    st.subheader("🚀 Submit Calculation Job")
+    st.markdown("""
+    Submit a job to run a calculation. You can either do a dry run (generate files only) 
+    or actually submit the job to a scheduler.
+    """)
+    
+    # Working directory selection
+    try:
+        from xespresso.gui.utils.selectors import render_workdir_browser
+        workdir = render_workdir_browser(key="job_submit_workdir")
+    except ImportError:
+        workdir = st.text_input("Working Directory:", value=os.getcwd(), key="job_submit_workdir_input")
+        workdir = os.path.abspath(os.path.expanduser(workdir))
+    
+    # Find calculation folders with job files
+    st.markdown("---")
+    st.subheader("📂 Select Calculation to Submit")
+    
+    calc_folders_with_jobs = []
+    try:
+        for root, dirs, files in os.walk(workdir, topdown=True):
+            depth = root[len(workdir):].count(os.sep)
+            if depth < 4:
+                # Check for job files
+                has_job_file = any(f == 'job_file' or f.endswith(('.sh', '.slurm')) for f in files)
+                # Check for input files
+                has_input = any(f.endswith(('.pwi', '.phi', '.ppi', '.in')) for f in files)
+                if has_job_file and has_input:
+                    calc_folders_with_jobs.append(root)
+        
+        if calc_folders_with_jobs:
+            st.success(f"✅ Found {len(calc_folders_with_jobs)} calculation(s) ready for submission")
+            
+            selected_calc = st.selectbox(
+                "Select calculation:",
+                calc_folders_with_jobs,
+                format_func=lambda x: os.path.relpath(x, workdir) if x != workdir else ".",
+                key="submit_calc_selector"
+            )
+            
+            if selected_calc:
+                st.info(f"📍 Selected: `{os.path.relpath(selected_calc, workdir)}`")
+                
+                # Show files in the calculation folder
+                files = os.listdir(selected_calc)
+                job_files = [f for f in files if f == 'job_file' or f.endswith(('.sh', '.slurm'))]
+                input_files = [f for f in files if f.endswith(('.pwi', '.phi', '.ppi', '.in'))]
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Job Scripts:**")
+                    for jf in job_files:
+                        st.markdown(f"- `{jf}`")
+                with col2:
+                    st.markdown("**Input Files:**")
+                    for inf in input_files:
+                        st.markdown(f"- `{inf}`")
+                
+                st.markdown("---")
+                
+                # Submission options
+                st.subheader("⚙️ Submission Options")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    dry_run = st.checkbox(
+                        "🧪 Dry Run (don't actually submit)",
+                        value=True,
+                        help="If checked, will only validate files without submitting the job"
+                    )
+                
+                with col2:
+                    if job_files:
+                        selected_job_file = st.selectbox(
+                            "Job script to use:",
+                            job_files,
+                            key="selected_job_script"
+                        )
+                    else:
+                        selected_job_file = None
+                        st.warning("No job files found")
+                
+                # Submission button
+                st.markdown("---")
+                
+                col1, col2, col3 = st.columns([2, 1, 1])
+                
+                with col1:
+                    submit_button = st.button(
+                        "🚀 Submit Job" if not dry_run else "🧪 Validate (Dry Run)",
+                        type="primary",
+                        disabled=(selected_job_file is None),
+                        key="submit_job_button"
+                    )
+                
+                if submit_button and selected_job_file:
+                    job_file_path = os.path.join(selected_calc, selected_job_file)
+                    
+                    if dry_run:
+                        # Dry run - just validate files
+                        st.info("🧪 **Dry Run Mode** - Validating files...")
+                        
+                        with st.spinner("Validating..."):
+                            try:
+                                # Check if files exist and are readable
+                                validation_results = []
+                                
+                                # Check job file
+                                if os.path.exists(job_file_path):
+                                    with open(job_file_path, 'r') as f:
+                                        job_content = f.read()
+                                    validation_results.append(("✅", "Job script", f"{selected_job_file} ({len(job_content)} bytes)"))
+                                else:
+                                    validation_results.append(("❌", "Job script", f"{selected_job_file} not found"))
+                                
+                                # Check input files
+                                for inf in input_files:
+                                    inf_path = os.path.join(selected_calc, inf)
+                                    if os.path.exists(inf_path):
+                                        file_size = os.path.getsize(inf_path)
+                                        validation_results.append(("✅", "Input file", f"{inf} ({file_size} bytes)"))
+                                    else:
+                                        validation_results.append(("❌", "Input file", f"{inf} not found"))
+                                
+                                # Display validation results
+                                st.success("✅ Validation complete!")
+                                st.subheader("Validation Results")
+                                
+                                for status, file_type, details in validation_results:
+                                    st.markdown(f"{status} **{file_type}:** {details}")
+                                
+                                # Show what would be submitted
+                                st.markdown("---")
+                                st.subheader("📋 Job Submission Preview")
+                                st.info(f"""
+                                **Job would be submitted with the following details:**
+                                - **Working Directory:** `{selected_calc}`
+                                - **Job Script:** `{selected_job_file}`
+                                - **Input Files:** {len(input_files)} file(s)
+                                - **Command:** `bash {selected_job_file}` (or `sbatch {selected_job_file}` for SLURM)
+                                """)
+                                
+                                # Preview job script content
+                                with st.expander("👁️ View Job Script"):
+                                    st.code(job_content, language="bash", line_numbers=True)
+                                
+                            except Exception as e:
+                                st.error(f"❌ Validation error: {e}")
+                                import traceback
+                                with st.expander("Error Details"):
+                                    st.code(traceback.format_exc())
+                    
+                    else:
+                        # Actually submit the job
+                        st.warning("⚠️ **Live Submission** - Job will be submitted to scheduler")
+                        
+                        with st.spinner("Submitting job..."):
+                            try:
+                                import subprocess
+                                
+                                # Determine submission command
+                                if 'slurm' in selected_job_file.lower() or any('SBATCH' in line for line in open(job_file_path).readlines()):
+                                    submit_cmd = f"sbatch {selected_job_file}"
+                                else:
+                                    submit_cmd = f"bash {selected_job_file}"
+                                
+                                # Submit the job
+                                result = subprocess.run(
+                                    submit_cmd,
+                                    shell=True,
+                                    cwd=selected_calc,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=30
+                                )
+                                
+                                if result.returncode == 0:
+                                    st.success("✅ Job submitted successfully!")
+                                    st.subheader("Submission Output")
+                                    st.code(result.stdout)
+                                    
+                                    # Try to extract job ID for SLURM
+                                    if 'sbatch' in submit_cmd:
+                                        import re
+                                        match = re.search(r'Submitted batch job (\d+)', result.stdout)
+                                        if match:
+                                            job_id = match.group(1)
+                                            st.info(f"🎫 **Job ID:** {job_id}")
+                                            st.markdown(f"Monitor with: `squeue -j {job_id}`")
+                                else:
+                                    st.error("❌ Job submission failed!")
+                                    st.subheader("Error Output")
+                                    st.code(result.stderr)
+                                
+                            except subprocess.TimeoutExpired:
+                                st.error("❌ Job submission timed out (30s)")
+                            except Exception as e:
+                                st.error(f"❌ Submission error: {e}")
+                                import traceback
+                                with st.expander("Error Details"):
+                                    st.code(traceback.format_exc())
+        
+        else:
+            st.warning("⚠️ No calculation folders with job scripts found")
+            st.info("""
+            **To submit a job, you need:**
+            1. A calculation folder with input files (`.pwi`, `.in`, etc.)
+            2. A job script (`job_file`, `*.sh`, or `*.slurm`)
+            
+            You can create these using the Calculation Setup page or by using the File Browser tab above.
+            """)
+    
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
+        import traceback
+        with st.expander("Error Details"):
+            st.code(traceback.format_exc())
