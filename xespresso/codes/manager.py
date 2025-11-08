@@ -208,6 +208,43 @@ class CodesManager:
         return None
     
     @staticmethod
+    def detect_common_prefix(code_paths: Dict[str, str]) -> Optional[str]:
+        """
+        Detect common directory prefix for a set of code paths.
+        
+        Args:
+            code_paths: Dictionary mapping code name to full path
+        
+        Returns:
+            Common directory prefix or None if paths don't share a common directory
+        
+        Example:
+            >>> paths = {
+            ...     'pw': '/opt/qe/7.5/bin/pw.x',
+            ...     'ph': '/opt/qe/7.5/bin/ph.x'
+            ... }
+            >>> detect_common_prefix(paths)
+            '/opt/qe/7.5/bin'
+        """
+        if not code_paths or len(code_paths) < 2:
+            # If only one code or none, return its directory
+            if len(code_paths) == 1:
+                single_path = next(iter(code_paths.values()))
+                return str(Path(single_path).parent)
+            return None
+        
+        paths = list(code_paths.values())
+        
+        # Get parent directory for each path
+        directories = [str(Path(p).parent) for p in paths]
+        
+        # Check if all directories are the same
+        if len(set(directories)) == 1:
+            return directories[0]
+        
+        return None
+    
+    @staticmethod
     def detect_qe_version(pw_path: str, ssh_connection: Optional[Dict] = None,
                          env_setup: Optional[str] = None) -> Optional[str]:
         """
@@ -264,7 +301,7 @@ class CodesManager:
             machine_name: Name of the machine
             detected_codes: Dictionary mapping code name to path
             qe_version: QE version string
-            qe_prefix: QE installation prefix
+            qe_prefix: QE installation prefix (will auto-detect if not provided)
             label: Custom label for this version
             modules: List of modules to load
             environment: Environment variables
@@ -272,6 +309,12 @@ class CodesManager:
         Returns:
             CodesConfig object
         """
+        # Auto-detect common prefix if not provided and codes share common directory
+        if not qe_prefix and detected_codes:
+            detected_prefix = cls.detect_common_prefix(detected_codes)
+            if detected_prefix:
+                qe_prefix = detected_prefix
+        
         config = CodesConfig(
             machine_name=machine_name,
             qe_prefix=qe_prefix,
@@ -294,7 +337,7 @@ class CodesManager:
             if use_versions and qe_version:
                 # Add to version-specific structure
                 config.add_code(code, version=qe_version)
-                # Store label and modules for this version
+                # Store label, modules, and qe_prefix for this version
                 if not config.versions:
                     config.versions = {}
                 if qe_version not in config.versions:
@@ -303,6 +346,8 @@ class CodesManager:
                     config.versions[qe_version]["label"] = label
                 if modules:
                     config.versions[qe_version]["modules"] = modules
+                if qe_prefix:
+                    config.versions[qe_version]["qe_prefix"] = qe_prefix
             else:
                 # Add to main codes dictionary (backward compatible)
                 config.add_code(code)
