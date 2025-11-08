@@ -649,8 +649,11 @@ elif page == "⚙️ Codes Configuration":
                             auto_load_machine=True
                         )
                         
-                        if codes_config and codes_config.codes:
-                            st.success(f"✅ Detected {len(codes_config.codes)} codes!")
+                        # Check if any codes were detected (in main codes dict or versions structure)
+                        if codes_config and codes_config.has_any_codes():
+                            # Get all detected codes to count them
+                            all_codes = codes_config.get_all_codes()
+                            st.success(f"✅ Detected {len(all_codes)} codes!")
                             
                             # Add version label if provided
                             if version_label:
@@ -661,7 +664,7 @@ elif page == "⚙️ Codes Configuration":
                             # Display detected codes
                             st.subheader("Detected Codes")
                             codes_data = []
-                            for name, code in codes_config.codes.items():
+                            for name, code in all_codes.items():
                                 codes_data.append({
                                     "Code": name,
                                     "Path": code.path,

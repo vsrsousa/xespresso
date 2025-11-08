@@ -113,8 +113,11 @@ def render_codes_config_page():
                         label=label.strip() if label and label.strip() else None
                     )
                     
-                    if codes_config and codes_config.codes:
-                        st.success(f"✅ Detected {len(codes_config.codes)} codes!")
+                    # Check if any codes were detected (in main codes dict or versions structure)
+                    if codes_config and codes_config.has_any_codes():
+                        # Get all detected codes to count them
+                        all_codes = codes_config.get_all_codes()
+                        st.success(f"✅ Detected {len(all_codes)} codes!")
                         # Store in session state with a flag to show detected codes were just found
                         st.session_state.detected_codes = codes_config
                         st.session_state.detected_machine = selected_machine
@@ -131,8 +134,12 @@ def render_codes_config_page():
             codes_config = st.session_state.detected_codes
             
             st.subheader("Detected Codes")
+            
+            # Get all codes from the appropriate location (main codes or version-specific)
+            all_codes = codes_config.get_all_codes()
+            
             codes_data = []
-            for name, code in codes_config.codes.items():
+            for name, code in all_codes.items():
                 codes_data.append({
                     "Code": name,
                     "Path": code.path,

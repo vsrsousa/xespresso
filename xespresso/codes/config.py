@@ -124,6 +124,52 @@ class CodesConfig:
         # Fall back to main codes dictionary
         return self.codes.get(name)
     
+    def get_all_codes(self, version: Optional[str] = None) -> Dict[str, Code]:
+        """
+        Get all codes as a dictionary, from either main codes or a specific version.
+        
+        Args:
+            version: Optional version string. If provided, gets codes from that version.
+                    If None, gets codes from main codes dict or qe_version if available.
+        
+        Returns:
+            Dictionary mapping code name to Code object
+        """
+        # If no version specified, try to use qe_version
+        if version is None and self.qe_version and self.versions and self.qe_version in self.versions:
+            version = self.qe_version
+        
+        if version and self.versions and version in self.versions:
+            # Get from version-specific codes
+            codes_data = self.versions[version].get("codes", {})
+            result = {}
+            for name, code_data in codes_data.items():
+                if isinstance(code_data, Code):
+                    result[name] = code_data
+                else:
+                    result[name] = Code.from_dict(code_data)
+            return result
+        
+        # Return main codes dictionary
+        return self.codes.copy()
+    
+    def has_any_codes(self) -> bool:
+        """
+        Check if there are any codes configured, in either main codes or versions.
+        
+        Returns:
+            True if any codes are configured
+        """
+        if self.codes:
+            return True
+        
+        if self.versions:
+            for version_config in self.versions.values():
+                if version_config.get('codes'):
+                    return True
+        
+        return False
+    
     def list_versions(self) -> List[str]:
         """List all available QE versions."""
         if self.versions:
