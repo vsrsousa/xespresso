@@ -107,11 +107,7 @@ class Scheduler:
 
     def run(self):
         """
-        Executes the job locally using subprocess.run.
-
-        This method submits the job by running the submit_command() in the script directory.
-        For direct schedulers, this executes the job immediately.
-        For SLURM/PBS schedulers, this submits the job to the queue and returns.
+        Executes the job locally using os.system.
 
         This method can be overridden by subclasses to support remote execution
         via SSH or other mechanisms.
@@ -119,5 +115,6 @@ class Scheduler:
         Returns:
             tuple: (stdout, stderr) if applicable, else (None, None)
         """
+#        os.system(self.submit_command())
         subprocess.run(self.submit_command(), shell=True, cwd=self.script_dir, check=True)
         return None, None
