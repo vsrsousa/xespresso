@@ -27,10 +27,35 @@ except ImportError:
     PY3DMOL_AVAILABLE = False
 
 
-def create_3d_structure_plot(atoms):
-    """Create a 3D plotly visualization of atomic structure."""
+def create_3d_structure_plot(atoms, show_conventional=False, white_background=False):
+    """Create a 3D plotly visualization of atomic structure.
+    
+    Args:
+        atoms: ASE Atoms object
+        show_conventional: If True, show conventional cell instead of primitive
+        white_background: If True, use white background
+    
+    Returns:
+        plotly Figure object or None
+    """
     if not PLOTLY_AVAILABLE:
         return None
+    
+    # Get conventional cell if requested
+    if show_conventional:
+        try:
+            from ase.build import make_supercell
+            from ase.spacegroup import get_spacegroup
+            # Try to get conventional cell
+            try:
+                spg = get_spacegroup(atoms, symprec=1e-5)
+                lattice = spg.get_conventional_cell()
+                atoms = lattice
+            except:
+                # If spacegroup detection fails, just use the original atoms
+                pass
+        except ImportError:
+            pass
     
     positions = atoms.get_positions()
     symbols = atoms.get_chemical_symbols()
@@ -83,13 +108,19 @@ def create_3d_structure_plot(atoms):
             hoverinfo='skip'
         ))
     
+    # Configure background color
+    bg_color = 'white' if white_background else '#f0f2f6'
+    
     fig.update_layout(
         scene=dict(
             xaxis_title='X (Å)',
             yaxis_title='Y (Å)',
             zaxis_title='Z (Å)',
-            aspectmode='data'
+            aspectmode='data',
+            bgcolor=bg_color
         ),
+        paper_bgcolor=bg_color,
+        plot_bgcolor=bg_color,
         margin=dict(l=0, r=0, t=0, b=0),
         height=500
     )
