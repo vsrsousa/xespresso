@@ -193,7 +193,17 @@ class CodesConfig:
         return None
     
     def to_dict(self) -> Dict:
-        """Convert to dictionary."""
+        """
+        Convert CodesConfig to dictionary for JSON serialization.
+        
+        This method implements smart redundancy reduction:
+        - Top-level 'modules' are excluded when versions structure exists
+        - Top-level 'qe_version' is kept to indicate default/active version
+        - Top-level 'label' excluded when versions exist (stored per-version)
+        
+        Returns:
+            Dictionary representation suitable for JSON serialization
+        """
         result = {
             'machine_name': self.machine_name,
             'codes': {name: code.to_dict() for name, code in self.codes.items()},
