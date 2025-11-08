@@ -7,8 +7,6 @@ This application provides a user-friendly interface for:
 - Viewing and selecting molecular structures
 - Configuring calculations and workflows
 - Submitting computational jobs
-
-This is the main entry point for the modular GUI.
 """
 
 import streamlit as st
@@ -33,23 +31,7 @@ Welcome to the xespresso graphical interface for Quantum ESPRESSO calculations.
 Configure your computational environment, select structures, and submit jobs easily.
 """)
 
-# Import modular page components
-try:
-    from xespresso.gui.pages import (
-        render_machine_config_page,
-        render_codes_config_page,
-        render_structure_viewer_page,
-        render_calculation_setup_page,
-        render_workflow_builder_page,
-        render_job_submission_page,
-        render_results_postprocessing_page
-    )
-    PAGES_AVAILABLE = True
-except ImportError as e:
-    st.error(f"⚠️ Error importing page modules: {e}")
-    PAGES_AVAILABLE = False
-
-# Import xespresso modules for pages that still need them inline
+# Import xespresso modules
 try:
     from xespresso.machines.machine import Machine
     from xespresso.machines.config.loader import (
@@ -87,26 +69,6 @@ except ImportError:
     st.warning("⚠️ Plotly not available. 3D visualization will be limited.")
     PLOTLY_AVAILABLE = False
 
-# Import utility functions
-try:
-    from xespresso.gui.utils import validate_path, create_3d_structure_plot, display_structure_info
-    UTILS_AVAILABLE = True
-except ImportError as e:
-    st.warning(f"⚠️ GUI utilities not fully available: {e}")
-    UTILS_AVAILABLE = False
-    # Fallback implementations
-    def validate_path(path, allow_creation=False):
-        """Fallback path validation."""
-        return True, path, None
-    
-    def create_3d_structure_plot(atoms):
-        """Fallback plot function."""
-        return None
-    
-    def display_structure_info(atoms):
-        """Fallback structure info display."""
-        st.write(f"Structure: {atoms.get_chemical_formula()}")
-
 # Initialize session state
 if 'current_structure' not in st.session_state:
     st.session_state.current_structure = None
@@ -138,19 +100,646 @@ page = st.sidebar.radio(
     ]
 )
 
-# Page routing
+# Helper function for path validation
+def validate_path(path, allow_creation=False):
+    """
+    Validate and sanitize file paths to prevent path injection.
+    
+    Args:
+        path: Path to validate
+        allow_creation: If True, allow non-existent paths (for file creation)
+    
+    Returns:
+        Tuple of (is_valid, normalized_path, error_message)
+    """
+    if not path:
+        return False, None, "Path cannot be empty"
+    
+    try:
+        # Normalize and resolve the path
+        normalized = os.path.abspath(os.path.expanduser(path))
+        
+        # Check for path traversal attempts
+        if '..' in os.path.relpath(normalized, os.path.expanduser('~')):
+            # Allow if it's an absolute path or in allowed directories
+            allowed_dirs = ['/tmp', '/home', '/Users', os.path.expanduser('~')]
+            if not any(normalized.startswith(d) for d in allowed_dirs):
+                return False, None, "Path traversal not allowed"
+        
+        # Check if path exists (if required)
+        if not allow_creation and not os.path.exists(normalized):
+            return False, normalized, f"Path does not exist: {normalized}"
+        
+        return True, normalized, None
+        
+    except Exception as e:
+        return False, None, f"Invalid path: {str(e)}"
+
+# Helper functions for structure visualization
+def create_3d_structure_plot(atoms):
+    """Create a 3D plotly visualization of atomic structure."""
+    if not PLOTLY_AVAILABLE:
+        return None
+    
+    positions = atoms.get_positions()
+    symbols = atoms.get_chemical_symbols()
+    
+    # Color map for common elements
+    color_map = {
+        'H': 'white', 'C': 'gray', 'N': 'blue', 'O': 'red',
+        'F': 'green', 'P': 'orange', 'S': 'yellow',
+        'Cl': 'green', 'Fe': 'brown', 'Cu': 'brown',
+        'Al': 'silver', 'Si': 'pink', 'Pt': 'silver'
+    }
+    
+    colors = [color_map.get(s, 'purple') for s in symbols]
+    
+    # Create scatter plot
+    fig = go.Figure(data=[go.Scatter3d(
+        x=positions[:, 0],
+        y=positions[:, 1],
+        z=positions[:, 2],
+        mode='markers+text',
+        marker=dict(
+            size=12,
+            color=colors,
+            line=dict(color='black', width=1)
+        ),
+        text=symbols,
+        textposition="top center",
+        hovertemplate='<b>%{text}</b><br>x: %{x:.2f}<br>y: %{y:.2f}<br>z: %{z:.2f}<extra></extra>'
+    )])
+    
+    # Add cell visualization if present
+    if atoms.cell is not None and atoms.pbc.any():
+        cell = atoms.cell.array
+        # Draw cell edges
+        edges = [
+            [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 0],  # bottom
+            [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1], [0, 0, 1],  # top
+            [1, 0, 0], [1, 0, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0], [0, 1, 1]
+        ]
+        
+        edge_points = np.array([np.dot(edge, cell) for edge in edges])
+        
+        fig.add_trace(go.Scatter3d(
+            x=edge_points[:, 0],
+            y=edge_points[:, 1],
+            z=edge_points[:, 2],
+            mode='lines',
+            line=dict(color='black', width=2),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+    
+    fig.update_layout(
+        scene=dict(
+            xaxis_title='X (Å)',
+            yaxis_title='Y (Å)',
+            zaxis_title='Z (Å)',
+            aspectmode='data'
+        ),
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=500
+    )
+    
+    return fig
+
+def display_structure_info(atoms):
+    """Display information about the atomic structure."""
+    st.subheader("Structure Information")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Number of Atoms", len(atoms))
+        st.metric("Chemical Formula", atoms.get_chemical_formula())
+    
+    with col2:
+        symbols = atoms.get_chemical_symbols()
+        unique_elements = list(set(symbols))
+        st.metric("Unique Elements", len(unique_elements))
+        st.write("**Elements:**", ", ".join(sorted(unique_elements)))
+    
+    with col3:
+        if atoms.cell is not None:
+            st.metric("Cell Volume", f"{atoms.get_volume():.2f} Å³")
+            pbc_str = "".join(["T" if p else "F" for p in atoms.pbc])
+            st.metric("PBC", pbc_str)
+    
+    # Display cell parameters
+    if atoms.cell is not None and atoms.pbc.any():
+        st.subheader("Cell Parameters")
+        cell_params = atoms.cell.cellpar()
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.write(f"**a:** {cell_params[0]:.3f} Å")
+            st.write(f"**b:** {cell_params[1]:.3f} Å")
+            st.write(f"**c:** {cell_params[2]:.3f} Å")
+        with col2:
+            st.write(f"**α:** {cell_params[3]:.2f}°")
+            st.write(f"**β:** {cell_params[4]:.2f}°")
+            st.write(f"**γ:** {cell_params[5]:.2f}°")
+
+# Page 1: Machine Configuration
 if page == "🖥️ Machine Configuration":
-    if PAGES_AVAILABLE:
-        render_machine_config_page()
+    st.header("Machine Configuration")
+    st.markdown("""
+    Configure the computational machine/cluster where calculations will run.
+    Supports both local and remote (SSH) execution environments.
+    
+    **Note:** Saving a machine configuration creates/updates machine-specific JSON files in `~/.xespresso/machines/`.
+    Pre-configured machines in `machines.json` are not modified.
+    """)
+    
+    if not XESPRESSO_AVAILABLE:
+        st.error("xespresso modules not available. Cannot configure machines.")
     else:
-        st.error("Page modules not available. Please check installation.")
+        # List existing machines
+        st.subheader("Existing Machines")
+        try:
+            machines_list = list_machines(DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR)
+            if machines_list:
+                # Use session state for persistent selection
+                default_idx = 0
+                if st.session_state.current_machine_name and st.session_state.current_machine_name in machines_list:
+                    default_idx = machines_list.index(st.session_state.current_machine_name) + 1
+                
+                selected_machine = st.selectbox(
+                    "Select a machine to edit or view:",
+                    ["[Create New]"] + machines_list,
+                    index=default_idx,
+                    key="machine_selector"
+                )
+                
+                # Update session state
+                if selected_machine != "[Create New]":
+                    st.session_state.current_machine_name = selected_machine
+            else:
+                st.info("No machines configured yet. Create your first machine below.")
+                selected_machine = "[Create New]"
+        except Exception as e:
+            st.warning(f"Could not load machines list: {e}")
+            selected_machine = "[Create New]"
+        
+        # Create or edit machine
+        st.subheader("Machine Configuration")
+        
+        # Load existing machine if selected
+        if selected_machine != "[Create New]":
+            try:
+                machine = load_machine(DEFAULT_CONFIG_PATH, selected_machine, DEFAULT_MACHINES_DIR, return_object=True)
+                st.success(f"✅ Loaded machine: {selected_machine}")
+                st.session_state.current_machine = machine
+                
+                # Display current configuration
+                with st.expander("📋 View Current Configuration", expanded=False):
+                    st.json({
+                        "name": machine.name,
+                        "execution": machine.execution,
+                        "scheduler": machine.scheduler,
+                        "workdir": machine.workdir,
+                        "nprocs": machine.nprocs,
+                        "launcher": machine.launcher,
+                        "use_modules": machine.use_modules if hasattr(machine, 'use_modules') else False,
+                        "modules": machine.modules if hasattr(machine, 'modules') else [],
+                    })
+            except Exception as e:
+                st.error(f"Error loading machine: {e}")
+                machine = None
+        else:
+            machine = None
+        
+        # Configuration form
+        with st.form("machine_config_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                machine_name = st.text_input(
+                    "Machine Name",
+                    value=machine.name if machine else "",
+                    help="Unique identifier for this machine"
+                )
+                
+                execution = st.selectbox(
+                    "Execution Mode",
+                    ["local", "remote"],
+                    index=0 if not machine or machine.execution == "local" else 1
+                )
+                
+                scheduler = st.selectbox(
+                    "Scheduler Type",
+                    ["direct", "slurm", "pbs", "sge"],
+                    index=["direct", "slurm", "pbs", "sge"].index(machine.scheduler) if machine else 0,
+                    help="Job scheduler system"
+                )
+            
+            with col2:
+                workdir = st.text_input(
+                    "Working Directory",
+                    value=machine.workdir if machine else "./calculations",
+                    help="Directory for calculation files"
+                )
+                
+                nprocs = st.number_input(
+                    "Number of Processors",
+                    min_value=1,
+                    value=machine.nprocs if machine else 1,
+                    help="Default number of processors"
+                )
+                
+                launcher = st.text_input(
+                    "MPI Launcher",
+                    value=machine.launcher if machine else "mpirun -np {nprocs}",
+                    help="MPI launch command template"
+                )
+            
+            # Remote configuration
+            if execution == "remote":
+                st.subheader("Remote Connection Settings")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    host = st.text_input(
+                        "Host",
+                        value=machine.host if machine and machine.is_remote else "",
+                        help="Remote hostname or IP"
+                    )
+                    username = st.text_input(
+                        "Username",
+                        value=machine.username if machine and machine.is_remote else "",
+                        help="SSH username"
+                    )
+                
+                with col2:
+                    port = st.number_input(
+                        "SSH Port",
+                        min_value=1,
+                        max_value=65535,
+                        value=machine.port if machine and machine.is_remote else 22
+                    )
+                    ssh_key = st.text_input(
+                        "SSH Key Path",
+                        value=machine.auth.get("ssh_key", "~/.ssh/id_rsa") if machine and machine.is_remote else "~/.ssh/id_rsa",
+                        help="Path to SSH private key"
+                    )
+            
+            # Module configuration
+            st.subheader("Environment Modules")
+            use_modules = st.checkbox(
+                "Use Environment Modules",
+                value=machine.use_modules if machine else False
+            )
+            
+            if use_modules:
+                modules_str = st.text_area(
+                    "Modules to Load (one per line)",
+                    value="\n".join(machine.modules) if machine and machine.modules else "",
+                    help="Environment modules to load before execution"
+                )
+            
+            # Advanced settings
+            with st.expander("Advanced Settings"):
+                prepend = st.text_area(
+                    "Prepend Commands",
+                    value="\n".join(machine.prepend) if machine and isinstance(machine.prepend, list) else (machine.prepend if machine else ""),
+                    help="Commands to run before calculation"
+                )
+                postpend = st.text_area(
+                    "Postpend Commands", 
+                    value="\n".join(machine.postpend) if machine and isinstance(machine.postpend, list) else (machine.postpend if machine else ""),
+                    help="Commands to run after calculation"
+                )
+                env_setup = st.text_input(
+                    "Environment Setup",
+                    value=machine.env_setup if machine and hasattr(machine, 'env_setup') else "",
+                    help="Shell commands to setup environment (e.g., 'source /etc/profile')"
+                )
+            
+            # Scheduler resources
+            if scheduler != "direct":
+                st.subheader("Scheduler Resources")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    nodes = st.number_input("Nodes", min_value=1, value=1)
+                with col2:
+                    ntasks = st.number_input("Tasks per Node", min_value=1, value=20)
+                with col3:
+                    time = st.text_input("Wall Time", value="24:00:00")
+                
+                partition = st.text_input("Partition/Queue", value="")
+            
+            # Submit buttons
+            col1, col2 = st.columns(2)
+            with col1:
+                submit = st.form_submit_button("💾 Save Machine Configuration")
+            with col2:
+                test = st.form_submit_button("🔍 Test Connection")
+        
+        # Handle form submission
+        if submit:
+            try:
+                # Build machine config
+                machine_config = {
+                    "name": machine_name,
+                    "execution": execution,
+                    "scheduler": scheduler,
+                    "workdir": workdir,
+                    "nprocs": nprocs,
+                    "launcher": launcher,
+                    "use_modules": use_modules,
+                }
+                
+                if use_modules:
+                    machine_config["modules"] = [m.strip() for m in modules_str.split("\n") if m.strip()]
+                
+                if prepend:
+                    machine_config["prepend"] = [p.strip() for p in prepend.split("\n") if p.strip()]
+                if postpend:
+                    machine_config["postpend"] = [p.strip() for p in postpend.split("\n") if p.strip()]
+                if env_setup:
+                    machine_config["env_setup"] = env_setup
+                
+                if execution == "remote":
+                    machine_config["host"] = host
+                    machine_config["username"] = username
+                    machine_config["port"] = port
+                    machine_config["auth"] = {
+                        "method": "key",
+                        "ssh_key": ssh_key
+                    }
+                
+                if scheduler != "direct":
+                    machine_config["resources"] = {
+                        "nodes": nodes,
+                        "ntasks-per-node": ntasks,
+                        "time": time,
+                    }
+                    if partition:
+                        machine_config["resources"]["partition"] = partition
+                
+                # Create Machine object
+                new_machine = Machine(**machine_config)
+                
+                # Save machine
+                save_machine(new_machine, DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR)
+                
+                st.success(f"✅ Machine '{machine_name}' saved successfully!")
+                st.info(f"💾 Configuration saved to: ~/.xespresso/machines/{machine_name}.json")
+                st.session_state.current_machine = new_machine
+                st.session_state.current_machine_name = machine_name
+                
+            except Exception as e:
+                st.error(f"❌ Error saving machine: {e}")
+                st.code(traceback.format_exc())
+        
+        # Handle test connection
+        if test:
+            st.subheader("Connection Test Results")
+            try:
+                # Build minimal machine config for testing
+                test_config = {
+                    "name": machine_name,
+                    "execution": execution,
+                    "scheduler": "direct",  # Use direct for testing
+                    "workdir": workdir,
+                    "nprocs": 1,
+                }
+                
+                if execution == "remote":
+                    test_config["host"] = host
+                    test_config["username"] = username
+                    test_config["port"] = port
+                    test_config["auth"] = {
+                        "method": "key",
+                        "ssh_key": ssh_key
+                    }
+                
+                test_machine = Machine(**test_config)
+                
+                # Test connection
+                if execution == "local":
+                    st.success("✅ Local machine - connection OK")
+                    st.info(f"Working directory: {workdir}")
+                    st.info(f"Current user: {os.environ.get('USER', 'unknown')}")
+                else:
+                    # Test remote connection
+                    with st.spinner("Testing SSH connection..."):
+                        try:
+                            # Try to establish SSH connection
+                            import paramiko
+                            ssh = paramiko.SSHClient()
+                            # Load known hosts for security
+                            try:
+                                ssh.load_system_host_keys()
+                            except Exception:
+                                pass  # Known hosts file may not exist
+                            
+                            # Use WarningPolicy - warns but allows connection for testing
+                            # Note: For production, use RejectPolicy and pre-configure host keys
+                            ssh.set_missing_host_key_policy(paramiko.WarningPolicy())
+                            
+                            # Expand ssh_key path and validate
+                            key_path = os.path.expanduser(ssh_key)
+                            
+                            if not os.path.isfile(key_path):
+                                st.error(f"❌ SSH key not found: {key_path}")
+                                st.info("💡 Check the SSH key path")
+                            else:
+                                ssh.connect(
+                                    hostname=host,
+                                    username=username,
+                                    port=port,
+                                    key_filename=key_path,
+                                    timeout=10
+                                )
+                            
+                            # Test command execution
+                            stdin, stdout, stderr = ssh.exec_command('echo "Connection test successful"')
+                            output = stdout.read().decode().strip()
+                            
+                            ssh.close()
+                            
+                            st.success(f"✅ SSH connection successful!")
+                            st.info(f"Connected to: {username}@{host}:{port}")
+                            st.info(f"Test output: {output}")
+                        except paramiko.AuthenticationException:
+                            st.error("❌ Authentication failed. Check username and SSH key.")
+                        except paramiko.SSHException as e:
+                            st.error(f"❌ SSH error: {e}")
+                        except FileNotFoundError:
+                            st.error(f"❌ SSH key not found: {key_path}")
+                        except Exception as e:
+                            st.error(f"❌ Connection failed: {e}")
+                            
+            except Exception as e:
+                st.error(f"❌ Test failed: {e}")
+                st.code(traceback.format_exc())
 
+# Page 2: Codes Configuration
 elif page == "⚙️ Codes Configuration":
-    if PAGES_AVAILABLE:
-        render_codes_config_page()
+    st.header("Quantum ESPRESSO Codes Configuration")
+    st.markdown("""
+    Configure Quantum ESPRESSO executable paths for different machines.
+    Auto-detection is supported for both local and remote systems.
+    """)
+    
+    if not XESPRESSO_AVAILABLE:
+        st.error("xespresso modules not available. Cannot configure codes.")
     else:
-        st.error("Page modules not available. Please check installation.")
+        # Machine selection
+        try:
+            machines_list = list_machines(DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR)
+            if machines_list:
+                selected_machine = st.selectbox(
+                    "Select Machine:",
+                    machines_list,
+                    help="Choose the machine to configure codes for"
+                )
+            else:
+                st.warning("⚠️ No machines configured. Please configure a machine first.")
+                selected_machine = None
+        except Exception as e:
+            st.warning(f"Could not load machines: {e}")
+            selected_machine = None
+        
+        if selected_machine:
+            st.subheader(f"Codes Configuration for: {selected_machine}")
+            
+            # Auto-detection section
+            st.subheader("Auto-Detect Codes")
+            
+            with st.form("detect_codes_form"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    qe_prefix = st.text_input(
+                        "QE Installation Prefix (optional)",
+                        help="e.g., /opt/qe-7.2/bin"
+                    )
+                    version_label = st.text_input(
+                        "Version Label (optional)",
+                        help="Custom label for this version (e.g., 'qe-7.2', 'qe-dev')"
+                    )
+                    modules_str = st.text_area(
+                        "Modules to Load (optional, one per line)",
+                        help="Version-specific modules (e.g., 'qe/7.2' or 'quantum_espresso-7.4.1')"
+                    )
+                
+                with col2:
+                    search_paths_str = st.text_area(
+                        "Additional Search Paths (optional, one per line)",
+                        help="Additional directories to search for executables"
+                    )
+                
+                detect_button = st.form_submit_button("🔍 Auto-Detect Codes")
+            
+            if detect_button:
+                with st.spinner("Detecting Quantum ESPRESSO codes..."):
+                    try:
+                        modules = [m.strip() for m in modules_str.split("\n") if m.strip()] if modules_str else None
+                        search_paths = [p.strip() for p in search_paths_str.split("\n") if p.strip()] if search_paths_str else None
+                        
+                        codes_config = detect_qe_codes(
+                            machine_name=selected_machine,
+                            qe_prefix=qe_prefix if qe_prefix else None,
+                            search_paths=search_paths,
+                            modules=modules,
+                            auto_load_machine=True
+                        )
+                        
+                        if codes_config and codes_config.codes:
+                            st.success(f"✅ Detected {len(codes_config.codes)} codes!")
+                            
+                            # Add version label if provided
+                            if version_label:
+                                codes_config.version_label = version_label
+                            
+                            st.session_state.current_codes = codes_config
+                            
+                            # Display detected codes
+                            st.subheader("Detected Codes")
+                            codes_data = []
+                            for name, code in codes_config.codes.items():
+                                codes_data.append({
+                                    "Code": name,
+                                    "Path": code.path,
+                                    "Version": code.version or "Unknown",
+                                    "Label": version_label or "default"
+                                })
+                            st.table(codes_data)
+                            
+                            # Save option with clear explanation
+                            st.info("""
+                            **💾 Saving Codes:**
+                            - Detected codes will be **merged** with existing configurations
+                            - Multiple versions on the same machine are supported
+                            - Existing codes with different paths/versions will be kept
+                            """)
+                            
+                            if st.button("💾 Save Codes Configuration"):
+                                try:
+                                    from xespresso.codes.manager import CodesManager
+                                    filepath = CodesManager.save_config(
+                                        codes_config,
+                                        output_dir=DEFAULT_CODES_DIR,
+                                        overwrite=False,
+                                        merge=True
+                                    )
+                                    st.success(f"✅ Codes saved to: {filepath}")
+                                    st.info("Multiple versions are preserved. Reload the page to see all versions.")
+                                except Exception as e:
+                                    st.error(f"Error saving codes: {e}")
+                                    st.code(traceback.format_exc())
+                        else:
+                            st.warning("⚠️ No codes detected. Check paths and modules.")
+                    except Exception as e:
+                        st.error(f"❌ Error detecting codes: {e}")
+                        st.code(traceback.format_exc())
+            
+            # Load existing configuration
+            st.subheader("Existing Codes Configuration")
+            try:
+                existing_codes = load_codes_config(selected_machine, DEFAULT_CODES_DIR)
+                if existing_codes:
+                    st.success(f"✅ Loaded existing configuration")
+                    
+                    codes_data = []
+                    for name, code in existing_codes.codes.items():
+                        codes_data.append({
+                            "Code": name,
+                            "Path": code.path,
+                            "Version": code.version or "Unknown",
+                            "Modules": ", ".join(code.modules) if hasattr(code, 'modules') and code.modules else "None"
+                        })
+                    st.table(codes_data)
+                    
+                    st.session_state.current_codes = existing_codes
+                    
+                    # Code/version selection for calculations
+                    st.subheader("Select Code Version for Calculations")
+                    if existing_codes.codes:
+                        code_options = list(existing_codes.codes.keys())
+                        selected_code = st.selectbox(
+                            "Select QE version to use:",
+                            code_options,
+                            help="Choose which version of QE to use for your calculations"
+                        )
+                        st.session_state.selected_code_version = selected_code
+                        
+                        selected_code_obj = existing_codes.codes[selected_code]
+                        st.info(f"""
+                        **Selected Code Details:**
+                        - Path: `{selected_code_obj.path}`
+                        - Version: {selected_code_obj.version or 'Unknown'}
+                        """)
+                else:
+                    st.info("ℹ️ No codes configuration found for this machine.")
+            except Exception as e:
+                st.warning(f"Could not load codes configuration: {e}")
 
+# Page 3: Structure Viewer
 elif page == "🔬 Structure Viewer":
     st.header("Structure Viewer")
     st.markdown("""
