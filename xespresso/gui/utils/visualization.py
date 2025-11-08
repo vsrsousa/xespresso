@@ -204,12 +204,34 @@ def create_jmol_viewer(atoms):
         return None
 
 
-def create_py3dmol_viewer(atoms):
-    """Create a py3Dmol viewer for the structure (JavaScript-based, lighter than WebGL)."""
+def create_py3dmol_viewer(atoms, show_conventional=False, white_background=True):
+    """Create a py3Dmol viewer for the structure (JavaScript-based, lighter than WebGL).
+    
+    Args:
+        atoms: ASE Atoms object
+        show_conventional: If True, show conventional cell instead of primitive
+        white_background: If True, use white background
+    
+    Returns:
+        HTML string for embedding or None
+    """
     if not PY3DMOL_AVAILABLE:
         return None
     
     try:
+        # Get conventional cell if requested
+        if show_conventional:
+            try:
+                from ase.spacegroup import get_spacegroup
+                try:
+                    spg = get_spacegroup(atoms, symprec=1e-5)
+                    lattice = spg.get_conventional_cell()
+                    atoms = lattice
+                except:
+                    pass
+            except ImportError:
+                pass
+        
         # Create temporary file for structure
         with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as tmp:
             tmp_path = tmp.name
@@ -227,7 +249,10 @@ def create_py3dmol_viewer(atoms):
         view_3d = py3Dmol.view(width=800, height=500)
         view_3d.addModel(xyz_content, 'xyz')
         view_3d.setStyle({'sphere': {'radius': 0.3}, 'stick': {'radius': 0.15}})
-        view_3d.setBackgroundColor('white')
+        
+        # Set background color
+        bg_color = 'white' if white_background else '0xeeeeee'
+        view_3d.setBackgroundColor(bg_color)
         view_3d.zoomTo()
         
         return view_3d._make_html()
@@ -248,18 +273,22 @@ def launch_ase_viewer(atoms):
         return False, f"Could not launch ASE viewer: {e}"
 
 
-def render_structure_viewer(atoms, viewer_type='plotly', key='structure_viewer'):
+def render_structure_viewer(atoms, viewer_type='plotly', show_conventional=False, 
+                           white_background=True, key='structure_viewer'):
     """
-    Render structure visualization with multiple viewer options.
+    Render structure visualization with multiple embeddable viewer options.
     
     Args:
         atoms: ASE Atoms object
-        viewer_type: Type of viewer ('plotly', 'x3d', 'jmol', 'py3dmol', 'ase', 'simple')
+        viewer_type: Type of viewer ('plotly', 'py3dmol', 'simple') - only embeddable viewers
+        show_conventional: If True, show conventional cell instead of primitive
+        white_background: If True, use white background
         key: Unique key for widgets
     """
     if viewer_type == 'plotly':
         if PLOTLY_AVAILABLE:
-            fig = create_3d_structure_plot(atoms)
+            fig = create_3d_structure_plot(atoms, show_conventional=show_conventional, 
+                                          white_background=white_background)
             if fig:
                 st.plotly_chart(fig, use_container_width=True, key=f"{key}_plotly")
             else:
@@ -267,26 +296,11 @@ def render_structure_viewer(atoms, viewer_type='plotly', key='structure_viewer')
         else:
             st.error("⚠️ Plotly not available. Please install plotly: pip install plotly")
     
-    elif viewer_type == 'x3d':
-        st.info("💡 X3D viewer provides an embedded 3D view using WebGL")
-        html_content = create_x3d_viewer(atoms)
-        if html_content:
-            st.components.v1.html(html_content, height=500, scrolling=True)
-        else:
-            st.error("Could not create X3D viewer")
-    
-    elif viewer_type == 'jmol':
-        st.info("💡 JMol viewer uses JSmol (JavaScript version) - works without WebGL")
-        html_content = create_jmol_viewer(atoms)
-        if html_content:
-            st.components.v1.html(html_content, height=550, scrolling=False)
-        else:
-            st.error("Could not create JMol viewer")
-    
     elif viewer_type == 'py3dmol':
         if PY3DMOL_AVAILABLE:
             st.info("💡 py3Dmol viewer - lightweight JavaScript-based visualization")
-            html_content = create_py3dmol_viewer(atoms)
+            html_content = create_py3dmol_viewer(atoms, show_conventional=show_conventional,
+                                                white_background=white_background)
             if html_content:
                 st.components.v1.html(html_content, height=520, scrolling=False)
             else:
@@ -294,26 +308,31 @@ def render_structure_viewer(atoms, viewer_type='plotly', key='structure_viewer')
         else:
             st.error("⚠️ py3Dmol not available. Please install: pip install py3Dmol")
     
-    elif viewer_type == 'ase':
-        st.info("💡 ASE native viewer - opens in a separate window (requires X11/display)")
-        if st.button("🚀 Launch ASE Viewer", key=f"{key}_ase_launch"):
-            success, message = launch_ase_viewer(atoms)
-            if success:
-                st.success(f"✅ {message}")
-                st.info("The viewer opened in a separate window. You may need to check your taskbar or desktop.")
-            else:
-                st.error(f"❌ {message}")
-                st.warning("Note: ASE viewer requires a display (X11). It may not work in headless environments or remote servers without X forwarding.")
-    
     elif viewer_type == 'simple':
         # Simple text-based representation
         st.subheader("Simple Text Representation")
-        positions = atoms.get_positions()
-        symbols = atoms.get_chemical_symbols()
+        
+        # Use conventional cell if requested
+        display_atoms = atoms
+        if show_conventional:
+            try:
+                from ase.spacegroup import get_spacegroup
+                try:
+                    spg = get_spacegroup(atoms, symprec=1e-5)
+                    lattice = spg.get_conventional_cell()
+                    display_atoms = lattice
+                    st.info("Showing conventional cell")
+                except:
+                    st.info("Could not determine conventional cell, showing primitive cell")
+            except ImportError:
+                st.info("Showing primitive cell (spacegroup module not available)")
+        
+        positions = display_atoms.get_positions()
+        symbols = display_atoms.get_chemical_symbols()
         
         st.code(f"""
-Structure: {atoms.get_chemical_formula()}
-Number of atoms: {len(atoms)}
+Structure: {display_atoms.get_chemical_formula()}
+Number of atoms: {len(display_atoms)}
 
 Atomic positions:
 {"Symbol":<8} {"X (Å)":<12} {"Y (Å)":<12} {"Z (Å)":<12}
