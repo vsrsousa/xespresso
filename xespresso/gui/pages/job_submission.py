@@ -32,46 +32,72 @@ def render_job_submission_page():
         if browse_button:
             job_dir = os.getcwd()
     
-    if job_dir and os.path.isdir(job_dir):
-        # List job files in the directory
-        job_files = []
-        for root, dirs, files in os.walk(job_dir):
-            for file in files:
-                if file == "job_file" or file.endswith(".sh") or file.endswith(".slurm"):
-                    job_files.append(os.path.join(root, file))
+    # Validate and sanitize the job_dir path
+    if job_dir:
+        try:
+            # Resolve to absolute path and check if it exists
+            job_dir = os.path.abspath(os.path.expanduser(job_dir))
+            
+            if not os.path.exists(job_dir):
+                st.error(f"❌ Directory not found: {job_dir}")
+                return
+            
+            if not os.path.isdir(job_dir):
+                st.error(f"❌ Path is not a directory: {job_dir}")
+                return
+            
+            # List job files in the directory
+            job_files = []
+            for root, dirs, files in os.walk(job_dir):
+                for file in files:
+                    if file == "job_file" or file.endswith(".sh") or file.endswith(".slurm"):
+                        filepath = os.path.join(root, file)
+                        # Security: Verify the file is actually within job_dir
+                        if os.path.commonpath([job_dir, filepath]) == job_dir:
+                            job_files.append(filepath)
         
-        if job_files:
-            st.success(f"Found {len(job_files)} job file(s)")
-            
-            # Select a job file to view
-            selected_job_file = st.selectbox(
-                "Select Job File to View:",
-                job_files,
-                format_func=lambda x: os.path.relpath(x, job_dir)
-            )
-            
-            if selected_job_file:
-                try:
-                    with open(selected_job_file, 'r') as f:
-                        job_content = f.read()
+            if job_files:
+                st.success(f"Found {len(job_files)} job file(s)")
+                
+                # Select a job file to view
+                selected_job_file = st.selectbox(
+                    "Select Job File to View:",
+                    job_files,
+                    format_func=lambda x: os.path.relpath(x, job_dir)
+                )
+                
+                if selected_job_file:
+                    # Security: Verify selected file is in the job_files list
+                    if selected_job_file not in job_files:
+                        st.error("❌ Invalid file selection")
+                        return
                     
-                    # Show file info
-                    file_stat = os.stat(selected_job_file)
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("File Size", f"{file_stat.st_size} bytes")
-                    with col2:
-                        st.metric("Lines", len(job_content.splitlines()))
-                    with col3:
-                        from datetime import datetime
-                        mod_time = datetime.fromtimestamp(file_stat.st_mtime)
-                        st.metric("Modified", mod_time.strftime("%Y-%m-%d %H:%M"))
-                    
-                    # Display job file content
-                    st.subheader("Job File Content")
-                    st.code(job_content, language="bash", line_numbers=True)
-                    
-                    # Download button
+                    try:
+                        # Security: Verify the file path is within job_dir
+                        if os.path.commonpath([job_dir, selected_job_file]) != job_dir:
+                            st.error("❌ Invalid file path")
+                            return
+                        
+                        with open(selected_job_file, 'r') as f:
+                            job_content = f.read()
+                        
+                        # Show file info
+                        file_stat = os.stat(selected_job_file)
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("File Size", f"{file_stat.st_size} bytes")
+                        with col2:
+                            st.metric("Lines", len(job_content.splitlines()))
+                        with col3:
+                            from datetime import datetime
+                            mod_time = datetime.fromtimestamp(file_stat.st_mtime)
+                            st.metric("Modified", mod_time.strftime("%Y-%m-%d %H:%M"))
+                        
+                        # Display job file content
+                        st.subheader("Job File Content")
+                        st.code(job_content, language="bash", line_numbers=True)
+                        
+                        # Download button
                     st.download_button(
                         label="⬇️ Download Job File",
                         data=job_content,
@@ -104,20 +130,20 @@ def render_job_submission_page():
                         if len(commands) > 10:
                             st.markdown(f"... and {len(commands) - 10} more commands")
                     
-                except Exception as e:
-                    st.error(f"Error reading job file: {e}")
-        else:
-            st.warning(f"⚠️ No job files found in '{job_dir}' or its subdirectories.")
-            st.info("""
-            **Tip:** Job files are typically named:
-            - `job_file` (default)
-            - `*.sh` (shell scripts)
-            - `*.slurm` (SLURM scripts)
-            
-            Make sure you've generated calculation files first in the Calculation Setup page.
-            """)
-    elif job_dir:
-        st.error(f"❌ Directory not found: {job_dir}")
+                    except Exception as e:
+                        st.error(f"Error reading job file: {e}")
+            else:
+                st.warning(f"⚠️ No job files found in '{job_dir}' or its subdirectories.")
+                st.info("""
+                **Tip:** Job files are typically named:
+                - `job_file` (default)
+                - `*.sh` (shell scripts)
+                - `*.slurm` (SLURM scripts)
+                
+                Make sure you've generated calculation files first in the Calculation Setup page.
+                """)
+        except Exception as e:
+            st.error(f"Error accessing directory: {e}")
     
     # Additional features section
     st.markdown("---")
