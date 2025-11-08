@@ -324,3 +324,72 @@ class TestInstallSSHKeyIntegration:
         assert "2222" in cmd
         assert "-i" in cmd
         assert "testuser@testhost" in cmd
+
+
+class TestMachineIntegration:
+    """Test integration with Machine class."""
+
+    def test_machine_passes_auto_install_key_to_queue(self):
+        """Test that Machine properly passes auto_install_key to queue."""
+        from xespresso.machines.machine import Machine
+        
+        machine = Machine(
+            name='test_machine',
+            execution='remote',
+            host='test.host',
+            username='testuser',
+            auth={
+                'method': 'key',
+                'ssh_key': '~/.ssh/id_rsa',
+                'auto_install_key': True
+            },
+            scheduler='slurm',
+            workdir='/scratch/test'
+        )
+        
+        queue = machine.to_queue()
+        assert 'remote_auth' in queue
+        assert queue['remote_auth']['auto_install_key'] is True
+
+    def test_machine_omits_auto_install_key_when_not_specified(self):
+        """Test that Machine doesn't include auto_install_key when not specified."""
+        from xespresso.machines.machine import Machine
+        
+        machine = Machine(
+            name='test_machine',
+            execution='remote',
+            host='test.host',
+            username='testuser',
+            auth={
+                'method': 'key',
+                'ssh_key': '~/.ssh/id_rsa'
+            },
+            scheduler='slurm',
+            workdir='/scratch/test'
+        )
+        
+        queue = machine.to_queue()
+        assert 'remote_auth' in queue
+        assert 'auto_install_key' not in queue['remote_auth']
+
+    def test_machine_with_auto_install_key_false(self):
+        """Test that Machine properly passes auto_install_key=False."""
+        from xespresso.machines.machine import Machine
+        
+        machine = Machine(
+            name='test_machine',
+            execution='remote',
+            host='test.host',
+            username='testuser',
+            auth={
+                'method': 'key',
+                'ssh_key': '~/.ssh/id_rsa',
+                'auto_install_key': False
+            },
+            scheduler='slurm',
+            workdir='/scratch/test'
+        )
+        
+        queue = machine.to_queue()
+        assert 'remote_auth' in queue
+        assert queue['remote_auth']['auto_install_key'] is False
