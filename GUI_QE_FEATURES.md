@@ -1,51 +1,19 @@
 # GUI Implementation of QE Code Detection Features
 
-This document describes the implementation of three key Quantum ESPRESSO code detection features in the GUI.
+This document describes the implementation of QE code detection features in the GUI.
+
+## ⚠️ Security Update
+
+**Note**: The module listing feature has been removed due to a security vulnerability (command-line injection). See `SECURITY_FIX_CHANGES.md` for details.
 
 ## Overview
 
-Three features that were previously only available via the Python API have been integrated into the Streamlit GUI:
+Two features are available in the Streamlit GUI:
 
-1. **Module Listing**: Discover available QE modules on remote systems
-2. **Explicit Version Specification**: Specify QE version to avoid compiler version confusion
-3. **Version Selection**: Select different QE versions for different calculations
+1. **Explicit Version Specification**: Specify QE version to avoid compiler version confusion
+2. **Version Selection**: Select different QE versions for different calculations
 
-## Feature 1: Module Listing
-
-### Purpose
-Helps users discover which Quantum ESPRESSO modules are available on a machine before configuring codes.
-
-### GUI Implementation
-- **Location**: Codes Configuration page, collapsible "🔍 Discover Available Modules" section
-- **Inputs**:
-  - Search Pattern: Filter modules by keyword (default: "espresso")
-  - Environment Setup: Optional shell commands to run before listing (e.g., "source /etc/profile")
-- **Action**: "🔎 List Available Modules" button
-- **Output**: List of available modules that can be copied to the "Modules to Load" field
-
-### Backend Integration
-```python
-modules = CodesManager.list_available_modules(
-    ssh_connection=ssh_connection,
-    env_setup=env_setup_modules,
-    search_pattern=search_pattern
-)
-```
-
-### User Workflow
-1. Navigate to "Codes Configuration" page
-2. Select a machine
-3. Expand "🔍 Discover Available Modules"
-4. Click "🔎 List Available Modules"
-5. View available modules
-6. Copy module name and paste into "Modules to Load" field
-
-### Benefits
-- No need to SSH manually to check available modules
-- Prevents typos in module names
-- Shows all matching modules at once
-
-## Feature 2: Explicit QE Version Specification
+## Feature 1: Explicit QE Version Specification
 
 ### Purpose
 Auto-detection may incorrectly identify compiler versions (e.g., "2021.4" from Intel compiler) as QE versions. This feature allows explicit specification of the actual QE version.
@@ -85,7 +53,7 @@ codes_config = detect_qe_codes(
 - Ensures accurate version tracking
 - Makes configuration more reliable
 
-## Feature 3: Version Selection
+## Feature 2: Version Selection
 
 ### Purpose
 Allows users to select and load different QE versions from the same machine configuration, enabling different versions for different calculations.
@@ -135,16 +103,14 @@ version_config = load_codes_config(
    - Set up SSH connection details
    - Configure scheduler settings
 
-2. **Discover Available Modules**
-   - Navigate to Codes Configuration
-   - Expand "Discover Available Modules"
-   - Search for "espresso" modules
-   - Review available module names
+2. **Manually Check Available Modules** (via SSH)
+   - SSH to the machine: `ssh user@cluster.edu`
+   - Run: `module avail espresso` or `module spider quantum`
+   - Note down available module names
 
 3. **Configure QE Codes**
    - Fill in QE Version (e.g., "7.2")
-   - Copy module name from discovery
-   - Paste into "Modules to Load"
+   - Type module name into "Modules to Load"
    - Click "Auto-Detect Codes"
    - Review detected codes
    - Save configuration
@@ -168,11 +134,9 @@ version_config = load_codes_config(
 - `xespresso/gui/pages/codes_config.py`: Main implementation
 
 ### New UI Elements
-1. **Expander**: `st.expander("🔍 Discover Available Modules")`
-2. **Text Input**: `st.text_input("QE Version")`
-3. **Selectbox**: `st.selectbox("Choose QE Version:")`
-4. **Session State**: 
-   - `discovered_modules`: Stores discovered modules
+1. **Text Input**: `st.text_input("QE Version")`
+2. **Selectbox**: `st.selectbox("Choose QE Version:")`
+3. **Session State**: 
    - `selected_qe_version`: Stores selected version
 
 ### Error Handling
