@@ -39,6 +39,7 @@ class RemoteAuth:
     - Remote command execution
     - File transfer (send/retrieve)
     - Remote SHA256 checksum validation
+    - Automatic SSH key installation on authentication failure
 
     Args:
         username (str): SSH login username.
@@ -47,6 +48,7 @@ class RemoteAuth:
             - method: must be "key"
             - ssh_key: path to private key
             - port: optional SSH port (default: 22)
+            - auto_install_key: optional boolean to auto-install SSH key on connection failure (default: False)
     """
     def __init__(self, username, host, auth_config):
         self.username = username
@@ -54,6 +56,7 @@ class RemoteAuth:
         self.port = auth_config.get("port", 22)
         self.method = auth_config.get("method", "key")
         self.ssh_key = os.path.expanduser(auth_config.get("ssh_key", "~/.ssh/id_rsa"))
+        self.auto_install_key = auth_config.get("auto_install_key", False)
         self.client = None
         self.sftp = None
 
@@ -76,6 +79,41 @@ class RemoteAuth:
             )
             self.sftp = self.client.open_sftp()
             logger.info(f"Connected to {self.username}@{self.host}:{self.port}")
+        except paramiko.AuthenticationException as e:
+            # Authentication failed - try to install SSH key if auto_install_key is enabled
+            if self.auto_install_key:
+                logger.warning(f"Authentication failed. Attempting to install SSH key...")
+                try:
+                    # Derive public key path from private key path
+                    public_key_path = self.ssh_key + ".pub"
+                    if not os.path.exists(public_key_path):
+                        msg = f"Public key file not found at {public_key_path}. Cannot auto-install key."
+                        logger.error(msg)
+                        raise RuntimeError(msg)
+                    
+                    # Try to install the SSH key
+                    install_ssh_key(self.username, self.host, public_key_path, self.port)
+                    logger.info(f"SSH key installed successfully. Retrying connection...")
+                    
+                    # Retry connection after installing key
+                    self.client = paramiko.SSHClient()
+                    self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    self.client.connect(
+                        hostname=self.host,
+                        port=self.port,
+                        username=self.username,
+                        key_filename=self.ssh_key
+                    )
+                    self.sftp = self.client.open_sftp()
+                    logger.info(f"Connected to {self.username}@{self.host}:{self.port} after key installation")
+                except Exception as install_error:
+                    msg = f"Failed to install SSH key and connect to {self.username}@{self.host}:{self.port}: {install_error}"
+                    logger.error(msg)
+                    raise RuntimeError(msg)
+            else:
+                msg = f"Authentication failed for {self.username}@{self.host}:{self.port}: {e}"
+                logger.error(msg)
+                raise RuntimeError(msg)
         except Exception as e:
             msg = f"Failed to connect to {self.username}@{self.host}:{self.port}: {e}"
             logger.error(msg)
