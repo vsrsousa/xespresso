@@ -1,443 +1,257 @@
-# Implementation Summary: Machine Class and Modular Configuration
+# Implementation Summary - Structure Viewers and Improvements
 
-## Problem Statement (Translated from Portuguese)
+## Overview
+This implementation successfully addresses all requirements:
+1. ✅ Added non-WebGL structure viewers (JMol, py3Dmol, ASE native)
+2. ✅ Fixed job file generation to use xespresso's scheduler system
+3. ✅ Improved folder navigation with dropdown menu
 
-The issue requested three main improvements:
+## 1. Structure Viewers - Before vs After
 
-1. **Analyze the code to implement a Machine class**
-2. **Verify if there's an advantage to reformulating machines.json** so that each machine has its own .json file, with machines.json only calling sub-configs and allowing a default machine definition
-3. **Verify code execution regarding remote connection persistence** - once connection to remote is established in a first calculation, subsequent calculations on the same machine should not need to re-establish the connection, only update inputs and send them for submission
+### Before
+- Only 3 viewer options (Plotly, X3D, Simple)
+- Both Plotly and X3D require WebGL
+- Limited compatibility for users without WebGL support
 
-## Implemented Solutions
+### After
+Now 6 viewer options available:
 
-### 1. Machine Class Implementation ✅
+| Viewer | Technology | WebGL Required | Best For |
+|--------|-----------|----------------|----------|
+| **Plotly** | WebGL 3D | ✅ Yes | Modern browsers, interactive exploration |
+| **JMol** | JavaScript (JSmol) | ❌ No | Maximum compatibility, older systems |
+| **py3Dmol** | JavaScript | ❌ No | Lightweight, molecular visualization |
+| **ASE Native** | External window | ❌ No | Desktop environments, full ASE features |
+| **X3D** | WebGL | ✅ Yes | Embedded 3D viewing |
+| **Simple** | Text | ❌ No | Text-only terminals, accessibility |
 
-**Location:** `xespresso/machines/machine.py`
+### Code Changes
+**File: `xespresso/gui/utils/visualization.py`**
+- Added `create_jmol_viewer()` - Generates JSmol HTML viewer
+- Added `create_py3dmol_viewer()` - Uses py3Dmol library
+- Added `launch_ase_viewer()` - Opens ASE's native viewer
+- Updated `render_structure_viewer()` to support all viewer types
 
-**Features:**
-- Object-oriented encapsulation of machine configuration
-- Type validation and error checking
-- Support for both local and remote execution modes
-- Serialization methods:
-  - `from_dict()` / `to_dict()` - dictionary conversion
-  - `from_file()` / `to_file()` - JSON file I/O
-  - `to_queue()` - backward compatible queue dictionary
-- Property methods: `is_remote`, `is_local`
-- Clear string representations for debugging
+**File: `xespresso/gui/streamlit_app.py`**
+- Updated viewer selection UI with 6 options
+- Added helpful descriptions for each viewer type
 
-**Example Usage:**
+## 2. Job File Generation - Before vs After
+
+### Before
 ```python
-from xespresso.machines import Machine
+# Manual job script creation in dry_run.py
+def create_job_script(workdir, machine_config, code_path, input_file, nprocs=1):
+    # Manually builds bash script with hardcoded SLURM/PBS directives
+    script_lines = ["#!/bin/bash", ...]
+    # Does not use xespresso's scheduler system
+```
 
-# Create machine
-machine = Machine(
-    name="cluster1",
-    execution="remote",
-    host="cluster.edu",
-    username="user",
-    scheduler="slurm",
-    workdir="/home/user/calc"
+**Problems:**
+- Bypasses xespresso's scheduler system
+- Duplicates scheduler functionality
+- Doesn't respect environment setup (modules, prepend, etc.)
+- Manual command construction
+
+### After
+```python
+# Uses xespresso's scheduler system
+def generate_input_files(atoms, calc_params, workdir, ...):
+    calc = Espresso(**calc_params)  # includes queue configuration
+    calc.write_input(atoms)  # automatically calls scheduler.write_script()
+    # Job file created at: workdir/job_file
+```
+
+**Benefits:**
+- Uses xespresso's built-in `set_queue()` and `scheduler.write_script()`
+- Respects all scheduler configuration options
+- Handles environment setup automatically (modules, prepend, postpend)
+- Supports multiple schedulers (direct, SLURM, PBS, SGE)
+- Command escaping and validation handled by scheduler system
+
+### Scheduler Configuration Example
+```python
+queue = {
+    'scheduler': 'slurm',
+    'execution': 'local',  # or 'remote'
+    'launcher': 'mpirun -np {nprocs}',
+    'modules': ['quantum-espresso/7.0'],
+    'use_modules': True,
+    'resources': {
+        'nodes': 1,
+        'ntasks-per-node': 20,
+        'time': '24:00:00'
+    },
+    'prepend': 'source /path/to/env.sh',  # Optional
+    'postpend': 'echo "Job completed"'     # Optional
+}
+```
+
+## 3. Folder Navigator - Before vs After
+
+### Before
+```
+┌─────────────────────────────────────┐
+│ Directory Path: /home/user/work    │  [Text input only]
+│ [Current] [Home]                    │  [Limited buttons]
+└─────────────────────────────────────┘
+```
+
+**Problems:**
+- Users must type full paths
+- No visual navigation
+- Difficult to explore directories
+
+### After
+```
+┌──────────────────────────────────────────────────────┐
+│ Directory Path: /home/user/work                      │
+│ [Current] [Home] [Parent]                            │
+├──────────────────────────────────────────────────────┤
+│ 📂 Folder Navigator                                  │
+│ Select subfolder: [calculations ▼]  [Navigate →]    │
+│ 📁 calculations contains: 5 folders, 12 files        │
+├──────────────────────────────────────────────────────┤
+│ 📋 Directory Contents (Full View)                    │
+│ Total: 17 items | Dirs: 5 | Files: 12               │
+└──────────────────────────────────────────────────────┘
+```
+
+**Benefits:**
+- Dropdown menu to select subfolders
+- Parent directory navigation button
+- Quick access buttons (Home, Current)
+- Visual preview of directory contents
+- Statistics display (folders, files count)
+- Navigate without typing paths
+
+### Code Changes
+**File: `xespresso/gui/utils/selectors.py`**
+- Enhanced `render_workdir_browser()` with subfolder dropdown
+- Added parent directory navigation
+- Added visual directory contents preview
+- Implemented security measures (path validation, traversal prevention)
+
+### Security Features
+- Path validation with `os.path.exists()` and `os.path.isdir()`
+- Absolute path requirement
+- Symlink resolution with `os.path.realpath()`
+- Directory traversal prevention (filters `..`, `/`, `\`)
+- Containment checks with `os.path.commonpath()`
+
+## 4. Testing
+
+### Test Files Added
+1. **`tests/test_visualization.py`**
+   - Tests all viewer availability checks
+   - Tests JMol HTML generation
+   - Tests X3D HTML generation
+   - Validates viewer function existence
+
+2. **`tests/test_dry_run_scheduler.py`**
+   - Tests scheduler integration
+   - Tests job_file creation
+   - Validates scheduler system usage
+
+### Test Results
+```
+Testing Visualization Utilities
+============================================================
+✓ All visualization functions are defined
+✓ ASE viewer availability: True
+✓ Plotly availability: True
+✓ py3Dmol availability: False (optional)
+✓ JMol viewer HTML generated successfully
+✓ X3D viewer HTML generated successfully
+
+Results: 6/6 tests passed
+============================================================
+```
+
+## 5. Dependencies
+
+### Added
+- **py3Dmol >= 2.0.0** (optional, in GUI extras)
+
+### Updated
+- `requirements.txt` - Added py3Dmol
+- `setup.py` - Added py3Dmol to `extras_require["gui"]`
+
+### Installation
+```bash
+# Basic installation
+pip install xespresso
+
+# With GUI support (includes py3Dmol)
+pip install xespresso[gui]
+```
+
+## 6. Usage Examples
+
+### Using JMol Viewer
+```python
+from xespresso.gui.utils.visualization import render_structure_viewer
+from ase.build import bulk
+
+atoms = bulk('Fe', 'bcc', a=2.87)
+render_structure_viewer(atoms, viewer_type='jmol', key='my_viewer')
+```
+
+### Using Scheduler System
+```python
+from xespresso import Espresso
+from ase.build import bulk
+
+atoms = bulk('Al', 'fcc', a=4.05)
+
+# Configure with queue parameter
+calc = Espresso(
+    input_data={'control': {'calculation': 'scf'}},
+    pseudopotentials={'Al': 'Al.pbe-n-kjpaw_psl.1.0.0.UPF'},
+    kpts=(4, 4, 4),
+    queue={
+        'scheduler': 'slurm',
+        'resources': {'ntasks': 20, 'time': '24:00:00'}
+    },
+    directory='/path/to/workdir'
 )
 
-# Validate configuration (automatic)
-# Convert to queue format
-queue = machine.to_queue()
+atoms.calc = calc
+calc.write_input(atoms)  # Creates input file AND job_file
+
+# Job file is now at: /path/to/workdir/job_file
 ```
 
-**Advantages:**
-- ✅ Type safety and validation at creation time
-- ✅ Clearer API with named parameters
-- ✅ Easier to test and mock
-- ✅ Self-documenting code
-- ✅ Backward compatible via `to_queue()`
-
-### 2. Modular Configuration Support ✅
-
-**Location:** `xespresso/machines/config/loader.py` (updated)
-
-**Features:**
-- Support for individual JSON files per machine
-- Backward compatible with single machines.json file
-- Both formats can coexist
-- Default machine specification support
-- Automatic discovery from multiple sources
-
-**Directory Structure:**
-```
-~/.xespresso/
-├── machines.json          # Traditional format (optional)
-└── machines/              # Modular format (optional)
-    ├── default.json       # Default machine specification
-    ├── local_desktop.json
-    ├── cluster1.json
-    └── cluster2.json
-```
-
-**Loading Priority:**
-1. Individual file in `machines/` directory (e.g., `cluster1.json`)
-2. Entry in `machines.json` file
-3. Interactive prompt if not found
-
-**Default Machine Support:**
-- Specify in `machines.json`: `{"default": "cluster1", "machines": {...}}`
-- Or in `machines/default.json`: `{"default": "cluster1"}`
-
-**Example Usage:**
-```python
-from xespresso.machines import load_machine
-
-# Automatically uses configured default
-queue = load_machine()
-
-# Load specific machine (finds in either location)
-queue = load_machine(machine_name="cluster1")
-
-# Load as Machine object
-machine = load_machine(machine_name="cluster1", return_object=True)
-```
-
-### 3. Connection Persistence Verification ✅
-
-**Analysis:** Connection persistence was **already implemented** and working correctly!
-
-**Location:** `xespresso/schedulers/remote_mixin.py`
-
-**Implementation:**
-```python
-class RemoteExecutionMixin:
-    _remote_sessions = {}  # Class-level cache
-    
-    def _setup_remote(self):
-        key = (self.queue["remote_host"], self.queue["remote_user"])
-        if key not in self._remote_sessions:
-            # Create NEW connection
-            remote = RemoteAuth(...)
-            remote.connect()
-            self._remote_sessions[key] = remote
-        # REUSE existing connection
-        self.remote = self._remote_sessions[key]
-```
-
-**How It Works:**
-- Connections cached by `(host, username)` tuple
-- First calculation on a machine creates connection
-- Subsequent calculations reuse existing connection
-- Different machines or users get separate connections
-- Connections persist for process lifetime
-
-**Verification:**
-- Created 7 comprehensive tests (all passing)
-- Verified connection reuse within same machine
-- Verified new connections for different machines/users
-- Verified path tracking optimization
-- Documented in `docs/REMOTE_CONNECTION_PERSISTENCE.md`
-
-**Performance Impact:**
-```python
-# Without persistence (OLD - not how it works):
-calc1.run()  # Connect → Auth → Run → Keep connection
-calc2.run()  # Connect → Auth → Run → Keep connection  # ❌ Slow
-calc3.run()  # Connect → Auth → Run → Keep connection  # ❌ Slow
-
-# With persistence (ACTUAL behavior):
-calc1.run()  # Connect → Auth → Run → Keep connection
-calc2.run()  # Reuse → Run                              # ✅ Fast
-calc3.run()  # Reuse → Run                              # ✅ Fast
-```
-
-## Advantages Analysis
-
-### Modular Configuration Advantages
-
-#### 1. **Better Organization** 🗂️
-- One file per machine = clear separation
-- Easier to locate specific configurations
-- No need to navigate large JSON files
-
-#### 2. **Version Control Benefits** 📝
-```bash
-# Changes to one machine don't affect others
-git log machines/cluster1.json
-git diff machines/cluster1.json
-
-# Fewer merge conflicts
-# Each team member can work on different machines
-```
-
-#### 3. **Easier Sharing & Collaboration** 🤝
-```bash
-# Share a single machine config
-scp ~/.xespresso/machines/cluster1.json colleague@host:
-
-# Template for new users
-cp machines/template_cluster.json machines/my_cluster.json
-# Edit my_cluster.json with your credentials
-```
-
-#### 4. **Flexible Deployment** 🚀
-```bash
-# Development environment
-machines/default.json → "local_desktop"
-
-# Production environment  
-machines/default.json → "prod_cluster"
-
-# Same code, different default
-```
-
-#### 5. **Reduced Conflicts in Teams** 👥
-- User A adds `cluster_a.json` 
-- User B adds `cluster_b.json`
-- No conflict! Both files independent
-
-#### 6. **Gradual Migration** 🔄
-- Keep existing `machines.json` working
-- Add new machines as individual files
-- Migrate old machines gradually
-- No breaking changes
-
-#### 7. **Better Security** 🔒
-```bash
-# Sensitive credentials isolated
-chmod 600 machines/prod_cluster.json
-
-# Share non-sensitive configs
-chmod 644 machines/local_desktop.json
-```
-
-### Machine Class Advantages
-
-#### 1. **Type Safety** ✅
-```python
-# Validates at creation time
-machine = Machine(
-    name="test",
-    execution="remote",
-    # Missing 'host' → ValueError raised immediately!
-)
-```
-
-#### 2. **Better IDE Support** 💡
-```python
-machine = Machine(...)
-machine.  # IDE shows: name, host, username, is_remote, to_queue(), etc.
-```
-
-#### 3. **Clearer Error Messages** 🐛
-```python
-# Old way
-queue = {...}  # Typo in key → silent failure or runtime error
-
-# New way
-Machine(nam="test")  # TypeError: unexpected keyword argument 'nam'
-Machine(execution="remote")  # ValueError: requires 'host' parameter
-```
-
-#### 4. **Testability** 🧪
-```python
-# Easy to mock and test
-mock_machine = Mock(spec=Machine)
-mock_machine.to_queue.return_value = {...}
-```
-
-#### 5. **Self-Documenting** 📖
-```python
-def run_calculation(machine: Machine):  # Clear what's expected
-    """Run calculation on the specified machine."""
-    if machine.is_remote:
-        setup_ssh(machine.host, machine.username)
-```
-
-### Connection Persistence Advantages
-
-#### 1. **Performance** ⚡
-- Eliminates repeated SSH handshakes
-- No repeated authentication
-- Faster job submission (especially for many small jobs)
-
-#### 2. **Reliability** 🎯
-- Established connections are validated
-- Fewer connection failures
-- No authentication timeout issues
-
-#### 3. **Resource Efficiency** 💪
-- Fewer open connections to server
-- Less load on authentication systems
-- Cleaner server logs
-
-#### 4. **Transparent** 🔍
-- Works automatically
-- No code changes needed
-- Backward compatible
-
-## Migration Guide
-
-### For Existing Users
-
-**Option 1: Keep Current Setup (No Changes Required)**
-```python
-# Your existing code continues to work
-queue = load_machine("cluster1")  # Still works!
-```
-
-**Option 2: Adopt Machine Class**
-```python
-# Use Machine objects for better type safety
-machine = load_machine("cluster1", return_object=True)
-queue = machine.to_queue()
-```
-
-**Option 3: Migrate to Modular Config**
-```python
-from xespresso.machines import Machine
-
-# Load existing config
-old_queue = load_machine("cluster1")
-
-# Convert to Machine and save as individual file
-machine = Machine.from_dict("cluster1", old_queue)
-machine.to_file("~/.xespresso/machines/cluster1.json")
-```
-
-### No Breaking Changes
-- ✅ Old code continues to work
-- ✅ Existing `machines.json` still supported
-- ✅ Queue dictionary format unchanged
-- ✅ All schedulers work as before
-
-## Testing
-
-### Test Coverage
-- **14 tests** for Machine class (all passing ✅)
-- **7 tests** for connection persistence (all passing ✅)
-- **5 tests** for schedulers (all passing ✅)
-- **Total: 26 tests, 100% passing**
-
-### What's Tested
-- Machine creation and validation
-- Serialization (dict, file, queue)
-- Configuration loading (both formats)
-- Default machine detection
-- Connection caching and reuse
-- Path tracking optimization
-- Backward compatibility
-
-## Documentation
-
-### Created Documentation
-1. **`docs/MACHINE_CONFIGURATION.md`** (9KB)
-   - Complete configuration guide
-   - Examples for both formats
-   - Migration guide
-   - Best practices
-
-2. **`docs/REMOTE_CONNECTION_PERSISTENCE.md`** (8KB)
-   - How persistence works
-   - Performance benefits
-   - Usage examples
-   - Technical details
-
-3. **`examples/machines_README.md`** (2.5KB)
-   - Quick start guide
-   - Customization instructions
-   - Testing procedures
-
-### Example Configurations
-- `examples/machines.json` - Traditional format
-- `examples/machines/local_desktop.json` - Local machine
-- `examples/machines/slurm_cluster.json` - SLURM cluster
-- `examples/machines/gpu_cluster.json` - GPU node
-- `examples/machines/default.json` - Default specification
-
-## Code Structure
-
-```
-xespresso/
-├── machines/
-│   ├── __init__.py                    # Exports Machine, load_machine, etc.
-│   ├── machine.py                     # NEW: Machine class
-│   ├── config/
-│   │   ├── __init__.py
-│   │   ├── loader.py                  # UPDATED: Modular loading support
-│   │   ├── creator.py                 # Existing
-│   │   └── editor.py                  # Existing
-│   └── templates/                     # Existing templates
-├── schedulers/
-│   ├── remote_mixin.py                # VERIFIED: Connection persistence
-│   ├── base.py                        # Existing
-│   ├── slurm.py                       # Existing
-│   └── direct.py                      # Existing
-docs/
-├── MACHINE_CONFIGURATION.md           # NEW: Configuration guide
-└── REMOTE_CONNECTION_PERSISTENCE.md   # NEW: Persistence documentation
-examples/
-├── machines.json                      # NEW: Traditional format example
-├── machines_README.md                 # NEW: Examples guide
-└── machines/                          # NEW: Modular format examples
-    ├── local_desktop.json
-    ├── slurm_cluster.json
-    ├── gpu_cluster.json
-    └── default.json
-tests/
-├── test_machine.py                    # NEW: 14 tests
-├── test_connection_persistence.py     # NEW: 7 tests
-└── test_scheduler.py                  # Existing: 5 tests (all still pass)
-```
-
-## Summary
-
-### What Was Requested
-1. ✅ Implement Machine class
-2. ✅ Support modular configuration with individual files
-3. ✅ Verify remote connection persistence
-
-### What Was Delivered
-1. ✅ **Machine class** with validation, serialization, and backward compatibility
-2. ✅ **Modular configuration** support with default machine settings
-3. ✅ **Connection persistence** verified and documented (already working!)
-4. ✅ **Comprehensive tests** (21 new tests, all passing)
-5. ✅ **Complete documentation** (17KB of guides and examples)
-6. ✅ **Example configurations** (4 machine configs)
-7. ✅ **Zero breaking changes** (backward compatible)
-
-### Key Achievements
-- 🎯 All requirements met
-- 📚 Well documented
-- 🧪 Thoroughly tested
-- 🔄 Backward compatible
-- 🚀 Production ready
-- 💡 Clear migration path
-
-### Performance Impact
-- ⚡ **Faster**: Connection reuse eliminates SSH handshake overhead
-- 🎯 **More reliable**: Established connections reduce failure points
-- 💪 **More efficient**: Fewer resources used on both sides
-- 🔍 **Transparent**: Works automatically without code changes
-
-### Advantages Demonstrated
-
-**Modular Configuration:**
-- Better organization
-- Easier collaboration
-- Fewer merge conflicts
-- Flexible deployment
-- Gradual migration path
-
-**Machine Class:**
-- Type safety
-- Better IDE support
-- Clearer errors
-- Easier testing
-- Self-documenting
-
-**Connection Persistence:**
-- Already working perfectly!
-- Properly documented
-- Thoroughly tested
-- Transparent operation
+### Using Enhanced Folder Navigator
+In the GUI (Structure Viewer page or Job Submission page):
+1. Click "Home" or "Current" to start at a known location
+2. Use the dropdown menu to select a subfolder
+3. Click "Navigate" to move into that folder
+4. Use "Parent" button to go up one level
+5. View directory contents in the expander
+
+## 7. Security
+
+### CodeQL Analysis
+- 5 path injection alerts identified (expected for file browser)
+- All are false positives with appropriate mitigations
+- Full analysis in `SECURITY_SUMMARY.md`
+
+### Mitigation Measures
+- Path validation and sanitization
+- Symlink resolution
+- Directory traversal prevention
+- Containment checks
+- No privilege escalation
 
 ## Conclusion
 
-This implementation successfully addresses all requirements from the issue while maintaining backward compatibility and adding significant improvements in code organization, type safety, and documentation. The modular configuration approach provides clear advantages for team collaboration and configuration management, while the Machine class adds type safety and clarity to the codebase.
+All requirements have been successfully implemented:
+- ✅ Non-WebGL structure viewers (JMol, py3Dmol, ASE native)
+- ✅ Fixed job file generation to use xespresso's scheduler system
+- ✅ Enhanced folder navigation with dropdown menu
+- ✅ Security analysis completed
+- ✅ Tests added and passing
+- ✅ Documentation updated
 
-The remote connection persistence was verified to be working correctly as designed, with connections being efficiently reused across multiple calculations on the same machine, providing the performance benefits requested in the issue.
+The implementation is complete, secure, and ready for use.
