@@ -7,17 +7,281 @@ def render_job_submission_page():
     """Render the job submission page with enhanced job file viewer, editor, and submission."""
     st.header("Job Submission & File Management")
     st.markdown("""
-    Browse calculation directories, view job files, edit input files, submit jobs, and manage your calculations.
+    **Generate calculation files, browse directories, and submit jobs.**
+    
+    - **Generate Files (Dry Run)**: Create input and job files from your configuration without submitting
+    - **File Browser**: Browse, view, and edit existing calculation files
+    - **Job Submission**: Submit existing jobs to your scheduler
     """)
     
     # Create tabs for different functionalities
-    tab1, tab2 = st.tabs(["📂 File Browser", "🚀 Job Submission"])
+    tab1, tab2, tab3 = st.tabs(["📂 File Browser", "🧪 Generate Files (Dry Run)", "🚀 Job Submission"])
     
     with tab1:
         render_file_browser_tab()
     
     with tab2:
+        render_dry_run_tab()
+    
+    with tab3:
         render_job_submission_tab()
+
+
+def render_dry_run_tab():
+    """Render the dry run tab for generating input and job files without submission."""
+    st.subheader("🧪 Generate Calculation Files (Dry Run)")
+    st.markdown("""
+    Generate input files and job scripts for your calculation **without submitting the job**.
+    This is useful for:
+    - Testing your configuration before submission
+    - Manually reviewing and editing files before running
+    - Creating files to transfer to another system
+    """)
+    
+    # Check if structure is loaded
+    if 'current_structure' not in st.session_state or st.session_state.current_structure is None:
+        st.warning("⚠️ No structure loaded. Please load a structure first in the Structure Viewer page.")
+        return
+    
+    atoms = st.session_state.current_structure
+    st.success(f"✅ Structure loaded: {atoms.get_chemical_formula()} ({len(atoms)} atoms)")
+    
+    st.markdown("---")
+    
+    # Check if calculation is configured
+    if 'workflow_config' not in st.session_state or not st.session_state.workflow_config.get('pseudopotentials'):
+        st.warning("⚠️ No calculation configured. Please configure your calculation first in the Calculation Setup page.")
+        st.info("""
+        **Required configuration:**
+        - Pseudopotentials for all elements
+        - Calculation parameters (ecutwfc, kpts, etc.)
+        - Machine and codes selection
+        
+        Go to **📊 Calculation Setup** page to configure these.
+        """)
+        return
+    
+    # Show current configuration summary
+    st.subheader("📋 Current Configuration")
+    config = st.session_state.workflow_config
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Calculation Type", config.get('calc_type', 'scf').upper())
+        st.metric("Energy Cutoff", f"{config.get('ecutwfc', 50)} Ry")
+        if 'kspacing' in config:
+            st.metric("K-spacing", f"{config.get('kspacing')} Å⁻¹")
+        elif 'kpts' in config:
+            kpts = config.get('kpts')
+            st.metric("K-points", f"{kpts[0]}×{kpts[1]}×{kpts[2]}")
+    
+    with col2:
+        st.write("**Pseudopotentials:**")
+        for elem, pseudo in config.get('pseudopotentials', {}).items():
+            st.text(f"  {elem}: {pseudo}")
+    
+    st.markdown("---")
+    
+    # Working directory selection
+    st.subheader("📁 Output Directory")
+    
+    try:
+        from xespresso.gui.utils.selectors import render_workdir_browser
+        workdir = render_workdir_browser(key="dry_run_workdir")
+    except ImportError:
+        workdir = st.text_input(
+            "Working Directory:", 
+            value=os.path.join(os.getcwd(), "calculations"),
+            key="dry_run_workdir_input"
+        )
+        workdir = os.path.abspath(os.path.expanduser(workdir))
+    
+    # Label/subfolder for this calculation
+    label = st.text_input(
+        "Calculation Label (subfolder):",
+        value=f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}",
+        help="Label for this calculation - will create subfolder under working directory",
+        key="dry_run_label"
+    )
+    
+    # Full path where files will be created
+    full_path = os.path.join(workdir, label)
+    st.info(f"📍 Files will be created in: `{full_path}`")
+    
+    st.markdown("---")
+    
+    # Machine and Queue Configuration
+    st.subheader("🖥️ Machine & Queue Configuration")
+    
+    try:
+        from xespresso.gui.utils.selectors import render_machine_selector
+        machine_name, machine = render_machine_selector(key="dry_run_machine")
+    except ImportError:
+        st.warning("Machine selector not available - will create input files without job script")
+        machine_name, machine = None, None
+    
+    if machine_name and machine:
+        st.success(f"✅ Machine selected: {machine_name}")
+        
+        # Show queue info if available
+        if hasattr(machine, 'queue') and machine.queue:
+            with st.expander("Queue Configuration"):
+                import json
+                st.json(machine.queue)
+    
+    st.markdown("---")
+    
+    # Generate button
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        generate_button = st.button(
+            "🧪 Generate Files (Dry Run)",
+            type="primary",
+            help="Generate input and job files without submitting",
+            key="generate_files_button"
+        )
+    
+    if generate_button:
+        st.info("🧪 **Dry Run Mode** - Generating files without submission...")
+        
+        with st.spinner("Generating files..."):
+            try:
+                from xespresso.gui.utils.dry_run import generate_input_files
+                from xespresso import Espresso
+                
+                # Build calculator parameters
+                calc_params = {
+                    'pseudopotentials': config['pseudopotentials'],
+                    'ecutwfc': config.get('ecutwfc', 50),
+                    'ecutrho': config.get('ecutrho', 400),
+                    'occupations': config.get('occupations', 'smearing'),
+                    'label': label,
+                }
+                
+                # Add k-points
+                if 'kspacing' in config:
+                    calc_params['kspacing'] = config['kspacing']
+                elif 'kpts' in config:
+                    calc_params['kpts'] = config['kpts']
+                
+                # Add smearing if applicable
+                if config.get('occupations') == 'smearing':
+                    calc_params['smearing'] = config.get('smearing', 'gaussian')
+                    calc_params['degauss'] = config.get('degauss', 0.02)
+                
+                # Add convergence threshold
+                if 'conv_thr' in config:
+                    calc_params['conv_thr'] = config['conv_thr']
+                
+                # Add spin polarization
+                if 'nspin' in config:
+                    calc_params['nspin'] = config['nspin']
+                
+                # Add calculation type
+                calc_type = config.get('calc_type', 'scf')
+                if calc_type in ['relax', 'vc-relax']:
+                    calc_params['calculation'] = calc_type
+                else:
+                    calc_params['calculation'] = 'scf'
+                
+                # Add machine/queue if available
+                if machine and hasattr(machine, 'queue'):
+                    calc_params['queue'] = machine.queue
+                
+                # Generate files
+                result = generate_input_files(
+                    atoms=atoms,
+                    calc_params=calc_params,
+                    workdir=full_path,
+                    structure_filename=f"{atoms.get_chemical_formula()}.cif"
+                )
+                
+                if result:
+                    st.success("✅ Files generated successfully!")
+                    
+                    # Display results
+                    st.subheader("📄 Generated Files")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write("**Files created:**")
+                        if 'structure' in result:
+                            st.markdown(f"- ✅ Structure: `{os.path.basename(result['structure'])}`")
+                        if 'input' in result:
+                            st.markdown(f"- ✅ Input file: `{os.path.basename(result['input'])}`")
+                        if 'job_file' in result:
+                            st.markdown(f"- ✅ Job script: `{os.path.basename(result['job_file'])}`")
+                    
+                    with col2:
+                        st.write("**Location:**")
+                        st.code(result['workdir'])
+                    
+                    st.markdown("---")
+                    
+                    # Preview input file
+                    if 'input' in result and os.path.exists(result['input']):
+                        st.subheader("👁️ Input File Preview")
+                        try:
+                            with open(result['input'], 'r') as f:
+                                input_content = f.read()
+                            
+                            with st.expander("View Input File", expanded=True):
+                                st.code(input_content, language='fortran', line_numbers=True)
+                                
+                                # Download button
+                                st.download_button(
+                                    label="⬇️ Download Input File",
+                                    data=input_content,
+                                    file_name=os.path.basename(result['input']),
+                                    mime="text/plain"
+                                )
+                        except Exception as e:
+                            st.error(f"Error reading input file: {e}")
+                    
+                    # Preview job file
+                    if 'job_file' in result and os.path.exists(result['job_file']):
+                        st.subheader("👁️ Job Script Preview")
+                        try:
+                            with open(result['job_file'], 'r') as f:
+                                job_content = f.read()
+                            
+                            with st.expander("View Job Script", expanded=False):
+                                st.code(job_content, language='bash', line_numbers=True)
+                                
+                                # Download button
+                                st.download_button(
+                                    label="⬇️ Download Job Script",
+                                    data=job_content,
+                                    file_name=os.path.basename(result['job_file']),
+                                    mime="text/plain"
+                                )
+                        except Exception as e:
+                            st.error(f"Error reading job file: {e}")
+                    
+                    st.markdown("---")
+                    
+                    # Next steps
+                    st.subheader("✨ Next Steps")
+                    st.info("""
+                    **Files have been generated!** You can now:
+                    
+                    1. **Review the files** using the File Browser tab above
+                    2. **Edit the files** if needed (use Edit mode in File Browser)
+                    3. **Submit the job** using the Job Submission tab
+                    4. **Transfer files** to another system if needed
+                    
+                    The generated files are ready to run - no additional configuration needed!
+                    """)
+                
+                else:
+                    st.error("❌ Failed to generate files. Check the error messages above.")
+                    
+            except Exception as e:
+                st.error(f"❌ Error generating files: {e}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
 
 
 def render_file_browser_tab():

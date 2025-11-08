@@ -383,17 +383,15 @@ elif page == "🔬 Structure Viewer":
                     "Plotly (Interactive 3D)", 
                     "JMol (No WebGL)", 
                     "py3Dmol (Lightweight)", 
-                    "ASE Native (External Window)",
                     "X3D (WebGL)", 
                     "Simple (Text)"
                 ],
                 horizontal=False,
-                help="""Choose your preferred structure viewer:
+                help="""Choose your preferred structure viewer (all embedded, no external windows):
                 
 • **Plotly**: Interactive 3D with WebGL (best for modern browsers)
 • **JMol**: Browser-based without WebGL requirements (good compatibility)
 • **py3Dmol**: Lightweight JavaScript viewer (requires py3Dmol package)
-• **ASE Native**: Opens in separate window (requires display/X11)
 • **X3D**: WebGL-based embedded viewer
 • **Simple**: Text-only representation (no graphics)
                 """
@@ -403,7 +401,6 @@ elif page == "🔬 Structure Viewer":
                 "Plotly (Interactive 3D)": "plotly",
                 "JMol (No WebGL)": "jmol",
                 "py3Dmol (Lightweight)": "py3dmol",
-                "ASE Native (External Window)": "ase",
                 "X3D (WebGL)": "x3d",
                 "Simple (Text)": "simple"
             }
