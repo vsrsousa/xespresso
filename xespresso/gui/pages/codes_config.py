@@ -215,8 +215,7 @@ def render_codes_config_page():
                                 version_config = load_codes_config(
                                     selected_machine, 
                                     DEFAULT_CODES_DIR, 
-                                    version=selected_version,
-                                    label=selected_label
+                                    version=selected_version
                                 )
                                 
                                 if version_config:
@@ -252,8 +251,7 @@ def render_codes_config_page():
                         codes_data.append({
                             "Code": name,
                             "Path": code.path,
-                            "Version": code.version or "Unknown",
-                            "Modules": ", ".join(code.modules) if hasattr(code, 'modules') and code.modules else "None"
+                            "Version": code.version or "Unknown"
                         })
                     st.table(codes_data)
                     
