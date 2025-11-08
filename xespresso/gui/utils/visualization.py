@@ -3,6 +3,8 @@ Structure visualization utilities for the xespresso GUI.
 """
 
 import streamlit as st
+import tempfile
+import os
 
 try:
     import plotly.graph_objects as go
@@ -10,6 +12,13 @@ try:
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
+
+try:
+    from ase.visualize import view
+    from ase import io
+    ASE_VIEWER_AVAILABLE = True
+except ImportError:
+    ASE_VIEWER_AVAILABLE = False
 
 
 def create_3d_structure_plot(atoms):
@@ -80,6 +89,74 @@ def create_3d_structure_plot(atoms):
     )
     
     return fig
+
+
+def create_x3d_viewer(atoms):
+    """Create an X3D HTML viewer for the structure (embeddable)."""
+    try:
+        # Create temporary file for X3D output
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp:
+            tmp_path = tmp.name
+        
+        # Write X3D representation
+        io.write(tmp_path, atoms, format='x3d')
+        
+        # Read and return HTML
+        with open(tmp_path, 'r') as f:
+            html_content = f.read()
+        
+        os.unlink(tmp_path)
+        return html_content
+    except Exception as e:
+        st.warning(f"Could not create X3D viewer: {e}")
+        return None
+
+
+def render_structure_viewer(atoms, viewer_type='plotly', key='structure_viewer'):
+    """
+    Render structure visualization with multiple viewer options.
+    
+    Args:
+        atoms: ASE Atoms object
+        viewer_type: Type of viewer ('plotly', 'x3d', 'simple')
+        key: Unique key for widgets
+    """
+    if viewer_type == 'plotly':
+        if PLOTLY_AVAILABLE:
+            fig = create_3d_structure_plot(atoms)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True, key=f"{key}_plotly")
+            else:
+                st.error("Could not create Plotly visualization")
+        else:
+            st.error("⚠️ Plotly not available. Please install plotly: pip install plotly")
+    
+    elif viewer_type == 'x3d':
+        st.info("💡 X3D viewer provides an embedded 3D view using WebGL")
+        html_content = create_x3d_viewer(atoms)
+        if html_content:
+            st.components.v1.html(html_content, height=500, scrolling=True)
+        else:
+            st.error("Could not create X3D viewer")
+    
+    elif viewer_type == 'simple':
+        # Simple text-based representation
+        st.subheader("Simple Text Representation")
+        positions = atoms.get_positions()
+        symbols = atoms.get_chemical_symbols()
+        
+        st.code(f"""
+Structure: {atoms.get_chemical_formula()}
+Number of atoms: {len(atoms)}
+
+Atomic positions:
+{"Symbol":<8} {"X (Å)":<12} {"Y (Å)":<12} {"Z (Å)":<12}
+{"="*48}
+""" + "\n".join([f"{s:<8} {p[0]:>12.6f} {p[1]:>12.6f} {p[2]:>12.6f}" 
+                  for s, p in zip(symbols, positions)]))
+    
+    else:
+        st.error(f"Unknown viewer type: {viewer_type}")
 
 
 def display_structure_info(atoms):

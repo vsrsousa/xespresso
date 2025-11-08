@@ -126,14 +126,14 @@ if 'local_workdir' not in st.session_state:
 # Sidebar navigation
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
-    "Select Configuration Step:",
+    "Select Page:",
     [
         "🖥️ Machine Configuration",
         "⚙️ Codes Configuration", 
         "🔬 Structure Viewer",
         "📊 Calculation Setup",
         "🔄 Workflow Builder",
-        "🚀 Job Submission",
+        "🚀 Job Submission & Files",
         "📈 Results & Post-Processing"
     ]
 )
@@ -373,14 +373,35 @@ elif page == "🔬 Structure Viewer":
             # Display structure info
             display_structure_info(display_atoms)
             
-            # 3D Visualization
+            # 3D Visualization with multiple viewer options
             st.subheader("3D Visualization")
-            if PLOTLY_AVAILABLE:
-                fig = create_3d_structure_plot(display_atoms)
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("⚠️ Plotly not available. Install plotly for 3D visualization.")
+            
+            # Viewer type selector
+            viewer_type = st.radio(
+                "Select Viewer:",
+                ["Plotly (Interactive 3D)", "X3D (WebGL)", "Simple (Text)"],
+                horizontal=True,
+                help="Choose your preferred structure viewer. If WebGL has issues, try Simple viewer."
+            )
+            
+            viewer_map = {
+                "Plotly (Interactive 3D)": "plotly",
+                "X3D (WebGL)": "x3d",
+                "Simple (Text)": "simple"
+            }
+            
+            try:
+                from xespresso.gui.utils.visualization import render_structure_viewer
+                render_structure_viewer(display_atoms, viewer_type=viewer_map[viewer_type], key="structure_viz")
+            except Exception as e:
+                st.error(f"Error rendering structure: {e}")
+                # Fallback to simple plotly
+                if PLOTLY_AVAILABLE:
+                    fig = create_3d_structure_plot(display_atoms)
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("⚠️ Plotly not available. Install plotly for 3D visualization.")
             
             # Export structure
             st.subheader("Export Structure")
@@ -795,286 +816,12 @@ elif page == "🔄 Workflow Builder":
         if st.button("✅ Create Workflow"):
             st.success("✅ Workflow configured! Proceed to Job Submission to run the calculation.")
 
-# Page 6: Job Submission
-elif page == "🚀 Job Submission":
-    st.header("Job Submission")
-    st.markdown("""
-    Submit your configured calculation to the selected machine.
-    """)
-    
-    # Check prerequisites
-    if not XESPRESSO_AVAILABLE:
-        st.error("xespresso modules not available.")
-    elif st.session_state.current_structure is None:
-        st.warning("⚠️ No structure loaded.")
-    elif not st.session_state.workflow_config:
-        st.warning("⚠️ No workflow configured.")
+# Page 6: Job Submission & File Management
+elif page == "🚀 Job Submission & Files":
+    if PAGES_AVAILABLE:
+        render_job_submission_page()
     else:
-        # Display configuration summary
-        st.subheader("Configuration Summary")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Structure:**")
-            atoms = st.session_state.current_structure
-            st.write(f"- Formula: {atoms.get_chemical_formula()}")
-            st.write(f"- Atoms: {len(atoms)}")
-            
-            st.write("**Machine:**")
-            if st.session_state.current_machine:
-                machine = st.session_state.current_machine
-                st.write(f"- Name: {machine.name}")
-                st.write(f"- Type: {machine.execution}")
-            else:
-                st.write("- Not configured")
-        
-        with col2:
-            st.write("**Workflow:**")
-            config = st.session_state.workflow_config
-            st.write(f"- Quality: {config.get('quality', 'N/A')}")
-            st.write(f"- Type: {config.get('calc_type', 'N/A')}")
-            st.write(f"- Label: {config.get('label', 'N/A')}")
-            
-            st.write("**Codes:**")
-            if st.session_state.current_codes:
-                codes = st.session_state.current_codes
-                st.write(f"- Configured: {len(codes.codes)} codes")
-            else:
-                st.write("- Not configured")
-        
-        # Submission options
-        st.subheader("Submission Options")
-        
-        # Local working directory selection
-        st.write("**Local Working Directory:**")
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            local_workdir = st.text_input(
-                "Working Directory",
-                value=st.session_state.local_workdir,
-                help="Directory where calculation files will be saved locally"
-            )
-            st.session_state.local_workdir = local_workdir
-        with col2:
-            if st.button("📁 Use Current"):
-                st.session_state.local_workdir = os.getcwd()
-                st.rerun()
-        
-        # Show where files will be saved  
-        # Validate local workdir path
-        is_valid_workdir, normalized_workdir, error_msg = validate_path(local_workdir, allow_creation=True)
-        if not is_valid_workdir:
-            st.error(f"❌ Invalid working directory: {error_msg}")
-        else:
-            st.info(f"📂 Files will be saved to: `{normalized_workdir}`")
-            
-            # Create directory if it doesn't exist
-            if not os.path.exists(normalized_workdir):
-                if st.checkbox("Create directory if it doesn't exist", value=True):
-                    try:
-                        os.makedirs(normalized_workdir, exist_ok=True)
-                        st.success(f"✅ Directory created: {normalized_workdir}")
-                    except Exception as e:
-                        st.error(f"❌ Could not create directory: {e}")
-        
-        dry_run = st.checkbox(
-            "Dry Run (don't actually submit)",
-            value=True,
-            help="Generate input files without running"
-        )
-        
-        # Submit button
-        if st.button("🚀 Submit Job", type="primary"):
-            with st.spinner("Preparing job submission..."):
-                try:
-                    # Get workflow configuration
-                    config = st.session_state.workflow_config
-                    atoms = st.session_state.current_structure
-                    
-                    # Use normalized path if valid
-                    workdir = normalized_workdir if is_valid_workdir else local_workdir
-                    
-                    # Extract calculation label from config
-                    label = config.get('label', 'calc/structure')
-                    
-                    # Validate label to prevent path traversal
-                    # Only allow alphanumeric characters, underscores, hyphens, and forward slashes
-                    import re
-                    if not re.match(r'^[a-zA-Z0-9_\-/]+$', label):
-                        st.error("❌ Invalid label: only alphanumeric characters, underscores, hyphens, and forward slashes are allowed")
-                    elif '..' in label or label.startswith('/'):
-                        st.error("❌ Invalid label: path traversal (.. or absolute paths) not allowed")
-                    else:
-                        # Build full label path (directory/prefix)
-                        full_label = os.path.join(workdir, label)
-                        
-                        # Note: label creates a directory and files are created inside with the prefix name
-                        # For example, label="calc/fe" creates directory "calc/fe/" and files "calc/fe/fe.pwi"
-                        
-                        # Step 1: Save structure file before creating calculator
-                        # We save it in the parent directory of the label for easy access
-                        if '/' in label:
-                            structure_dir = os.path.join(workdir, os.path.dirname(label))
-                        else:
-                            structure_dir = workdir
-                        
-                        os.makedirs(structure_dir, exist_ok=True)
-                        structure_file = os.path.join(structure_dir, "structure.cif")
-                        io.write(structure_file, atoms)
-                        st.write(f"✅ 1. Saved structure to: `{structure_file}`")
-                        
-                        # Step 2: Prepare input_data for Espresso calculator
-                        input_data = {}
-                        
-                        # Add calculation type
-                        calc_type = config.get('calc_type', 'scf')
-                        if calc_type == 'scf':
-                            input_data['calculation'] = 'scf'
-                        elif calc_type == 'relaxation':
-                            relax_type = config.get('relax_type', 'relax')
-                            input_data['calculation'] = relax_type
-                        elif calc_type == 'bands':
-                            input_data['calculation'] = 'bands'
-                        
-                        # Add energy cutoffs
-                        if 'ecutwfc' in config:
-                            input_data['ecutwfc'] = config['ecutwfc']
-                        if 'ecutrho' in config:
-                            input_data['ecutrho'] = config['ecutrho']
-                        
-                        # Add convergence threshold
-                        if 'conv_thr' in config:
-                            input_data['conv_thr'] = config['conv_thr']
-                        
-                        # Add occupations and smearing
-                        if 'occupations' in config:
-                            input_data['occupations'] = config['occupations']
-                        if 'smearing' in config:
-                            input_data['smearing'] = config['smearing']
-                        if 'degauss' in config:
-                            input_data['degauss'] = config['degauss']
-                        
-                        # Add spin polarization
-                        if 'nspin' in config and config['nspin'] > 1:
-                            input_data['nspin'] = config['nspin']
-                        
-                        # Prepare k-points
-                        kpts = None
-                        kspacing = None
-                        if 'kspacing' in config:
-                            kspacing = config['kspacing']
-                        elif 'kpts' in config:
-                            kpts = config['kpts']
-                        
-                        # Get pseudopotentials
-                        pseudopotentials = config.get('pseudopotentials', {})
-                        if not pseudopotentials:
-                            st.error("❌ No pseudopotentials configured!")
-                        else:
-                            # Get queue configuration if machine has scheduler
-                            queue = None
-                            if st.session_state.current_machine:
-                                machine = st.session_state.current_machine
-                                if hasattr(machine, 'scheduler') and machine.scheduler:
-                                    # Build queue configuration from machine
-                                    queue = {
-                                        'scheduler': machine.scheduler,
-                                    }
-                                    # Add additional scheduler parameters if available
-                                    if hasattr(machine, 'scheduler_config'):
-                                        queue.update(machine.scheduler_config)
-                            
-                            # Set ASE_ESPRESSO_COMMAND from codes configuration
-                            # This is required for ASE's FileIOCalculator to work without a profile
-                            # Format: "LAUNCHER PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
-                            # xespresso will replace PACKAGE.x with the actual package (pw.x, ph.x, etc.)
-                            if st.session_state.current_codes:
-                                codes = st.session_state.current_codes
-                                if 'pw' in codes.codes:
-                                    pw_code = codes.codes['pw']
-                                    # Extract the directory path from pw.x executable
-                                    pw_dir = os.path.dirname(pw_code.path)
-                                    # Get launcher command if available (e.g., mpirun, srun)
-                                    launcher = ""
-                                    if hasattr(pw_code, 'parallel_command') and pw_code.parallel_command:
-                                        launcher = pw_code.parallel_command + " "
-                                    # Construct generic command with PACKAGE.x placeholder
-                                    # xespresso will substitute PACKAGE with actual package name (pw, ph, dos, etc.)
-                                    os.environ['ASE_ESPRESSO_COMMAND'] = f"{launcher}{pw_dir}/PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
-                                else:
-                                    st.warning("⚠️ No 'pw' code found in codes configuration. Using default command.")
-                                    # Fallback to generic command with PACKAGE.x placeholder
-                                    os.environ['ASE_ESPRESSO_COMMAND'] = "PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
-                            else:
-                                st.warning("⚠️ No codes configuration loaded. Using default command.")
-                                # Fallback to generic command with PACKAGE.x placeholder
-                                os.environ['ASE_ESPRESSO_COMMAND'] = "PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
-                            
-                            # Create Espresso calculator
-                            calc = Espresso(
-                                label=full_label,
-                                pseudopotentials=pseudopotentials,
-                                input_data=input_data,
-                                kpts=kpts,
-                                kspacing=kspacing,
-                                queue=queue,
-                            )
-                            
-                            # Assign calculator to atoms
-                            atoms.calc = calc
-                            
-                            # Step 3: Generate Quantum ESPRESSO input files
-                            calc.write_input(atoms)
-                            
-                            # The calculator creates a directory from the label and stores files there
-                            # calc.directory = full path to the calculation directory
-                            # calc.label = full path including prefix for file names
-                            # Files created: calc.label + .pwi, calc.label + .asei, and job_file
-                            
-                            prefix = os.path.basename(label)
-                            pwi_file = f"{calc.label}.pwi"
-                            asei_file = f"{calc.label}.asei"
-                            job_file = os.path.join(calc.directory, "job_file")
-                            
-                            st.write(f"✅ 2. Generated Quantum ESPRESSO input files in: `{calc.directory}`")
-                            
-                            # Show file locations
-                            st.subheader("📂 Generated Files")
-                            
-                            files_info = f"""
-**Calculation directory:** `{calc.directory}`
-- Structure file: `{structure_file}`
-- QE Input file: `{pwi_file}`
-- ASE Info file: `{asei_file}`
-"""
-                            
-                            if os.path.exists(job_file):
-                                files_info += f"- Job script: `{job_file}`\n"
-                            
-                            st.info(files_info)
-                            
-                            # Show preview of generated input file
-                            if os.path.exists(pwi_file):
-                                with st.expander("📄 Preview QE Input File"):
-                                    with open(pwi_file, 'r') as f:
-                                        st.code(f.read(), language='text')
-                            
-                            if dry_run:
-                                st.success("✅ Dry run completed - input files generated, no job submitted")
-                            else:
-                                # Step 4: Actually submit the job (call get_potential_energy)
-                                st.write("🚀 3. Submitting job to scheduler...")
-                                # Note: In a real implementation, this would call atoms.get_potential_energy()
-                                # but we need to handle this carefully in a GUI context
-                                st.warning("⚠️ Actual job submission requires the calculation to run to completion.")
-                                st.info("For now, files have been generated. You can submit them manually or use command line.")
-                                st.success("✅ Job files ready for submission!")
-                                st.balloons()
-                    
-                except Exception as e:
-                    st.error(f"❌ Error during job preparation: {e}")
-                    st.code(traceback.format_exc())
+        st.error("Page modules not available. Please check installation.")
 
 # Page 7: Results & Post-Processing
 elif page == "📈 Results & Post-Processing":
