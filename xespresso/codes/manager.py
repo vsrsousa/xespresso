@@ -363,6 +363,8 @@ class CodesManager:
                     existing_config.qe_prefix = config.qe_prefix
                 if config.qe_version:
                     existing_config.qe_version = config.qe_version
+                if config.version_label:
+                    existing_config.version_label = config.version_label
                 if config.modules:
                     existing_config.modules = config.modules
                 if config.environment:

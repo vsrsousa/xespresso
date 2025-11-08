@@ -49,6 +49,7 @@ class CodesConfig:
         machine_name: Name of the machine
         qe_prefix: Common prefix for QE executables (e.g., '/opt/qe-7.2/bin')
         qe_version: Default QE version on this machine
+        version_label: Optional custom label for this version (e.g., 'qe-7.2', 'qe-dev')
         codes: Dictionary mapping code name to Code object (for single version configs)
         versions: Dictionary mapping version string to version-specific configuration
                   (for multi-version configs)
@@ -73,6 +74,7 @@ class CodesConfig:
     codes: Dict[str, Code] = field(default_factory=dict)
     qe_prefix: Optional[str] = None
     qe_version: Optional[str] = None
+    version_label: Optional[str] = None
     modules: Optional[List[str]] = None
     environment: Optional[Dict[str, str]] = None
     versions: Optional[Dict[str, Dict]] = None
@@ -154,6 +156,8 @@ class CodesConfig:
             result['qe_prefix'] = self.qe_prefix
         if self.qe_version:
             result['qe_version'] = self.qe_version
+        if self.version_label:
+            result['version_label'] = self.version_label
         if self.modules:
             result['modules'] = self.modules
         if self.environment:
