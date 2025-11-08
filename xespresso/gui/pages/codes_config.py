@@ -1,0 +1,188 @@
+"""
+Codes Configuration Page for xespresso GUI.
+
+This module handles the Quantum ESPRESSO codes configuration interface,
+allowing users to:
+- Auto-detect QE executables on machines
+- Configure multiple versions
+- Save and load code configurations
+"""
+
+import streamlit as st
+import traceback
+
+try:
+    from xespresso.machines.config.loader import (
+        list_machines,
+        DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR
+    )
+    from xespresso.codes.manager import (
+        detect_qe_codes, load_codes_config, CodesManager,
+        DEFAULT_CODES_DIR
+    )
+    XESPRESSO_AVAILABLE = True
+except ImportError:
+    XESPRESSO_AVAILABLE = False
+
+
+def render_codes_config_page():
+    """Render the codes configuration page."""
+    st.header("Quantum ESPRESSO Codes Configuration")
+    st.markdown("""
+    Configure Quantum ESPRESSO executable paths for different machines.
+    Auto-detection is supported for both local and remote systems.
+    """)
+    
+    if not XESPRESSO_AVAILABLE:
+        st.error("xespresso modules not available. Cannot configure codes.")
+        return
+    
+    # Machine selection
+    try:
+        machines_list = list_machines(DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR)
+        if machines_list:
+            selected_machine = st.selectbox(
+                "Select Machine:",
+                machines_list,
+                help="Choose the machine to configure codes for"
+            )
+        else:
+            st.warning("⚠️ No machines configured. Please configure a machine first.")
+            selected_machine = None
+    except Exception as e:
+        st.warning(f"Could not load machines: {e}")
+        selected_machine = None
+    
+    if selected_machine:
+        st.subheader(f"Codes Configuration for: {selected_machine}")
+        
+        # Auto-detection section
+        st.subheader("Auto-Detect Codes")
+        
+        with st.form("detect_codes_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                qe_prefix = st.text_input(
+                    "QE Installation Prefix (optional)",
+                    help="e.g., /opt/qe-7.2/bin"
+                )
+                version_label = st.text_input(
+                    "Version Label (optional)",
+                    help="Custom label for this version (e.g., 'qe-7.2', 'qe-dev')"
+                )
+                modules_str = st.text_area(
+                    "Modules to Load (optional, one per line)",
+                    help="Version-specific modules (e.g., 'qe/7.2' or 'quantum_espresso-7.4.1')"
+                )
+            
+            with col2:
+                search_paths_str = st.text_area(
+                    "Additional Search Paths (optional, one per line)",
+                    help="Additional directories to search for executables"
+                )
+            
+            detect_button = st.form_submit_button("🔍 Auto-Detect Codes")
+        
+        if detect_button:
+            with st.spinner("Detecting Quantum ESPRESSO codes..."):
+                try:
+                    modules = [m.strip() for m in modules_str.split("\n") if m.strip()] if modules_str else None
+                    search_paths = [p.strip() for p in search_paths_str.split("\n") if p.strip()] if search_paths_str else None
+                    
+                    codes_config = detect_qe_codes(
+                        machine_name=selected_machine,
+                        qe_prefix=qe_prefix if qe_prefix else None,
+                        search_paths=search_paths,
+                        modules=modules,
+                        auto_load_machine=True
+                    )
+                    
+                    if codes_config and codes_config.codes:
+                        st.success(f"✅ Detected {len(codes_config.codes)} codes!")
+                        
+                        # Add version label if provided
+                        if version_label:
+                            codes_config.version_label = version_label
+                        
+                        st.session_state.current_codes = codes_config
+                        
+                        # Display detected codes
+                        st.subheader("Detected Codes")
+                        codes_data = []
+                        for name, code in codes_config.codes.items():
+                            codes_data.append({
+                                "Code": name,
+                                "Path": code.path,
+                                "Version": code.version or "Unknown",
+                                "Label": version_label or "default"
+                            })
+                        st.table(codes_data)
+                        
+                        # Save option with clear explanation
+                        st.info("""
+                        **💾 Saving Codes:**
+                        - Detected codes will be **merged** with existing configurations
+                        - Multiple versions on the same machine are supported
+                        - Existing codes with different paths/versions will be kept
+                        """)
+                        
+                        if st.button("💾 Save Codes Configuration"):
+                            try:
+                                filepath = CodesManager.save_config(
+                                    codes_config,
+                                    output_dir=DEFAULT_CODES_DIR,
+                                    overwrite=False,
+                                    merge=True
+                                )
+                                st.success(f"✅ Codes saved to: {filepath}")
+                                st.info("Multiple versions are preserved. Reload the page to see all versions.")
+                            except Exception as e:
+                                st.error(f"Error saving codes: {e}")
+                                st.code(traceback.format_exc())
+                    else:
+                        st.warning("⚠️ No codes detected. Check paths and modules.")
+                except Exception as e:
+                    st.error(f"❌ Error detecting codes: {e}")
+                    st.code(traceback.format_exc())
+        
+        # Load existing configuration
+        st.subheader("Existing Codes Configuration")
+        try:
+            existing_codes = load_codes_config(selected_machine, DEFAULT_CODES_DIR)
+            if existing_codes:
+                st.success(f"✅ Loaded existing configuration")
+                
+                codes_data = []
+                for name, code in existing_codes.codes.items():
+                    codes_data.append({
+                        "Code": name,
+                        "Path": code.path,
+                        "Version": code.version or "Unknown",
+                        "Modules": ", ".join(code.modules) if hasattr(code, 'modules') and code.modules else "None"
+                    })
+                st.table(codes_data)
+                
+                st.session_state.current_codes = existing_codes
+                
+                # Code/version selection for calculations
+                st.subheader("Select Code Version for Calculations")
+                if existing_codes.codes:
+                    code_options = list(existing_codes.codes.keys())
+                    selected_code = st.selectbox(
+                        "Select QE version to use:",
+                        code_options,
+                        help="Choose which version of QE to use for your calculations"
+                    )
+                    st.session_state.selected_code_version = selected_code
+                    
+                    selected_code_obj = existing_codes.codes[selected_code]
+                    st.info(f"""
+                    **Selected Code Details:**
+                    - Path: `{selected_code_obj.path}`
+                    - Version: {selected_code_obj.version or 'Unknown'}
+                    """)
+            else:
+                st.info("ℹ️ No codes configuration found for this machine.")
+        except Exception as e:
+            st.warning(f"Could not load codes configuration: {e}")
