@@ -114,47 +114,56 @@ def render_codes_config_page():
                     
                     if codes_config and codes_config.codes:
                         st.success(f"✅ Detected {len(codes_config.codes)} codes!")
-                        
-                        st.session_state.current_codes = codes_config
-                        
-                        # Display detected codes
-                        st.subheader("Detected Codes")
-                        codes_data = []
-                        for name, code in codes_config.codes.items():
-                            codes_data.append({
-                                "Code": name,
-                                "Path": code.path,
-                                "Version": code.version or "Unknown",
-                                "Label": codes_config.label or "default"
-                            })
-                        st.table(codes_data)
-                        
-                        # Save option with clear explanation
-                        st.info("""
-                        **💾 Saving Codes:**
-                        - Detected codes will be **merged** with existing configurations
-                        - Multiple versions on the same machine are supported
-                        - Existing codes with different paths/versions will be kept
-                        """)
-                        
-                        if st.button("💾 Save Codes Configuration"):
-                            try:
-                                filepath = CodesManager.save_config(
-                                    codes_config,
-                                    output_dir=DEFAULT_CODES_DIR,
-                                    overwrite=False,
-                                    merge=True,
-                                    interactive=False
-                                )
-                                st.success(f"✅ Codes saved to: {filepath}")
-                                st.info("Multiple versions are preserved. Reload the page to see all versions.")
-                            except Exception as e:
-                                st.error(f"Error saving codes: {e}")
-                                st.code(traceback.format_exc())
+                        # Store in session state with a flag to show detected codes were just found
+                        st.session_state.detected_codes = codes_config
+                        st.session_state.detected_machine = selected_machine
                     else:
                         st.warning("⚠️ No codes detected. Check paths and modules.")
+                        st.session_state.detected_codes = None
                 except Exception as e:
                     st.error(f"❌ Error detecting codes: {e}")
+                    st.code(traceback.format_exc())
+                    st.session_state.detected_codes = None
+        
+        # Display detected codes (outside the detect_button block so it persists across reruns)
+        if hasattr(st.session_state, 'detected_codes') and st.session_state.detected_codes:
+            codes_config = st.session_state.detected_codes
+            
+            st.subheader("Detected Codes")
+            codes_data = []
+            for name, code in codes_config.codes.items():
+                codes_data.append({
+                    "Code": name,
+                    "Path": code.path,
+                    "Version": code.version or "Unknown",
+                    "Label": codes_config.label or "default"
+                })
+            st.table(codes_data)
+            
+            # Save option with clear explanation
+            st.info("""
+            **💾 Saving Codes:**
+            - Detected codes will be **merged** with existing configurations
+            - Multiple versions on the same machine are supported
+            - Existing codes with different paths/versions will be kept
+            """)
+            
+            if st.button("💾 Save Codes Configuration"):
+                try:
+                    filepath = CodesManager.save_config(
+                        codes_config,
+                        output_dir=DEFAULT_CODES_DIR,
+                        overwrite=False,
+                        merge=True,
+                        interactive=False
+                    )
+                    st.success(f"✅ Codes saved to: {filepath}")
+                    st.info("Multiple versions are preserved. Reload the page to see all versions.")
+                    # Clear the detected codes after successful save
+                    st.session_state.detected_codes = None
+                    st.session_state.current_codes = codes_config
+                except Exception as e:
+                    st.error(f"Error saving codes: {e}")
                     st.code(traceback.format_exc())
         
         # Load existing configuration

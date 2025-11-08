@@ -985,6 +985,24 @@ elif page == "🚀 Job Submission":
                                     if hasattr(machine, 'scheduler_config'):
                                         queue.update(machine.scheduler_config)
                             
+                            # Set ASE_ESPRESSO_COMMAND from codes configuration
+                            # This is required for ASE's FileIOCalculator to work without a profile
+                            if st.session_state.current_codes:
+                                codes = st.session_state.current_codes
+                                if 'pw' in codes.codes:
+                                    pw_path = codes.codes['pw'].path
+                                    # Set the command in ASE's expected format
+                                    # xespresso will replace PACKAGE.x with pw.x, etc.
+                                    os.environ['ASE_ESPRESSO_COMMAND'] = f"{pw_path} -in PREFIX.pwi > PREFIX.pwo"
+                                else:
+                                    st.warning("⚠️ No 'pw' code found in codes configuration. Using default command.")
+                                    # Fallback to generic command
+                                    os.environ['ASE_ESPRESSO_COMMAND'] = "pw.x -in PREFIX.pwi > PREFIX.pwo"
+                            else:
+                                st.warning("⚠️ No codes configuration loaded. Using default command.")
+                                # Fallback to generic command  
+                                os.environ['ASE_ESPRESSO_COMMAND'] = "pw.x -in PREFIX.pwi > PREFIX.pwo"
+                            
                             # Create Espresso calculator
                             calc = Espresso(
                                 label=full_label,
