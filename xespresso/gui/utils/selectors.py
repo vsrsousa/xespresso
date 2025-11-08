@@ -170,7 +170,14 @@ def render_codes_selector(machine_name, key="codes_selector", help_text=None):
 
 def render_workdir_browser(current_dir=None, key="workdir_browser"):
     """
-    Render a working directory browser/selector.
+    Render an enhanced working directory browser/selector with folder navigation.
+    
+    Features:
+    - Text input for direct path entry
+    - Quick access buttons (Current, Home)
+    - Folder navigator with dropdown to browse subfolders
+    - Parent directory navigation
+    - Visual directory contents preview
     
     Args:
         current_dir: Current working directory path
@@ -184,23 +191,31 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
     
     st.subheader("📁 Working Directory")
     
-    col1, col2, col3 = st.columns([3, 1, 1])
+    # Quick access buttons
+    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
     
     with col1:
         workdir = st.text_input(
             "Directory Path:",
             value=current_dir,
             key=f"{key}_input",
-            help="Enter the path to your working directory"
+            help="Enter the path to your working directory or use the navigator below"
         )
     
     with col2:
-        if st.button("📂 Current", key=f"{key}_current"):
+        if st.button("📂 Current", key=f"{key}_current", help="Go to current working directory"):
             workdir = os.getcwd()
+            st.rerun()
     
     with col3:
-        if st.button("🏠 Home", key=f"{key}_home"):
+        if st.button("🏠 Home", key=f"{key}_home", help="Go to home directory"):
             workdir = os.path.expanduser("~")
+            st.rerun()
+    
+    with col4:
+        if st.button("⬆️ Parent", key=f"{key}_parent", help="Go to parent directory"):
+            workdir = os.path.dirname(workdir)
+            st.rerun()
     
     # Validate directory
     if workdir:
@@ -208,36 +223,106 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
             workdir = os.path.abspath(os.path.expanduser(workdir))
             
             if os.path.exists(workdir) and os.path.isdir(workdir):
-                st.success(f"✅ Valid directory: {workdir}")
+                st.success(f"✅ Current directory: `{workdir}`")
                 st.session_state.local_workdir = workdir
                 
-                # Show directory contents
-                with st.expander("📂 Directory Contents", expanded=False):
+                # Folder Navigator Section
+                st.markdown("---")
+                st.subheader("📂 Folder Navigator")
+                st.info("💡 Select a subfolder below to navigate into it")
+                
+                try:
+                    # List subdirectories
+                    contents = os.listdir(workdir)
+                    subdirs = [d for d in contents if os.path.isdir(os.path.join(workdir, d)) and not d.startswith('.')]
+                    subdirs.sort()
+                    
+                    if subdirs:
+                        # Create columns for better layout
+                        col1, col2 = st.columns([3, 1])
+                        
+                        with col1:
+                            selected_subdir = st.selectbox(
+                                "Select subfolder to navigate:",
+                                options=['(Stay in current directory)'] + subdirs,
+                                key=f"{key}_subdir_select",
+                                help="Choose a subfolder to navigate into"
+                            )
+                        
+                        with col2:
+                            st.write("")  # Spacing
+                            st.write("")  # Spacing
+                            if st.button("➡️ Navigate", key=f"{key}_navigate", type="primary"):
+                                if selected_subdir != '(Stay in current directory)':
+                                    new_workdir = os.path.join(workdir, selected_subdir)
+                                    st.session_state.local_workdir = new_workdir
+                                    st.rerun()
+                        
+                        # Show quick preview of selected subfolder
+                        if selected_subdir != '(Stay in current directory)':
+                            subdir_path = os.path.join(workdir, selected_subdir)
+                            try:
+                                subdir_contents = os.listdir(subdir_path)
+                                subdir_subdirs = [d for d in subdir_contents if os.path.isdir(os.path.join(subdir_path, d))]
+                                subdir_files = [f for f in subdir_contents if os.path.isfile(os.path.join(subdir_path, f))]
+                                
+                                st.caption(f"📁 `{selected_subdir}` contains: {len(subdir_subdirs)} folders, {len(subdir_files)} files")
+                            except:
+                                pass
+                    else:
+                        st.info("ℹ️ No subfolders in current directory")
+                    
+                except PermissionError:
+                    st.warning("⚠️ Permission denied to list directory contents")
+                except Exception as e:
+                    st.warning(f"⚠️ Could not list subfolders: {e}")
+                
+                # Directory Contents Section  
+                st.markdown("---")
+                with st.expander("📋 Directory Contents (Full View)", expanded=False):
                     try:
                         contents = os.listdir(workdir)
                         dirs = [d for d in contents if os.path.isdir(os.path.join(workdir, d))]
                         files = [f for f in contents if os.path.isfile(os.path.join(workdir, f))]
                         
-                        col1, col2 = st.columns(2)
+                        # Show statistics
+                        col1, col2, col3 = st.columns(3)
                         with col1:
-                            st.write(f"**Directories ({len(dirs)}):**")
-                            for d in sorted(dirs)[:10]:
-                                st.write(f"📁 {d}")
-                            if len(dirs) > 10:
-                                st.write(f"... and {len(dirs) - 10} more")
-                        
+                            st.metric("Total Items", len(contents))
                         with col2:
-                            st.write(f"**Files ({len(files)}):**")
-                            for f in sorted(files)[:10]:
-                                st.write(f"📄 {f}")
-                            if len(files) > 10:
-                                st.write(f"... and {len(files) - 10} more")
+                            st.metric("Directories", len(dirs))
+                        with col3:
+                            st.metric("Files", len(files))
+                        
+                        # Show directories
+                        if dirs:
+                            st.write("**📁 Directories:**")
+                            dirs_display = sorted(dirs)
+                            if len(dirs_display) > 20:
+                                st.write(", ".join(dirs_display[:20]))
+                                st.write(f"... and {len(dirs_display) - 20} more")
+                            else:
+                                st.write(", ".join(dirs_display))
+                        
+                        # Show files
+                        if files:
+                            st.write("**📄 Files:**")
+                            files_display = sorted(files)
+                            if len(files_display) > 20:
+                                st.write(", ".join(files_display[:20]))
+                                st.write(f"... and {len(files_display) - 20} more")
+                            else:
+                                st.write(", ".join(files_display))
+                                
+                    except PermissionError:
+                        st.warning("⚠️ Permission denied to list directory contents")
                     except Exception as e:
-                        st.warning(f"Could not list directory contents: {e}")
+                        st.warning(f"⚠️ Could not list directory contents: {e}")
                 
                 return workdir
             else:
                 st.error(f"❌ Directory does not exist: {workdir}")
+                st.info("💡 Use the Home or Current button to navigate to a valid directory")
                 return current_dir
         except Exception as e:
             st.error(f"❌ Invalid path: {e}")
