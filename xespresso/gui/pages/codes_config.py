@@ -146,7 +146,8 @@ def render_codes_config_page():
                                     codes_config,
                                     output_dir=DEFAULT_CODES_DIR,
                                     overwrite=False,
-                                    merge=True
+                                    merge=True,
+                                    interactive=False
                                 )
                                 st.success(f"✅ Codes saved to: {filepath}")
                                 st.info("Multiple versions are preserved. Reload the page to see all versions.")
