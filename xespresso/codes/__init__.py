@@ -8,6 +8,7 @@ on different machines. It allows users to:
 - Configure code settings per machine
 - Detect available codes on a machine
 - Support multiple QE versions on the same machine
+- List available modules on remote systems
 """
 
 from .manager import (

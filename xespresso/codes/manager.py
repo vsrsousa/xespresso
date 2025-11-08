@@ -247,6 +247,103 @@ class CodesManager:
         
         return None
     
+    @staticmethod
+    def list_available_modules(ssh_connection: Optional[Dict] = None,
+                              env_setup: Optional[str] = None,
+                              search_pattern: Optional[str] = None) -> List[str]:
+        """
+        List available modules on the system, optionally filtering by pattern.
+        
+        This is useful for discovering which Quantum ESPRESSO modules are available
+        on a remote cluster before configuring codes.
+        
+        Args:
+            ssh_connection: SSH connection info for remote detection.
+                           Dict with keys: 'host', 'username', 'port' (default: 22)
+                           Example: {'host': 'cluster.edu', 'username': 'user', 'port': 22}
+            env_setup: Shell commands to set up environment before detection.
+                      Example: "source /etc/profile" or "source ~/.bashrc"
+            search_pattern: Optional pattern to filter modules (e.g., "espresso", "qe", "quantum")
+                          If None, lists all available modules
+        
+        Returns:
+            List of available module names
+            
+        Example:
+            # List all modules containing "espresso"
+            modules = CodesManager.list_available_modules(
+                ssh_connection={'host': 'cluster.edu', 'username': 'user'},
+                env_setup="source /etc/profile",
+                search_pattern="espresso"
+            )
+            # Returns: ['quantum-espresso/7.2', 'quantum-espresso/7.1', 'espresso/6.8']
+        """
+        try:
+            # Build environment setup prefix
+            env_prefix = f"{env_setup} && " if env_setup else ""
+            
+            # Try different module commands (module avail and module spider)
+            module_cmds = [
+                "module avail",
+                "module -t avail",  # Terse format
+                "module spider",
+            ]
+            
+            modules_found = []
+            
+            for base_cmd in module_cmds:
+                try:
+                    if ssh_connection:
+                        host = ssh_connection.get('host')
+                        username = ssh_connection.get('username', os.environ.get('USER'))
+                        port = ssh_connection.get('port', 22)
+                        cmd = f"ssh -p {port} {username}@{host} '{env_prefix}{base_cmd} 2>&1'"
+                    else:
+                        cmd = f"{env_prefix}{base_cmd} 2>&1"
+                    
+                    result = subprocess.run(cmd, shell=True, capture_output=True,
+                                          text=True, timeout=30)
+                    
+                    if result.returncode == 0 or result.stdout or result.stderr:
+                        output = result.stdout + result.stderr
+                        
+                        # Parse module names from output
+                        # Module names typically appear as: module-name/version
+                        lines = output.split('\n')
+                        for line in lines:
+                            # Skip header lines and empty lines
+                            if not line.strip() or ':' in line and '/' not in line:
+                                continue
+                            
+                            # Extract module names (format: name/version)
+                            # Handle both "module/version" and "  module/version  " formats
+                            parts = line.strip().split()
+                            for part in parts:
+                                # Check if it looks like a module name
+                                if '/' in part and not part.startswith('/'):
+                                    # Remove any trailing special characters
+                                    module_name = part.rstrip('()')
+                                    if search_pattern:
+                                        if search_pattern.lower() in module_name.lower():
+                                            if module_name not in modules_found:
+                                                modules_found.append(module_name)
+                                    else:
+                                        if module_name not in modules_found:
+                                            modules_found.append(module_name)
+                        
+                        # If we found modules, no need to try other commands
+                        if modules_found:
+                            break
+                            
+                except (subprocess.TimeoutExpired, Exception):
+                    continue
+            
+            return sorted(modules_found)
+            
+        except Exception as e:
+            print(f"⚠️  Error listing modules: {e}")
+            return []
+    
     @classmethod
     def create_config(cls,
                      machine_name: str,
@@ -411,7 +508,8 @@ def detect_qe_codes(machine_name: str = "local",
                    modules: Optional[List[str]] = None,
                    ssh_connection: Optional[Dict] = None,
                    env_setup: Optional[str] = None,
-                   auto_load_machine: bool = True) -> CodesConfig:
+                   auto_load_machine: bool = True,
+                   qe_version: Optional[str] = None) -> CodesConfig:
     """
     Convenience function to detect and create a codes configuration.
     
@@ -428,6 +526,9 @@ def detect_qe_codes(machine_name: str = "local",
         env_setup: Shell commands to set up environment before detection.
                   Example: "source /etc/profile" or "source ~/.bashrc"
         auto_load_machine: If True, attempts to load machine config automatically
+        qe_version: Optional version string to use instead of auto-detection.
+                   Useful when auto-detection returns compiler version instead.
+                   Example: "7.2", "7.1", "6.8"
     
     Returns:
         CodesConfig object with detected codes
@@ -498,16 +599,18 @@ def detect_qe_codes(machine_name: str = "local",
     
     print(f"✅ Found {len(detected_codes)} codes: {', '.join(detected_codes.keys())}")
     
-    # Try to detect QE version from pw.x
-    qe_version = None
-    if 'pw' in detected_codes:
-        qe_version = CodesManager.detect_qe_version(
-            detected_codes['pw'], 
-            ssh_connection=ssh_connection,
-            env_setup=env_setup
-        )
-        if qe_version:
-            print(f"📦 Detected Quantum ESPRESSO version: {qe_version}")
+    # Try to detect QE version from pw.x if not explicitly provided
+    if qe_version is None:
+        if 'pw' in detected_codes:
+            qe_version = CodesManager.detect_qe_version(
+                detected_codes['pw'], 
+                ssh_connection=ssh_connection,
+                env_setup=env_setup
+            )
+            if qe_version:
+                print(f"📦 Detected Quantum ESPRESSO version: {qe_version}")
+    else:
+        print(f"📦 Using user-specified Quantum ESPRESSO version: {qe_version}")
     
     config = CodesManager.create_config(
         machine_name=machine_name,
@@ -530,7 +633,8 @@ def create_codes_config(machine_name: str = "local",
                        output_dir: str = DEFAULT_CODES_DIR,
                        overwrite: bool = False,
                        merge: bool = True,
-                       auto_load_machine: bool = True) -> CodesConfig:
+                       auto_load_machine: bool = True,
+                       qe_version: Optional[str] = None) -> CodesConfig:
     """
     Create a codes configuration (with optional auto-save).
     
@@ -546,6 +650,8 @@ def create_codes_config(machine_name: str = "local",
         overwrite: If True, overwrites existing file without asking
         merge: If True, merges with existing config (default: True)
         auto_load_machine: If True, attempts to load machine config automatically
+        qe_version: Optional version string to use instead of auto-detection.
+                   Example: "7.2", "7.1", "6.8"
     
     Returns:
         CodesConfig object
@@ -557,7 +663,8 @@ def create_codes_config(machine_name: str = "local",
         modules=modules,
         ssh_connection=ssh_connection,
         env_setup=env_setup,
-        auto_load_machine=auto_load_machine
+        auto_load_machine=auto_load_machine,
+        qe_version=qe_version
     )
     
     if save and config.codes:
