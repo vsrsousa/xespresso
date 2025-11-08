@@ -253,6 +253,7 @@ class CodesManager:
                      detected_codes: Dict[str, str],
                      qe_version: Optional[str] = None,
                      qe_prefix: Optional[str] = None,
+                     label: Optional[str] = None,
                      modules: Optional[List[str]] = None,
                      environment: Optional[Dict[str, str]] = None) -> CodesConfig:
         """
@@ -263,6 +264,7 @@ class CodesManager:
             detected_codes: Dictionary mapping code name to path
             qe_version: QE version string
             qe_prefix: QE installation prefix
+            label: Custom label for this version
             modules: List of modules to load
             environment: Environment variables
         
@@ -273,6 +275,7 @@ class CodesManager:
             machine_name=machine_name,
             qe_prefix=qe_prefix,
             qe_version=qe_version,
+            label=label,
             modules=modules,
             environment=environment
         )
@@ -363,8 +366,8 @@ class CodesManager:
                     existing_config.qe_prefix = config.qe_prefix
                 if config.qe_version:
                     existing_config.qe_version = config.qe_version
-                if config.version_label:
-                    existing_config.version_label = config.version_label
+                if config.label:
+                    existing_config.label = config.label
                 if config.modules:
                     existing_config.modules = config.modules
                 if config.environment:
@@ -414,7 +417,8 @@ def detect_qe_codes(machine_name: str = "local",
                    ssh_connection: Optional[Dict] = None,
                    env_setup: Optional[str] = None,
                    auto_load_machine: bool = True,
-                   qe_version: Optional[str] = None) -> CodesConfig:
+                   qe_version: Optional[str] = None,
+                   label: Optional[str] = None) -> CodesConfig:
     """
     Convenience function to detect and create a codes configuration.
     
@@ -434,6 +438,8 @@ def detect_qe_codes(machine_name: str = "local",
         qe_version: Optional version string to use instead of auto-detection.
                    Useful when auto-detection returns compiler version instead.
                    Example: "7.2", "7.1", "6.8"
+        label: Optional custom label for this version.
+              Example: "qe-7.2-production", "qe-dev"
     
     Returns:
         CodesConfig object with detected codes
@@ -500,7 +506,11 @@ def detect_qe_codes(machine_name: str = "local",
     
     if not detected_codes:
         print("⚠️  No Quantum ESPRESSO codes detected")
-        return CodesConfig(machine_name=machine_name)
+        return CodesConfig(
+            machine_name=machine_name,
+            qe_version=qe_version,
+            label=label
+        )
     
     print(f"✅ Found {len(detected_codes)} codes: {', '.join(detected_codes.keys())}")
     
@@ -522,6 +532,7 @@ def detect_qe_codes(machine_name: str = "local",
         detected_codes=detected_codes,
         qe_version=qe_version,
         qe_prefix=qe_prefix,
+        label=label,
         modules=modules
     )
     
@@ -539,7 +550,8 @@ def create_codes_config(machine_name: str = "local",
                        overwrite: bool = False,
                        merge: bool = True,
                        auto_load_machine: bool = True,
-                       qe_version: Optional[str] = None) -> CodesConfig:
+                       qe_version: Optional[str] = None,
+                       label: Optional[str] = None) -> CodesConfig:
     """
     Create a codes configuration (with optional auto-save).
     
@@ -557,6 +569,8 @@ def create_codes_config(machine_name: str = "local",
         auto_load_machine: If True, attempts to load machine config automatically
         qe_version: Optional version string to use instead of auto-detection.
                    Example: "7.2", "7.1", "6.8"
+        label: Optional custom label for this version.
+              Example: "qe-7.2-production", "qe-dev"
     
     Returns:
         CodesConfig object
@@ -569,7 +583,8 @@ def create_codes_config(machine_name: str = "local",
         ssh_connection=ssh_connection,
         env_setup=env_setup,
         auto_load_machine=auto_load_machine,
-        qe_version=qe_version
+        qe_version=qe_version,
+        label=label
     )
     
     if save and config.codes:
