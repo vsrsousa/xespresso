@@ -96,6 +96,20 @@ def render_dry_run_tab():
         )
         workdir = os.path.abspath(os.path.expanduser(workdir))
     
+    # Validate and normalize workdir to prevent path traversal
+    try:
+        workdir = os.path.realpath(workdir)
+        # Check if workdir is under a safe base directory (e.g., user's home or /tmp)
+        safe_bases = [os.path.realpath(os.path.expanduser("~")), os.path.realpath("/tmp")]
+        is_safe = any(workdir.startswith(base) for base in safe_bases)
+        
+        if not is_safe:
+            st.warning("⚠️ For security, only directories under your home directory or /tmp are allowed")
+            return
+    except (OSError, ValueError) as e:
+        st.error(f"❌ Invalid directory path: {e}")
+        return
+    
     # Label/subfolder for this calculation
     label = st.text_input(
         "Calculation Label (subfolder):",
@@ -106,6 +120,18 @@ def render_dry_run_tab():
     
     # Full path where files will be created
     full_path = os.path.join(workdir, label)
+    
+    # Validate the full path to prevent path traversal in the label
+    try:
+        full_path = os.path.realpath(full_path)
+        # Ensure full_path is under workdir (prevent path traversal via label)
+        if not full_path.startswith(workdir):
+            st.error("❌ Invalid calculation label - path traversal detected")
+            return
+    except (OSError, ValueError) as e:
+        st.error(f"❌ Invalid path: {e}")
+        return
+    
     st.info(f"📍 Files will be created in: `{full_path}`")
     
     st.markdown("---")
@@ -223,19 +249,24 @@ def render_dry_run_tab():
                     if 'input' in result and os.path.exists(result['input']):
                         st.subheader("👁️ Input File Preview")
                         try:
-                            with open(result['input'], 'r') as f:
-                                input_content = f.read()
-                            
-                            with st.expander("View Input File", expanded=True):
-                                st.code(input_content, language='fortran', line_numbers=True)
+                            # Validate path is under full_path for security
+                            input_path = os.path.realpath(result['input'])
+                            if not input_path.startswith(full_path):
+                                st.error("❌ Security error: input file path is outside expected directory")
+                            else:
+                                with open(input_path, 'r') as f:
+                                    input_content = f.read()
                                 
-                                # Download button
-                                st.download_button(
-                                    label="⬇️ Download Input File",
-                                    data=input_content,
-                                    file_name=os.path.basename(result['input']),
-                                    mime="text/plain"
-                                )
+                                with st.expander("View Input File", expanded=True):
+                                    st.code(input_content, language='fortran', line_numbers=True)
+                                    
+                                    # Download button
+                                    st.download_button(
+                                        label="⬇️ Download Input File",
+                                        data=input_content,
+                                        file_name=os.path.basename(result['input']),
+                                        mime="text/plain"
+                                    )
                         except Exception as e:
                             st.error(f"Error reading input file: {e}")
                     
@@ -243,19 +274,24 @@ def render_dry_run_tab():
                     if 'job_file' in result and os.path.exists(result['job_file']):
                         st.subheader("👁️ Job Script Preview")
                         try:
-                            with open(result['job_file'], 'r') as f:
-                                job_content = f.read()
-                            
-                            with st.expander("View Job Script", expanded=False):
-                                st.code(job_content, language='bash', line_numbers=True)
+                            # Validate path is under full_path for security
+                            job_path = os.path.realpath(result['job_file'])
+                            if not job_path.startswith(full_path):
+                                st.error("❌ Security error: job file path is outside expected directory")
+                            else:
+                                with open(job_path, 'r') as f:
+                                    job_content = f.read()
                                 
-                                # Download button
-                                st.download_button(
-                                    label="⬇️ Download Job Script",
-                                    data=job_content,
-                                    file_name=os.path.basename(result['job_file']),
-                                    mime="text/plain"
-                                )
+                                with st.expander("View Job Script", expanded=False):
+                                    st.code(job_content, language='bash', line_numbers=True)
+                                    
+                                    # Download button
+                                    st.download_button(
+                                        label="⬇️ Download Job Script",
+                                        data=job_content,
+                                        file_name=os.path.basename(result['job_file']),
+                                        mime="text/plain"
+                                    )
                         except Exception as e:
                             st.error(f"Error reading job file: {e}")
                     
