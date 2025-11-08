@@ -232,8 +232,11 @@ def render_codes_config_page():
                                     
                                     # Display codes for this version
                                     st.markdown(f"**Codes for QE {selected_version}:**")
+                                    
+                                    # Get codes from the version-specific structure
+                                    version_codes = version_config.get_all_codes(version=selected_version)
                                     version_codes_data = []
-                                    for name, code in version_config.codes.items():
+                                    for name, code in version_codes.items():
                                         version_codes_data.append({
                                             "Code": name,
                                             "Path": code.path,
@@ -242,9 +245,16 @@ def render_codes_config_page():
                                     st.table(version_codes_data)
                                     
                                     # Show version-specific modules if available
-                                    if hasattr(version_config, 'modules') and version_config.modules:
+                                    # Check both top-level (backward compat) and version structure
+                                    modules = None
+                                    if version_config.versions and selected_version in version_config.versions:
+                                        modules = version_config.versions[selected_version].get('modules')
+                                    elif hasattr(version_config, 'modules') and version_config.modules:
+                                        modules = version_config.modules
+                                    
+                                    if modules:
                                         st.markdown(f"**Modules for QE {selected_version}:**")
-                                        for module in version_config.modules:
+                                        for module in modules:
                                             st.markdown(f"- `{module}`")
                                 else:
                                     st.warning(f"⚠️ Could not load QE {selected_version} configuration.")
