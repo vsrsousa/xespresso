@@ -11,11 +11,11 @@ def render_job_submission_page():
     
     - **Generate Files (Dry Run)**: Create input and job files from your configuration without submitting
     - **File Browser**: Browse, view, and edit existing calculation files
-    - **Job Submission**: Submit existing jobs to your scheduler
+    - **Run Calculation**: Run calculations using xespresso
     """)
     
     # Create tabs for different functionalities
-    tab1, tab2, tab3 = st.tabs(["📂 File Browser", "🧪 Generate Files (Dry Run)", "🚀 Job Submission"])
+    tab1, tab2, tab3 = st.tabs(["📂 File Browser", "🧪 Generate Files (Dry Run)", "🚀 Run Calculation"])
     
     with tab1:
         render_file_browser_tab()
@@ -558,10 +558,10 @@ def render_file_browser_tab():
 
 def render_job_submission_tab():
     """Render the job submission tab for submitting calculations."""
-    st.subheader("🚀 Submit Calculation Job")
+    st.subheader("🚀 Run Calculation")
     st.markdown("""
-    Submit a job to run a calculation. You can either do a dry run (generate files only) 
-    or actually submit the job to a scheduler.
+    Run a calculation using xespresso. You can either do a dry run (validate files only) 
+    or actually run the calculation by calling `calc.get_potential_energy()`.
     """)
     
     # Working directory selection
@@ -669,7 +669,7 @@ def render_job_submission_tab():
                 
                 with col1:
                     submit_button = st.button(
-                        "🚀 Submit Job" if not dry_run else "🧪 Validate (Dry Run)",
+                        "🚀 Run Calculation" if not dry_run else "🧪 Validate (Dry Run)",
                         type="primary",
                         disabled=(selected_job_file is None),
                         key="submit_job_button"
@@ -733,51 +733,94 @@ def render_job_submission_tab():
                                     st.code(traceback.format_exc())
                     
                     else:
-                        # Actually submit the job
-                        st.warning("⚠️ **Live Submission** - Job will be submitted to scheduler")
+                        # Actually run the calculation using xespresso
+                        st.warning("⚠️ **Live Calculation** - Running calculation with xespresso")
                         
-                        with st.spinner("Submitting job..."):
+                        with st.spinner("Running calculation..."):
                             try:
-                                import subprocess
+                                from xespresso import Espresso
+                                from xespresso.xio import read_espresso_input
+                                from ase import io as ase_io
                                 
-                                # Determine submission command
-                                if 'slurm' in selected_job_file.lower() or any('SBATCH' in line for line in open(job_file_path).readlines()):
-                                    submit_cmd = f"sbatch {selected_job_file}"
-                                else:
-                                    submit_cmd = f"bash {selected_job_file}"
+                                # Find input file
+                                if not input_files:
+                                    st.error("❌ No input files found")
+                                    return
                                 
-                                # Submit the job
-                                result = subprocess.run(
-                                    submit_cmd,
-                                    shell=True,
-                                    cwd=selected_calc,
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=30
+                                # Use the first .pwi or .in file found
+                                input_file = None
+                                for inf in input_files:
+                                    if inf.endswith(('.pwi', '.in')):
+                                        input_file = inf
+                                        break
+                                
+                                if not input_file:
+                                    st.error("❌ No suitable input file (.pwi or .in) found")
+                                    return
+                                
+                                input_file_path = os.path.join(selected_calc, input_file)
+                                
+                                # Parse the input file to get structure and parameters
+                                st.info(f"📖 Reading input file: {input_file}")
+                                atoms, input_data, pseudopotentials, kpts = read_espresso_input(input_file_path)
+                                
+                                st.info(f"✅ Loaded structure: {atoms.get_chemical_formula()} ({len(atoms)} atoms)")
+                                
+                                # Parse kpts if it's a string
+                                if isinstance(kpts, str):
+                                    kpts_parts = kpts.split()
+                                    if len(kpts_parts) >= 3:
+                                        kpts = tuple(int(x) for x in kpts_parts[:3])
+                                
+                                # Get the label from the directory structure
+                                label = selected_calc
+                                
+                                # Create the Espresso calculator with parsed parameters
+                                st.info("🔧 Creating calculator with parsed parameters...")
+                                calc = Espresso(
+                                    pseudopotentials=pseudopotentials,
+                                    input_data=input_data,
+                                    kpts=kpts,
+                                    label=label,
                                 )
                                 
-                                if result.returncode == 0:
-                                    st.success("✅ Job submitted successfully!")
-                                    st.subheader("Submission Output")
-                                    st.code(result.stdout)
-                                    
-                                    # Try to extract job ID for SLURM
-                                    if 'sbatch' in submit_cmd:
-                                        import re
-                                        match = re.search(r'Submitted batch job (\d+)', result.stdout)
-                                        if match:
-                                            job_id = match.group(1)
-                                            st.info(f"🎫 **Job ID:** {job_id}")
-                                            st.markdown(f"Monitor with: `squeue -j {job_id}`")
-                                else:
-                                    st.error("❌ Job submission failed!")
-                                    st.subheader("Error Output")
-                                    st.code(result.stderr)
+                                # Run the calculation using xespresso's run method
+                                st.info("🚀 Running calculation with calc.run(atoms)...")
+                                calc.run(atoms)
                                 
-                            except subprocess.TimeoutExpired:
-                                st.error("❌ Job submission timed out (30s)")
+                                # Get the energy from the results
+                                energy = atoms.get_potential_energy()
+                                
+                                # Display results
+                                st.success("✅ Calculation completed successfully!")
+                                st.subheader("Calculation Results")
+                                
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.metric("Total Energy", f"{energy:.6f} eV")
+                                with col2:
+                                    st.metric("Structure", atoms.get_chemical_formula())
+                                
+                                # Show additional information
+                                with st.expander("📊 Detailed Results"):
+                                    st.write("**Input Parameters:**")
+                                    st.json(input_data)
+                                    
+                                    st.write("**Pseudopotentials:**")
+                                    for species, pseudo in pseudopotentials.items():
+                                        st.text(f"  {species}: {pseudo}")
+                                    
+                                    st.write("**K-points:**")
+                                    st.text(f"  {kpts}")
+                                
+                                # Check for output files
+                                output_files = [f for f in os.listdir(selected_calc) 
+                                               if f.endswith(('.out', '.pwo', '.log'))]
+                                if output_files:
+                                    st.info(f"📁 Output files generated: {', '.join(output_files)}")
+                                
                             except Exception as e:
-                                st.error(f"❌ Submission error: {e}")
+                                st.error(f"❌ Calculation error: {e}")
                                 import traceback
                                 with st.expander("Error Details"):
                                     st.code(traceback.format_exc())
