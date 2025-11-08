@@ -25,13 +25,21 @@ except ImportError:
 
 def render_machine_config_page():
     """Render the machine configuration page."""
-    st.header("Machine Configuration")
+    st.header("⚙️ Machine Configuration")
     st.markdown("""
-    Configure the computational machine/cluster where calculations will run.
-    Supports both local and remote (SSH) execution environments.
+    **Create and configure** computational machines/clusters for your calculations.
     
-    **Note:** Saving a machine configuration creates/updates machine-specific JSON files in `~/.xespresso/machines/`.
-    Pre-configured machines in `machines.json` are not modified.
+    This page is for **configuration only** - once machines are saved, you can select them 
+    in the Calculation Setup or Workflow Builder pages.
+    
+    Supports both local and remote (SSH) execution environments.
+    """)
+    
+    st.info("""
+    💡 **Configuration vs. Selection:**
+    - **Configure** machines here (one-time setup or updates)
+    - **Select** configured machines in Calculation Setup or Workflow Builder
+    - Configurations are saved to `~/.xespresso/machines/`
     """)
     
     if not XESPRESSO_AVAILABLE:
@@ -43,36 +51,39 @@ def render_machine_config_page():
     try:
         machines_list = list_machines(DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR)
         if machines_list:
+            st.success(f"✅ {len(machines_list)} machine(s) configured: {', '.join(machines_list)}")
+            
             # Use session state for persistent selection
             default_idx = 0
             if st.session_state.current_machine_name and st.session_state.current_machine_name in machines_list:
                 default_idx = machines_list.index(st.session_state.current_machine_name) + 1
             
             selected_machine = st.selectbox(
-                "Select a machine to edit or view:",
-                ["[Create New]"] + machines_list,
+                "Select a machine to edit:",
+                ["[Create New Machine]"] + machines_list,
                 index=default_idx,
-                key="machine_selector"
+                key="machine_selector",
+                help="Choose an existing machine to edit or create a new one"
             )
             
             # Update session state
-            if selected_machine != "[Create New]":
+            if selected_machine != "[Create New Machine]":
                 st.session_state.current_machine_name = selected_machine
         else:
             st.info("No machines configured yet. Create your first machine below.")
-            selected_machine = "[Create New]"
+            selected_machine = "[Create New Machine]"
     except Exception as e:
         st.warning(f"Could not load machines list: {e}")
-        selected_machine = "[Create New]"
+        selected_machine = "[Create New Machine]"
     
     # Create or edit machine
-    st.subheader("Machine Configuration")
+    st.subheader("Machine Configuration Form")
     
     # Load existing machine if selected
-    if selected_machine != "[Create New]":
+    if selected_machine != "[Create New Machine]":
         try:
             machine = load_machine(DEFAULT_CONFIG_PATH, selected_machine, DEFAULT_MACHINES_DIR, return_object=True)
-            st.success(f"✅ Loaded machine: {selected_machine}")
+            st.success(f"✅ Editing machine: {selected_machine}")
             st.session_state.current_machine = machine
             
             # Display current configuration
