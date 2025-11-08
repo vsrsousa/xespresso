@@ -886,38 +886,160 @@ elif page == "🚀 Job Submission":
         
         # Submit button
         if st.button("🚀 Submit Job", type="primary"):
-            with st.spinner("Submitting job..."):
+            with st.spinner("Preparing job submission..."):
                 try:
-                    st.info("📝 Job submission functionality will be implemented")
-                    st.info("This will create input files and submit to the configured machine")
+                    # Get workflow configuration
+                    config = st.session_state.workflow_config
+                    atoms = st.session_state.current_structure
                     
-                    # Show what would be done
-                    st.subheader("Submission Details")
-                    st.write("**Steps that would be performed:**")
-                    st.write("1. ✓ Create calculation directory")
-                    st.write("2. ✓ Write structure file")
-                    st.write("3. ✓ Generate Quantum ESPRESSO input")
-                    st.write("4. ✓ Submit to scheduler (if configured)")
-                    st.write("5. ✓ Monitor job status")
+                    # Use normalized path if valid
+                    workdir = normalized_workdir if is_valid_workdir else local_workdir
                     
-                    # Show file locations (use normalized path if valid)
-                    display_workdir = normalized_workdir if is_valid_workdir else local_workdir
-                    st.subheader("📂 File Locations")
-                    st.info(f"""
-                    **Input files:** `{display_workdir}/`
-                    - Structure file: `{display_workdir}/structure.cif`
-                    - QE input: `{display_workdir}/espresso.pwi`
-                    - Job script: `{display_workdir}/run.sh`
-                    """)
+                    # Extract calculation label from config
+                    label = config.get('label', 'calc/structure')
                     
-                    if dry_run:
-                        st.success("✅ Dry run completed - no job submitted")
+                    # Build full label path (directory/prefix)
+                    full_label = os.path.join(workdir, label)
+                    
+                    # Note: label creates a directory and files are created inside with the prefix name
+                    # For example, label="calc/fe" creates directory "calc/fe/" and files "calc/fe/fe.pwi"
+                    
+                    # Step 1: Save structure file before creating calculator
+                    # We save it in the parent directory of the label for easy access
+                    if '/' in label:
+                        structure_dir = os.path.join(workdir, os.path.dirname(label))
                     else:
-                        st.success("✅ Job submitted successfully!")
-                        st.balloons()
+                        structure_dir = workdir
+                    
+                    os.makedirs(structure_dir, exist_ok=True)
+                    structure_file = os.path.join(structure_dir, "structure.cif")
+                    io.write(structure_file, atoms)
+                    st.write(f"✅ 1. Saved structure to: `{structure_file}`")
+                    
+                    # Step 2: Prepare input_data for Espresso calculator
+                    input_data = {}
+                    
+                    # Add calculation type
+                    calc_type = config.get('calc_type', 'scf')
+                    if calc_type == 'scf':
+                        input_data['calculation'] = 'scf'
+                    elif calc_type == 'relaxation':
+                        relax_type = config.get('relax_type', 'relax')
+                        input_data['calculation'] = relax_type
+                    elif calc_type == 'bands':
+                        input_data['calculation'] = 'bands'
+                    
+                    # Add energy cutoffs
+                    if 'ecutwfc' in config:
+                        input_data['ecutwfc'] = config['ecutwfc']
+                    if 'ecutrho' in config:
+                        input_data['ecutrho'] = config['ecutrho']
+                    
+                    # Add convergence threshold
+                    if 'conv_thr' in config:
+                        input_data['conv_thr'] = config['conv_thr']
+                    
+                    # Add occupations and smearing
+                    if 'occupations' in config:
+                        input_data['occupations'] = config['occupations']
+                    if 'smearing' in config:
+                        input_data['smearing'] = config['smearing']
+                    if 'degauss' in config:
+                        input_data['degauss'] = config['degauss']
+                    
+                    # Add spin polarization
+                    if 'nspin' in config and config['nspin'] > 1:
+                        input_data['nspin'] = config['nspin']
+                    
+                    # Prepare k-points
+                    kpts = None
+                    kspacing = None
+                    if 'kspacing' in config:
+                        kspacing = config['kspacing']
+                    elif 'kpts' in config:
+                        kpts = config['kpts']
+                    
+                    # Get pseudopotentials
+                    pseudopotentials = config.get('pseudopotentials', {})
+                    if not pseudopotentials:
+                        st.error("❌ No pseudopotentials configured!")
+                    else:
+                        # Get queue configuration if machine has scheduler
+                        queue = None
+                        if st.session_state.current_machine:
+                            machine = st.session_state.current_machine
+                            if hasattr(machine, 'scheduler') and machine.scheduler:
+                                # Build queue configuration from machine
+                                queue = {
+                                    'scheduler': machine.scheduler,
+                                }
+                                # Add additional scheduler parameters if available
+                                if hasattr(machine, 'scheduler_config'):
+                                    queue.update(machine.scheduler_config)
+                        
+                        # Create Espresso calculator
+                        calc = Espresso(
+                            label=full_label,
+                            pseudopotentials=pseudopotentials,
+                            input_data=input_data,
+                            kpts=kpts,
+                            kspacing=kspacing,
+                            queue=queue,
+                        )
+                        
+                        # Assign calculator to atoms
+                        atoms.calc = calc
+                        
+                        # Step 3: Generate Quantum ESPRESSO input files
+                        calc.write_input(atoms)
+                        
+                        # The calculator creates a directory from the label and stores files there
+                        # calc.directory = full path to the calculation directory
+                        # calc.label = full path including prefix for file names
+                        # Files created: calc.label + .pwi, calc.label + .asei, and job_file
+                        
+                        prefix = os.path.basename(label)
+                        pwi_file = f"{calc.label}.pwi"
+                        asei_file = f"{calc.label}.asei"
+                        job_file = os.path.join(calc.directory, "job_file")
+                        
+                        st.write(f"✅ 2. Generated Quantum ESPRESSO input files in: `{calc.directory}`")
+                        
+                        # Show file locations
+                        st.subheader("📂 Generated Files")
+                        
+                        files_info = f"""
+**Calculation directory:** `{calc.directory}`
+- Structure file: `{structure_file}`
+- QE Input file: `{pwi_file}`
+- ASE Info file: `{asei_file}`
+"""
+                        
+                        if os.path.exists(job_file):
+                            files_info += f"- Job script: `{job_file}`\n"
+                        
+                        st.info(files_info)
+                        
+                        # Show preview of generated input file
+                        if os.path.exists(pwi_file):
+                            with st.expander("📄 Preview QE Input File"):
+                                with open(pwi_file, 'r') as f:
+                                    st.code(f.read(), language='text')
+                        
+                        if dry_run:
+                            st.success("✅ Dry run completed - input files generated, no job submitted")
+                        else:
+                            # Step 4: Actually submit the job (call get_potential_energy)
+                            st.write("🚀 3. Submitting job to scheduler...")
+                            # Note: In a real implementation, this would call atoms.get_potential_energy()
+                            # but we need to handle this carefully in a GUI context
+                            st.warning("⚠️ Actual job submission requires the calculation to run to completion.")
+                            st.info("For now, files have been generated. You can submit them manually or use command line.")
+                            st.success("✅ Job files ready for submission!")
+                            st.balloons()
                     
                 except Exception as e:
-                    st.error(f"❌ Error submitting job: {e}")
+                    st.error(f"❌ Error during job preparation: {e}")
                     st.code(traceback.format_exc())
 
 # Page 7: Results & Post-Processing
