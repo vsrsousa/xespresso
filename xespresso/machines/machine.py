@@ -288,6 +288,9 @@ class Machine:
                 "ssh_key": self.auth.get("ssh_key", "~/.ssh/id_rsa"),
                 "port": self.auth.get("port", self.port)
             }
+            # Pass through auto_install_key if specified
+            if "auto_install_key" in self.auth:
+                queue["remote_auth"]["auto_install_key"] = self.auth["auto_install_key"]
             queue["remote_dir"] = self.workdir
         
         return queue
