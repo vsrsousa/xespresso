@@ -73,9 +73,9 @@ def render_codes_config_page():
                     placeholder="e.g., 7.2, 7.1, 6.8",
                     help="Explicitly specify Quantum ESPRESSO version to avoid confusion with compiler versions"
                 )
-                version_label = st.text_input(
-                    "Version Label (optional)",
-                    help="Custom label for this version (e.g., 'qe-7.2', 'qe-dev')"
+                label = st.text_input(
+                    "Label (optional)",
+                    help="Custom label for this version (e.g., 'production', 'dev', 'test')"
                 )
                 modules_str = st.text_area(
                     "Modules to Load (optional, one per line)",
@@ -108,15 +108,12 @@ def render_codes_config_page():
                         search_paths=search_paths,
                         modules=modules,
                         auto_load_machine=True,
-                        qe_version=qe_version.strip() if qe_version and qe_version.strip() else None
+                        qe_version=qe_version.strip() if qe_version and qe_version.strip() else None,
+                        label=label.strip() if label and label.strip() else None
                     )
                     
                     if codes_config and codes_config.codes:
                         st.success(f"✅ Detected {len(codes_config.codes)} codes!")
-                        
-                        # Add version label if provided
-                        if version_label:
-                            codes_config.version_label = version_label
                         
                         st.session_state.current_codes = codes_config
                         
@@ -128,7 +125,7 @@ def render_codes_config_page():
                                 "Code": name,
                                 "Path": code.path,
                                 "Version": code.version or "Unknown",
-                                "Label": version_label or "default"
+                                "Label": codes_config.label or "default"
                             })
                         st.table(codes_data)
                         
@@ -167,9 +164,9 @@ def render_codes_config_page():
             if existing_codes:
                 st.success(f"✅ Loaded existing configuration")
                 
-                # Show version label if present
-                if existing_codes.version_label:
-                    st.info(f"🏷️ Version Label: **{existing_codes.version_label}**")
+                # Show label if present
+                if existing_codes.label:
+                    st.info(f"🏷️ Label: **{existing_codes.label}**")
                 
                 # Feature 2: Version Selection - Show available versions
                 if existing_codes.versions:
