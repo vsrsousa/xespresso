@@ -18,6 +18,7 @@ COMMON_QE_CODES = [
     'pw', 'ph', 'pp', 'projwfc', 'dos', 'bands', 
     'neb', 'hp', 'dynmat', 'matdyn', 'q2r',
     'pwcond', 'turbo_lanczos', 'turbo_davidson',
+    'pw2wannier90', 'wannier90', 'thermo_pw.x',
 ]
 
 DEFAULT_CODES_DIR = os.path.expanduser("~/.xespresso/codes")
