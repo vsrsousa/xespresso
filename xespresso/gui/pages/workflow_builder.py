@@ -169,11 +169,10 @@ def render_workflow_builder_page():
                 selected_machine_name = st.selectbox(
                     "Select Machine:",
                     options=available_machines,
-                    index=available_machines.index(st.session_state.get('selected_machine_for_workflow', available_machines[0])) 
-                          if st.session_state.get('selected_machine_for_workflow') in available_machines else 0,
                     help="Machine where the workflow will run",
                     key="workflow_machine_selector"
                 )
+                # Store selection in separate state variable for compatibility
                 st.session_state.selected_machine_for_workflow = selected_machine_name
                 config['machine_name'] = selected_machine_name
                 
@@ -211,11 +210,10 @@ def render_workflow_builder_page():
                     selected_code = st.selectbox(
                         "Select Code:",
                         options=code_options,
-                        index=code_options.index(st.session_state.get('selected_code_for_workflow', code_options[0]))
-                              if st.session_state.get('selected_code_for_workflow') in code_options else 0,
                         help="Quantum ESPRESSO code version to use",
                         key="workflow_code_selector"
                     )
+                    # Store selection in separate state variable for compatibility
                     st.session_state.selected_code_for_workflow = selected_code
                     config['code_name'] = selected_code
                     

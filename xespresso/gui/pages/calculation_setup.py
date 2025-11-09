@@ -186,11 +186,10 @@ def render_calculation_setup_page():
                 selected_machine_name = st.selectbox(
                     "Select Machine:",
                     options=available_machines,
-                    index=available_machines.index(st.session_state.get('selected_machine_for_calc', available_machines[0])) 
-                          if st.session_state.get('selected_machine_for_calc') in available_machines else 0,
                     help="Machine where the calculation will run",
                     key="calc_machine_selector"
                 )
+                # Store selection in separate state variable for compatibility
                 st.session_state.selected_machine_for_calc = selected_machine_name
                 config['machine_name'] = selected_machine_name
                 
@@ -228,11 +227,10 @@ def render_calculation_setup_page():
                     selected_code = st.selectbox(
                         "Select Code:",
                         options=code_options,
-                        index=code_options.index(st.session_state.get('selected_code_for_calc', code_options[0]))
-                              if st.session_state.get('selected_code_for_calc') in code_options else 0,
                         help="Quantum ESPRESSO code version to use",
                         key="calc_code_selector"
                     )
+                    # Store selection in separate state variable for compatibility
                     st.session_state.selected_code_for_calc = selected_code
                     config['code_name'] = selected_code
                     
