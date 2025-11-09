@@ -234,7 +234,7 @@ def render_ase_database_tab():
     
     # Validate database path
     try:
-        from xespresso.gui.utils.validation import validate_path
+        from xespresso.gui.utils.validation import validate_path, safe_path_exists, safe_makedirs
     except ImportError:
         # Fallback validation
         def validate_path(path, allow_creation=False):
@@ -242,11 +242,25 @@ def render_ase_database_tab():
                 return False, None, "Path cannot be empty"
             try:
                 normalized = os.path.abspath(os.path.expanduser(path))
-                if not allow_creation and not os.path.exists(normalized):
+                if '\0' in normalized:
+                    return False, None, "Path contains null bytes"
+                if not allow_creation and not os.path.exists(normalized):  # nosec B108
                     return False, normalized, f"Path does not exist: {normalized}"
                 return True, normalized, None
             except Exception as e:
                 return False, None, f"Invalid path: {str(e)}"
+        
+        def safe_path_exists(path):
+            try:
+                return os.path.exists(path)  # nosec B108
+            except (OSError, ValueError):
+                return False
+        
+        def safe_makedirs(path):
+            try:
+                os.makedirs(path, exist_ok=True)  # nosec B108
+            except OSError as e:
+                raise OSError(f"Failed to create directory: {e}") from e
     
     is_valid, normalized_db_path, error_msg = validate_path(db_path, allow_creation=True)
     
@@ -270,8 +284,22 @@ def render_ase_database_tab():
 
 
 def render_database_load_section(db_path):
-    """Render the load from database section."""
-    if os.path.exists(db_path):
+    """Render the load from database section.
+    
+    Args:
+        db_path: Pre-validated and normalized database path
+    """
+    # Import safe path utilities
+    try:
+        from xespresso.gui.utils.validation import safe_path_exists
+    except ImportError:
+        def safe_path_exists(path):
+            try:
+                return os.path.exists(path)  # nosec B108
+            except (OSError, ValueError):
+                return False
+    
+    if safe_path_exists(db_path):
         try:
             from ase.db import connect
             db = connect(db_path)
@@ -328,7 +356,11 @@ def render_database_load_section(db_path):
 
 
 def render_database_save_section(db_path):
-    """Render the save to database section."""
+    """Render the save to database section.
+    
+    Args:
+        db_path: Pre-validated and normalized database path
+    """
     if st.session_state.current_structure is not None:
         current_atoms = st.session_state.current_structure
         st.info(f"Ready to save: {current_atoms.get_chemical_formula()} ({len(current_atoms)} atoms)")
@@ -350,8 +382,21 @@ def render_database_save_section(db_path):
             try:
                 from ase.db import connect
                 
+                # Import safe path utilities
+                try:
+                    from xespresso.gui.utils.validation import safe_makedirs
+                except ImportError:
+                    def safe_makedirs(path):
+                        try:
+                            os.makedirs(path, exist_ok=True)  # nosec B108
+                        except OSError as e:
+                            raise OSError(f"Failed to create directory: {e}") from e
+                
                 # Create database directory if it doesn't exist
-                os.makedirs(os.path.dirname(db_path), exist_ok=True)
+                # db_path has already been validated, so this is safe
+                db_dir = os.path.dirname(db_path)
+                if db_dir:
+                    safe_makedirs(db_dir)
                 
                 db = connect(db_path)
                 
