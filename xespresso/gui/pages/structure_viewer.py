@@ -27,13 +27,19 @@ def render_structure_viewer_page():
     st.subheader("📂 Load Structure")
     
     # Tab for different input methods
-    tab1, tab2 = st.tabs(["Upload File", "Browse Directory"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Upload File", "Browse Directory", "Build Structure", "ASE Database"])
     
     with tab1:
         render_upload_tab()
     
     with tab2:
         render_browse_tab()
+    
+    with tab3:
+        render_build_structure_tab()
+    
+    with tab4:
+        render_ase_database_tab()
 
 
 def render_upload_tab():
@@ -113,6 +119,264 @@ def render_browse_tab():
             st.warning("⚠️ No structure files found in directory")
     else:
         st.error("❌ Invalid working directory")
+
+
+def render_build_structure_tab():
+    """Render the build structure tab for creating simple structures."""
+    try:
+        from ase.build import bulk, molecule
+    except ImportError:
+        st.error("❌ ASE not available. Structure building is disabled.")
+        return
+    
+    st.markdown("""
+    Build simple structures using ASE's built-in builders.
+    """)
+    
+    build_type = st.selectbox(
+        "Structure Type:",
+        ["Bulk Crystal", "Molecule"],
+        key="build_type_selector"
+    )
+    
+    atoms = None
+    
+    if build_type == "Bulk Crystal":
+        st.subheader("🔷 Build Bulk Crystal")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            element = st.text_input("Element", value="Fe", key="crystal_element")
+            crystal_structure = st.selectbox(
+                "Crystal Structure",
+                ["fcc", "bcc", "hcp", "diamond", "sc"],
+                key="crystal_structure"
+            )
+        with col2:
+            a_param = st.number_input(
+                "Lattice Parameter (Å)", 
+                value=3.6, 
+                step=0.1,
+                key="lattice_param"
+            )
+            cubic = st.checkbox("Cubic Cell", value=True, key="cubic_cell")
+        
+        if st.button("🔨 Build Crystal", key="build_crystal_btn"):
+            try:
+                atoms = bulk(
+                    element,
+                    crystal_structure,
+                    a=a_param,
+                    cubic=cubic
+                )
+                st.success(f"✅ Built {element} {crystal_structure} structure")
+                
+                # Store in session state
+                st.session_state.current_structure = atoms
+                
+                render_structure_controls_and_viewer(atoms)
+            except Exception as e:
+                st.error(f"❌ Error building structure: {e}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
+    
+    else:  # Molecule
+        st.subheader("🧪 Build Molecule")
+        
+        molecule_name = st.text_input(
+            "Molecule Name",
+            value="H2O",
+            help="Common molecules: H2O, CO2, CH4, NH3, C6H6, etc.",
+            key="molecule_name"
+        )
+        
+        st.info("💡 Tip: Try H2O, CO2, CH4, NH3, C6H6, or other common molecules")
+        
+        if st.button("🔨 Build Molecule", key="build_molecule_btn"):
+            try:
+                atoms = molecule(molecule_name)
+                # Center molecule in a box
+                atoms.center(vacuum=5.0)
+                st.success(f"✅ Built {molecule_name} molecule")
+                
+                # Store in session state
+                st.session_state.current_structure = atoms
+                
+                render_structure_controls_and_viewer(atoms)
+            except Exception as e:
+                st.error(f"❌ Error building molecule: {e}")
+                st.info("Make sure the molecule name is recognized by ASE. Check ASE documentation for available molecules.")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
+
+
+def render_ase_database_tab():
+    """Render the ASE database tab for loading/saving structures."""
+    try:
+        from ase.db import connect
+    except ImportError:
+        st.error("❌ ASE not available. Database functionality is disabled.")
+        return
+    
+    st.markdown("""
+    Load and save structures to an ASE database for easy management.
+    """)
+    
+    # Database path configuration
+    db_path = st.text_input(
+        "Database Path",
+        value=st.session_state.get('ase_db_path', os.path.expanduser("~/.xespresso/structures.db")),
+        help="Path to ASE database file",
+        key="ase_db_path_input"
+    )
+    
+    # Validate database path
+    try:
+        from xespresso.gui.utils.validation import validate_path
+    except ImportError:
+        # Fallback validation
+        def validate_path(path, allow_creation=False):
+            if not path:
+                return False, None, "Path cannot be empty"
+            try:
+                normalized = os.path.abspath(os.path.expanduser(path))
+                if not allow_creation and not os.path.exists(normalized):
+                    return False, normalized, f"Path does not exist: {normalized}"
+                return True, normalized, None
+            except Exception as e:
+                return False, None, f"Invalid path: {str(e)}"
+    
+    is_valid, normalized_db_path, error_msg = validate_path(db_path, allow_creation=True)
+    
+    if not is_valid:
+        st.error(f"❌ Invalid database path: {error_msg}")
+        return
+    
+    st.session_state['ase_db_path'] = normalized_db_path
+    
+    # Database operations
+    db_operation = st.radio(
+        "Operation:",
+        ["Load from Database", "Save to Database"],
+        key="db_operation"
+    )
+    
+    if db_operation == "Load from Database":
+        render_database_load_section(normalized_db_path)
+    else:
+        render_database_save_section(normalized_db_path)
+
+
+def render_database_load_section(db_path):
+    """Render the load from database section."""
+    if os.path.exists(db_path):
+        try:
+            from ase.db import connect
+            db = connect(db_path)
+            
+            # List structures in database
+            rows = list(db.select())
+            if rows:
+                st.success(f"✅ Found {len(rows)} structure(s) in database")
+                
+                # Create selection table
+                structures_info = []
+                for row in rows:
+                    structures_info.append({
+                        "ID": row.id,
+                        "Formula": row.formula,
+                        "Atoms": row.natoms,
+                        "Tags": ", ".join(row.key_value_pairs.keys()) if row.key_value_pairs else ""
+                    })
+                
+                st.table(structures_info)
+                
+                selected_id = st.number_input(
+                    "Select structure ID to load:",
+                    min_value=1,
+                    max_value=len(rows),
+                    value=1,
+                    key="selected_db_id"
+                )
+                
+                if st.button("📥 Load Selected Structure", key="load_db_structure_btn"):
+                    try:
+                        row = db.get(id=selected_id)
+                        atoms = row.toatoms()
+                        st.success(f"✅ Loaded structure ID {selected_id}: {atoms.get_chemical_formula()}")
+                        
+                        # Store in session state
+                        st.session_state.current_structure = atoms
+                        
+                        render_structure_controls_and_viewer(atoms)
+                    except Exception as e:
+                        st.error(f"❌ Error loading structure: {e}")
+                        import traceback
+                        with st.expander("Error Details"):
+                            st.code(traceback.format_exc())
+            else:
+                st.info("ℹ️ Database is empty. Save structures to start building your library.")
+        except Exception as e:
+            st.error(f"❌ Error reading database: {e}")
+            import traceback
+            with st.expander("Error Details"):
+                st.code(traceback.format_exc())
+    else:
+        st.info(f"ℹ️ Database does not exist yet. It will be created when you save your first structure.")
+
+
+def render_database_save_section(db_path):
+    """Render the save to database section."""
+    if st.session_state.current_structure is not None:
+        current_atoms = st.session_state.current_structure
+        st.info(f"Ready to save: {current_atoms.get_chemical_formula()} ({len(current_atoms)} atoms)")
+        
+        # Add metadata
+        save_tags = st.text_input(
+            "Tags (comma-separated)",
+            help="Add tags to help identify this structure later",
+            key="db_save_tags"
+        )
+        
+        save_description = st.text_area(
+            "Description (optional)",
+            help="Add notes about this structure",
+            key="db_save_description"
+        )
+        
+        if st.button("💾 Save to Database", key="save_db_structure_btn"):
+            try:
+                from ase.db import connect
+                
+                # Create database directory if it doesn't exist
+                os.makedirs(os.path.dirname(db_path), exist_ok=True)
+                
+                db = connect(db_path)
+                
+                # Parse tags
+                key_value_pairs = {}
+                if save_tags:
+                    for tag in save_tags.split(','):
+                        tag = tag.strip()
+                        if tag:
+                            key_value_pairs[tag] = True
+                
+                if save_description:
+                    key_value_pairs['description'] = save_description
+                
+                # Save to database
+                db.write(current_atoms, **key_value_pairs)
+                st.success(f"✅ Structure saved to database: {db_path}")
+                st.info("Refresh the 'Load from Database' section to see the updated list.")
+            except Exception as e:
+                st.error(f"❌ Error saving to database: {e}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
+    else:
+        st.warning("⚠️ No structure loaded. Load a structure first before saving to database.")
 
 
 def render_structure_controls_and_viewer(atoms):
