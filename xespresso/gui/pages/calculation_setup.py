@@ -166,6 +166,96 @@ def render_calculation_setup_page():
     
     st.markdown("---")
     
+    # Machine and Code Selection
+    st.subheader("🖥️ Execution Environment")
+    st.info("""
+    Select the machine and code version to run this calculation.
+    The machine will be passed to Espresso via the `queue` parameter for backwards compatibility.
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Machine Selection
+        st.write("**Machine:**")
+        try:
+            from xespresso.machines.config.loader import list_machines
+            available_machines = list_machines()
+            
+            if available_machines:
+                selected_machine_name = st.selectbox(
+                    "Select Machine:",
+                    options=available_machines,
+                    index=available_machines.index(st.session_state.get('selected_machine_for_calc', available_machines[0])) 
+                          if st.session_state.get('selected_machine_for_calc') in available_machines else 0,
+                    help="Machine where the calculation will run",
+                    key="calc_machine_selector"
+                )
+                st.session_state.selected_machine_for_calc = selected_machine_name
+                config['machine_name'] = selected_machine_name
+                
+                # Load the machine object
+                try:
+                    from xespresso.machines.config.loader import load_machine
+                    machine = load_machine(selected_machine_name)
+                    st.session_state.calc_machine = machine
+                    
+                    # Show machine info
+                    st.caption(f"Type: {machine.execution}")
+                    if machine.scheduler:
+                        st.caption(f"Scheduler: {machine.scheduler}")
+                except Exception as e:
+                    st.warning(f"Could not load machine: {e}")
+            else:
+                st.warning("⚠️ No machines configured. Please configure a machine first in the Machine Configuration page.")
+                st.session_state.selected_machine_for_calc = None
+                config['machine_name'] = None
+        except ImportError:
+            st.error("❌ Machine configuration modules not available")
+            st.session_state.selected_machine_for_calc = None
+            config['machine_name'] = None
+    
+    with col2:
+        # Code Version Selection
+        st.write("**Code Version:**")
+        if st.session_state.get('selected_machine_for_calc'):
+            try:
+                from xespresso.codes.manager import load_codes_config
+                codes = load_codes_config(st.session_state.selected_machine_for_calc)
+                
+                if codes and codes.codes:
+                    code_options = list(codes.codes.keys())
+                    selected_code = st.selectbox(
+                        "Select Code:",
+                        options=code_options,
+                        index=code_options.index(st.session_state.get('selected_code_for_calc', code_options[0]))
+                              if st.session_state.get('selected_code_for_calc') in code_options else 0,
+                        help="Quantum ESPRESSO code version to use",
+                        key="calc_code_selector"
+                    )
+                    st.session_state.selected_code_for_calc = selected_code
+                    config['code_name'] = selected_code
+                    
+                    # Show code info
+                    code_obj = codes.codes[selected_code]
+                    st.caption(f"Version: {code_obj.version or 'Unknown'}")
+                    if hasattr(code_obj, 'modules') and code_obj.modules:
+                        st.caption(f"Modules: {', '.join(code_obj.modules[:2])}{'...' if len(code_obj.modules) > 2 else ''}")
+                else:
+                    st.warning(f"⚠️ No codes configured for machine '{st.session_state.selected_machine_for_calc}'. Please configure codes in the Codes Configuration page.")
+                    st.session_state.selected_code_for_calc = None
+                    config['code_name'] = None
+            except Exception as e:
+                st.warning(f"Could not load codes: {e}")
+                st.session_state.selected_code_for_calc = None
+                config['code_name'] = None
+        else:
+            st.info("Select a machine first")
+            st.session_state.selected_code_for_calc = None
+            config['code_name'] = None
+    
+    st.markdown("---")
+    
     # Prepare Calculation Button
     st.subheader("✨ Prepare Calculation")
     st.info("""
@@ -182,8 +272,20 @@ def render_calculation_setup_page():
                 st.error("❌ Please specify pseudopotentials for all elements")
                 return
             
+            # Validate machine and code selection
+            if not st.session_state.get('calc_machine'):
+                st.error("❌ Please select a machine")
+                return
+            
+            # Add machine to config as queue parameter (for backwards compatibility)
+            config['queue'] = st.session_state.calc_machine
+            
             # Use calculation module to prepare atoms and calculator
             st.info("📦 Using calculation module to prepare atoms and Espresso calculator...")
+            st.info(f"   Machine: {st.session_state.selected_machine_for_calc}")
+            if st.session_state.get('selected_code_for_calc'):
+                st.info(f"   Code: {st.session_state.selected_code_for_calc}")
+            
             label = "prepared_calculation"  # Temporary label, will be updated in job submission
             
             with st.spinner("Preparing calculation objects..."):

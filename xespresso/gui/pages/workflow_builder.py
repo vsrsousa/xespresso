@@ -149,6 +149,96 @@ def render_workflow_builder_page():
     
     st.markdown("---")
     
+    # Machine and Code Selection
+    st.subheader("🖥️ Execution Environment")
+    st.info("""
+    Select the machine and code version for this workflow.
+    These will be used for all steps in the workflow.
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Machine Selection
+        st.write("**Machine:**")
+        try:
+            from xespresso.machines.config.loader import list_machines
+            available_machines = list_machines()
+            
+            if available_machines:
+                selected_machine_name = st.selectbox(
+                    "Select Machine:",
+                    options=available_machines,
+                    index=available_machines.index(st.session_state.get('selected_machine_for_workflow', available_machines[0])) 
+                          if st.session_state.get('selected_machine_for_workflow') in available_machines else 0,
+                    help="Machine where the workflow will run",
+                    key="workflow_machine_selector"
+                )
+                st.session_state.selected_machine_for_workflow = selected_machine_name
+                config['machine_name'] = selected_machine_name
+                
+                # Load the machine object
+                try:
+                    from xespresso.machines.config.loader import load_machine
+                    machine = load_machine(selected_machine_name)
+                    st.session_state.workflow_machine = machine
+                    
+                    # Show machine info
+                    st.caption(f"Type: {machine.execution}")
+                    if machine.scheduler:
+                        st.caption(f"Scheduler: {machine.scheduler}")
+                except Exception as e:
+                    st.warning(f"Could not load machine: {e}")
+            else:
+                st.warning("⚠️ No machines configured. Please configure a machine first in the Machine Configuration page.")
+                st.session_state.selected_machine_for_workflow = None
+                config['machine_name'] = None
+        except ImportError:
+            st.error("❌ Machine configuration modules not available")
+            st.session_state.selected_machine_for_workflow = None
+            config['machine_name'] = None
+    
+    with col2:
+        # Code Version Selection
+        st.write("**Code Version:**")
+        if st.session_state.get('selected_machine_for_workflow'):
+            try:
+                from xespresso.codes.manager import load_codes_config
+                codes = load_codes_config(st.session_state.selected_machine_for_workflow)
+                
+                if codes and codes.codes:
+                    code_options = list(codes.codes.keys())
+                    selected_code = st.selectbox(
+                        "Select Code:",
+                        options=code_options,
+                        index=code_options.index(st.session_state.get('selected_code_for_workflow', code_options[0]))
+                              if st.session_state.get('selected_code_for_workflow') in code_options else 0,
+                        help="Quantum ESPRESSO code version to use",
+                        key="workflow_code_selector"
+                    )
+                    st.session_state.selected_code_for_workflow = selected_code
+                    config['code_name'] = selected_code
+                    
+                    # Show code info
+                    code_obj = codes.codes[selected_code]
+                    st.caption(f"Version: {code_obj.version or 'Unknown'}")
+                    if hasattr(code_obj, 'modules') and code_obj.modules:
+                        st.caption(f"Modules: {', '.join(code_obj.modules[:2])}{'...' if len(code_obj.modules) > 2 else ''}")
+                else:
+                    st.warning(f"⚠️ No codes configured for machine '{st.session_state.selected_machine_for_workflow}'. Please configure codes in the Codes Configuration page.")
+                    st.session_state.selected_code_for_workflow = None
+                    config['code_name'] = None
+            except Exception as e:
+                st.warning(f"Could not load codes: {e}")
+                st.session_state.selected_code_for_workflow = None
+                config['code_name'] = None
+        else:
+            st.info("Select a machine first")
+            st.session_state.selected_code_for_workflow = None
+            config['code_name'] = None
+    
+    st.markdown("---")
+    
     # Build Workflow Button
     st.subheader("✨ Build Workflow")
     st.info("""
@@ -165,8 +255,19 @@ def render_workflow_builder_page():
                 st.error("❌ Please specify pseudopotentials for all elements")
                 return
             
+            # Validate machine selection
+            if not st.session_state.get('workflow_machine'):
+                st.error("❌ Please select a machine")
+                return
+            
+            # Add machine to config as queue parameter (for backwards compatibility)
+            config['queue'] = st.session_state.workflow_machine
+            
             # Create workflow using workflow module
             st.info("📦 Creating workflow using workflow module...")
+            st.info(f"   Machine: {st.session_state.selected_machine_for_workflow}")
+            if st.session_state.get('selected_code_for_workflow'):
+                st.info(f"   Code: {st.session_state.selected_code_for_workflow}")
             
             base_label = "workflow"
             workflow = GUIWorkflow(atoms, config, base_label=base_label)
