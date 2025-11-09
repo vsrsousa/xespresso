@@ -1,15 +1,26 @@
-"""Structure Viewer Page for xespresso GUI."""
+"""
+Structure Viewer Page for xespresso GUI.
+
+This page uses the structures module to handle loading and exporting,
+following the modular design pattern where dedicated modules handle
+specific functionality.
+"""
 import streamlit as st
-from ase import io as ase_io
 import os
-import tempfile
 
 def render_structure_viewer_page():
-    """Render the structure viewer page with embeddable 3D viewers and visualization options."""
+    """
+    Render the structure viewer page with embeddable 3D viewers and visualization options.
+    
+    This page coordinates user interaction and uses the structures module for
+    loading and exporting operations, following the modular design pattern.
+    """
     st.header("Structure Viewer")
     st.markdown("""
     Load and visualize atomic structures with interactive 3D viewers.
     All viewers are embeddable and work in web browsers without external applications.
+    
+    **Modular Design:** This page uses the structures module to handle loading and exporting.
     """)
     
     # File upload section
@@ -19,98 +30,89 @@ def render_structure_viewer_page():
     tab1, tab2 = st.tabs(["Upload File", "Browse Directory"])
     
     with tab1:
-        uploaded_file = st.file_uploader(
-            "Upload structure file",
-            type=['cif', 'xyz', 'pdb', 'vasp', 'poscar', 'traj', 'json'],
-            help="Supported formats: CIF, XYZ, PDB, VASP, POSCAR, TRAJ, JSON"
-        )
-        
-        if uploaded_file:
-            try:
-                # Save to temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as tmp:
-                    tmp.write(uploaded_file.getvalue())
-                    tmp_path = tmp.name
-                
-                # Read structure
-                atoms = ase_io.read(tmp_path)
-                os.unlink(tmp_path)
-                
-                st.success(f"✅ Loaded: {uploaded_file.name}")
-                render_structure_controls_and_viewer(atoms)
-                
-            except Exception as e:
-                st.error(f"❌ Error loading file: {e}")
+        render_upload_tab()
     
     with tab2:
-        # Working directory browser
+        render_browse_tab()
+
+
+def render_upload_tab():
+    """Render the file upload tab using structures module."""
+    from xespresso.gui.structures import load_structure_from_upload
+    
+    uploaded_file = st.file_uploader(
+        "Upload structure file",
+        type=['cif', 'xyz', 'pdb', 'vasp', 'poscar', 'traj', 'json'],
+        help="Supported formats: CIF, XYZ, PDB, VASP, POSCAR, TRAJ, JSON"
+    )
+    
+    if uploaded_file:
         try:
-            from xespresso.gui.utils.selectors import render_workdir_browser
-            workdir = render_workdir_browser(key="structure_viewer_workdir")
-        except ImportError:
-            workdir = st.text_input("Working Directory:", value=os.getcwd())
-            workdir = os.path.abspath(os.path.expanduser(workdir))
+            # Use structures module to load from upload
+            atoms, loader = load_structure_from_upload(
+                uploaded_file.getvalue(),
+                uploaded_file.name
+            )
+            
+            st.success(f"✅ Loaded: {uploaded_file.name}")
+            
+            # Store in session state
+            st.session_state.current_structure = atoms
+            st.session_state.structure_info = loader.get_info()
+            
+            render_structure_controls_and_viewer(atoms)
+            
+        except Exception as e:
+            st.error(f"❌ Error loading file: {e}")
+
+
+def render_browse_tab():
+    """Render the directory browser tab using structures module."""
+    from xespresso.gui.structures import StructureLoader, load_structure_from_file
+    
+    # Working directory browser
+    try:
+        from xespresso.gui.utils.selectors import render_workdir_browser
+        workdir = render_workdir_browser(key="structure_viewer_workdir")
+    except ImportError:
+        workdir = st.text_input("Working Directory:", value=os.getcwd())
+        workdir = os.path.abspath(os.path.expanduser(workdir))
+    
+    if os.path.exists(workdir) and os.path.isdir(workdir):
+        # Use structures module to find structure files
+        structure_files = StructureLoader.find_structure_files(
+            workdir,
+            max_depth=3,
+            validate_safety=True
+        )
         
-        if os.path.exists(workdir) and os.path.isdir(workdir):
-            # Validate and normalize workdir to prevent path traversal
-            try:
-                workdir = os.path.realpath(workdir)
-                # Check if workdir is under a safe base directory (e.g., user's home or /tmp)
-                safe_bases = [os.path.realpath(os.path.expanduser("~")), os.path.realpath("/tmp")]
-                is_safe = any(workdir.startswith(base) for base in safe_bases)
-                
-                if not is_safe:
-                    st.warning("⚠️ For security, only directories under your home directory or /tmp are allowed")
-                    return
-            except (OSError, ValueError) as e:
-                st.error(f"❌ Invalid directory path: {e}")
-                return
+        if structure_files:
+            st.success(f"✅ Found {len(structure_files)} structure file(s)")
             
-            # Find structure files
-            structure_extensions = ['.cif', '.xyz', '.pdb', '.vasp', '.poscar', '.traj', '.json']
-            structure_files = []
+            selected_file = st.selectbox(
+                "Select structure file:",
+                structure_files,
+                format_func=lambda x: os.path.relpath(x, workdir)
+            )
             
-            for root, dirs, files in os.walk(workdir):
-                # Ensure we stay within workdir (prevent symlink attacks)
+            if selected_file and st.button("Load Structure"):
                 try:
-                    if not os.path.realpath(root).startswith(workdir):
-                        continue
-                except (OSError, ValueError):
-                    continue
+                    # Use structures module to load from file
+                    atoms, loader = load_structure_from_file(selected_file)
                     
-                depth = root[len(workdir):].count(os.sep)
-                if depth < 3:  # Limit recursion depth
-                    for f in files:
-                        if any(f.lower().endswith(ext) for ext in structure_extensions):
-                            file_path = os.path.join(root, f)
-                            # Validate the constructed path
-                            try:
-                                real_path = os.path.realpath(file_path)
-                                if real_path.startswith(workdir):
-                                    structure_files.append(file_path)
-                            except (OSError, ValueError):
-                                continue
-            
-            if structure_files:
-                st.success(f"✅ Found {len(structure_files)} structure file(s)")
-                
-                selected_file = st.selectbox(
-                    "Select structure file:",
-                    structure_files,
-                    format_func=lambda x: os.path.relpath(x, workdir)
-                )
-                
-                if selected_file and st.button("Load Structure"):
-                    try:
-                        atoms = ase_io.read(selected_file)
-                        st.success(f"✅ Loaded: {os.path.relpath(selected_file, workdir)}")
-                        render_structure_controls_and_viewer(atoms)
-                    except Exception as e:
-                        st.error(f"❌ Error loading file: {e}")
-            else:
-                st.warning("⚠️ No structure files found in directory")
+                    st.success(f"✅ Loaded: {os.path.relpath(selected_file, workdir)}")
+                    
+                    # Store in session state
+                    st.session_state.current_structure = atoms
+                    st.session_state.structure_info = loader.get_info()
+                    
+                    render_structure_controls_and_viewer(atoms)
+                except Exception as e:
+                    st.error(f"❌ Error loading file: {e}")
         else:
-            st.error("❌ Invalid working directory")
+            st.warning("⚠️ No structure files found in directory")
+    else:
+        st.error("❌ Invalid working directory")
 
 
 def render_structure_controls_and_viewer(atoms):
@@ -189,24 +191,27 @@ def render_structure_controls_and_viewer(atoms):
     st.markdown("---")
     st.subheader("💾 Export Options")
     
+    render_export_section(atoms)
+
+
+def render_export_section(atoms):
+    """Render the export section using structures module."""
+    from xespresso.gui.structures import export_structure, StructureExporter
+    
     col1, col2 = st.columns(2)
     
     with col1:
         export_format = st.selectbox(
             "Export Format:",
-            options=['cif', 'xyz', 'pdb', 'vasp', 'json'],
+            options=StructureExporter.get_supported_formats(),
             help="Format for exporting the structure"
         )
     
     with col2:
         if st.button("⬇️ Download Structure", type="secondary"):
             try:
-                # Create temporary file for export
-                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{export_format}") as tmp:
-                    ase_io.write(tmp.name, atoms, format=export_format)
-                    with open(tmp.name, 'rb') as f:
-                        file_data = f.read()
-                    os.unlink(tmp.name)
+                # Use structures module to export
+                file_data = export_structure(atoms, format=export_format)
                 
                 st.download_button(
                     label=f"Download as {export_format.upper()}",
