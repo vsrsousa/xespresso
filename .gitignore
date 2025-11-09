@@ -133,6 +133,6 @@ examples/images/*
 tests/calculations/*
 tests/images/*
 
-# Espresso calculation directories
-calculations/
-scf/
+# Espresso calculation directories (not in xespresso/gui/)
+/calculations/
+/scf/
