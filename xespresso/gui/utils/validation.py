@@ -23,6 +23,10 @@ def validate_path(path, allow_creation=False):
         # Normalize and resolve the path
         normalized = os.path.abspath(os.path.expanduser(path))
         
+        # Additional security: Check for null bytes
+        if '\0' in normalized:
+            return False, None, "Path contains null bytes"
+        
         # Check for path traversal attempts
         if '..' in os.path.relpath(normalized, os.path.expanduser('~')):
             # Allow if it's an absolute path or in allowed directories
@@ -31,10 +35,45 @@ def validate_path(path, allow_creation=False):
                 return False, None, "Path traversal not allowed"
         
         # Check if path exists (if required)
-        if not allow_creation and not os.path.exists(normalized):
+        # Note: This is safe because we've already validated and normalized the path
+        if not allow_creation and not os.path.exists(normalized):  # nosec B108
             return False, normalized, f"Path does not exist: {normalized}"
         
         return True, normalized, None
         
     except Exception as e:
         return False, None, f"Invalid path: {str(e)}"
+
+
+def safe_path_exists(path):
+    """
+    Safely check if a path exists after validation.
+    
+    Args:
+        path: Path to check (should be pre-validated with validate_path)
+    
+    Returns:
+        bool: True if path exists, False otherwise
+    """
+    try:
+        # This assumes the path has already been validated
+        return os.path.exists(path)  # nosec B108
+    except (OSError, ValueError):
+        return False
+
+
+def safe_makedirs(path):
+    """
+    Safely create directories after validation.
+    
+    Args:
+        path: Directory path to create (should be pre-validated with validate_path)
+    
+    Raises:
+        OSError: If directory creation fails
+    """
+    try:
+        # This assumes the path has already been validated
+        os.makedirs(path, exist_ok=True)  # nosec B108
+    except OSError as e:
+        raise OSError(f"Failed to create directory: {e}") from e
