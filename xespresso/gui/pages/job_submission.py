@@ -169,11 +169,11 @@ def render_dry_run_tab():
         )
     
     if generate_button:
-        st.info("🧪 **Dry Run Mode** - Generating files using xespresso calculator...")
+        st.info("🧪 **Dry Run Mode** - Using calculation module to prepare and generate files...")
         
         with st.spinner("Generating files..."):
             try:
-                from xespresso import Espresso
+                from xespresso.gui.calculations import dry_run_calculation
                 from ase import io as ase_io
                 
                 # Create output directory if it doesn't exist
@@ -185,60 +185,18 @@ def render_dry_run_tab():
                 ase_io.write(structure_path, atoms)
                 st.info(f"💾 Saved structure: {structure_filename}")
                 
-                # Build calculator parameters from configuration
-                calc_params = {
-                    'pseudopotentials': config['pseudopotentials'],
-                    'label': os.path.join(full_path, 'espresso'),
-                }
-                
-                # Build input_data dictionary
-                input_data = {}
-                
-                # Add basic parameters
-                if 'ecutwfc' in config:
-                    input_data['ecutwfc'] = config['ecutwfc']
-                if 'ecutrho' in config:
-                    input_data['ecutrho'] = config['ecutrho']
-                if 'occupations' in config:
-                    input_data['occupations'] = config['occupations']
-                if 'conv_thr' in config:
-                    input_data['conv_thr'] = config['conv_thr']
-                
-                # Add smearing if applicable
-                if config.get('occupations') == 'smearing':
-                    input_data['smearing'] = config.get('smearing', 'gaussian')
-                    input_data['degauss'] = config.get('degauss', 0.02)
-                
-                # Add spin polarization
-                if 'nspin' in config:
-                    input_data['nspin'] = config['nspin']
-                
-                # Add calculation type
-                calc_type = config.get('calc_type', 'scf')
-                if calc_type in ['relax', 'vc-relax']:
-                    input_data['calculation'] = calc_type
-                else:
-                    input_data['calculation'] = 'scf'
-                
-                calc_params['input_data'] = input_data
-                
-                # Add k-points
-                if 'kspacing' in config:
-                    calc_params['kspacing'] = config['kspacing']
-                elif 'kpts' in config:
-                    calc_params['kpts'] = config['kpts']
-                
-                # Add machine/queue if available
+                # Prepare config with machine/queue if available
+                calc_config = config.copy()
                 if machine and hasattr(machine, 'queue'):
-                    calc_params['queue'] = machine.queue
+                    calc_config['queue'] = machine.queue
                 
-                # Create Espresso calculator with all parameters
-                st.info("🔧 Creating Espresso calculator...")
-                calc = Espresso(**calc_params)
+                # Use calculation module to prepare atoms and calculator, then generate files
+                # Following the principle: calculation modules create objects, job submission executes
+                st.info("🔧 Using calculation module to create Espresso calculator and atoms...")
+                label = os.path.join(full_path, 'espresso')
+                prepared_atoms, calc = dry_run_calculation(atoms, calc_config, label=label)
                 
-                # Generate input files using xespresso's write_input method
-                st.info("📝 Writing input files with calc.write_input(atoms)...")
-                calc.write_input(atoms)
+                st.info("✅ Calculation module prepared objects and wrote input files using xespresso!")
                 
                 st.success("✅ Files generated successfully using xespresso!")
                 
@@ -702,76 +660,37 @@ def render_job_submission_tab():
         
         with st.spinner("Running calculation..."):
             try:
-                from xespresso import Espresso
+                from xespresso.gui.calculations import prepare_calculation_from_gui
                 
                 # Create output directory if it doesn't exist
                 os.makedirs(full_path, exist_ok=True)
                 
                 # Check if calculator already exists in session_state
-                # (created by Calculation Setup or Workflow Builder)
+                # (created by Calculation Setup or Workflow Builder using calculation modules)
                 if 'espresso_calculator' in st.session_state and st.session_state.espresso_calculator is not None:
-                    st.info("📦 Using pre-configured calculator from Calculation Setup...")
+                    st.info("📦 Using pre-configured calculator from Calculation Setup (prepared by calculation module)...")
                     calc = st.session_state.espresso_calculator
+                    prepared_atoms = st.session_state.get('prepared_atoms', atoms)
                     
                     # Update the label to use the current output path
                     calc.label = os.path.join(full_path, 'espresso')
                 else:
-                    # Fallback: Create calculator from workflow_config
-                    st.info("🔧 Creating Espresso calculator from configuration...")
+                    # Use calculation module to prepare atoms and Espresso calculator
+                    # Following the principle: calculation modules create objects, job submission executes
+                    st.info("🔧 Using calculation module to prepare atoms and Espresso calculator...")
                     
-                    # Build calculator parameters from configuration
-                    calc_params = {
-                        'pseudopotentials': config['pseudopotentials'],
-                        'label': os.path.join(full_path, 'espresso'),
-                    }
+                    label = os.path.join(full_path, 'espresso')
+                    prepared_atoms, calc = prepare_calculation_from_gui(atoms, config, label=label)
                     
-                    # Build input_data dictionary
-                    input_data = {}
-                    
-                    # Add basic parameters
-                    if 'ecutwfc' in config:
-                        input_data['ecutwfc'] = config['ecutwfc']
-                    if 'ecutrho' in config:
-                        input_data['ecutrho'] = config['ecutrho']
-                    if 'occupations' in config:
-                        input_data['occupations'] = config['occupations']
-                    if 'conv_thr' in config:
-                        input_data['conv_thr'] = config['conv_thr']
-                    
-                    # Add smearing if applicable
-                    if config.get('occupations') == 'smearing':
-                        input_data['smearing'] = config.get('smearing', 'gaussian')
-                        input_data['degauss'] = config.get('degauss', 0.02)
-                    
-                    # Add spin polarization
-                    if 'nspin' in config:
-                        input_data['nspin'] = config['nspin']
-                    
-                    # Add calculation type
-                    calc_type = config.get('calc_type', 'scf')
-                    if calc_type in ['relax', 'vc-relax']:
-                        input_data['calculation'] = calc_type
-                    else:
-                        input_data['calculation'] = 'scf'
-                    
-                    calc_params['input_data'] = input_data
-                    
-                    # Add k-points
-                    if 'kspacing' in config:
-                        calc_params['kspacing'] = config['kspacing']
-                    elif 'kpts' in config:
-                        calc_params['kpts'] = config['kpts']
-                    
-                    # Create Espresso calculator
-                    calc = Espresso(**calc_params)
+                    st.info("✅ Calculation module prepared objects from configuration!")
                 
-                # Attach calculator to atoms
+                # Attach calculator to prepared atoms (relationship maintained by calculation module)
                 st.info("🔗 Attaching calculator to atoms object...")
-                atoms.calc = calc
+                prepared_atoms.calc = calc
                 
                 # Run calculation using get_potential_energy()
                 st.info("⚡ Calling atoms.get_potential_energy()...")
-                energy = atoms.get_potential_energy()
+                energy = prepared_atoms.get_potential_energy()
                 
                 # Display results
                 st.success("✅ Calculation completed successfully!")
@@ -782,23 +701,26 @@ def render_job_submission_tab():
                 with col1:
                     st.metric("Total Energy", f"{energy:.6f} eV")
                 with col2:
-                    st.metric("Structure", atoms.get_chemical_formula())
+                    st.metric("Structure", prepared_atoms.get_chemical_formula())
                 
                 # Show calculation details
                 with st.expander("📋 Calculation Details"):
                     st.write("**Input Parameters:**")
-                    st.json(input_data)
+                    if hasattr(calc, 'parameters') and 'input_data' in calc.parameters:
+                        st.json(calc.parameters['input_data'])
+                    else:
+                        st.json(calc.input_data if hasattr(calc, 'input_data') else config)
                     
                     st.write("**Pseudopotentials:**")
                     for species, pseudo in config['pseudopotentials'].items():
                         st.text(f"  {species}: {pseudo}")
                     
-                    if 'kpts' in calc_params:
+                    if hasattr(calc, 'kpts') and calc.kpts:
                         st.write("**K-points:**")
-                        st.text(f"  {calc_params['kpts']}")
-                    elif 'kspacing' in calc_params:
+                        st.text(f"  {calc.kpts}")
+                    elif 'kspacing' in config:
                         st.write("**K-spacing:**")
-                        st.text(f"  {calc_params['kspacing']} Å⁻¹")
+                        st.text(f"  {config['kspacing']} Å⁻¹")
                 
                 # Show output location
                 st.markdown("---")
