@@ -212,8 +212,9 @@ def render_workflow_builder_page():
                 from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
                 codes = load_codes_config(st.session_state.selected_machine_for_workflow, DEFAULT_CODES_DIR)
                 
-                if codes and codes.codes:
-                    code_options = list(codes.codes.keys())
+                if codes and codes.has_any_codes():
+                    all_codes = codes.get_all_codes()
+                    code_options = list(all_codes.keys())
                     selected_code = st.selectbox(
                         "Select Code:",
                         options=code_options,
@@ -225,7 +226,7 @@ def render_workflow_builder_page():
                     config['code_name'] = selected_code
                     
                     # Show code info
-                    code_obj = codes.codes[selected_code]
+                    code_obj = all_codes[selected_code]
                     st.caption(f"Version: {code_obj.version or 'Unknown'}")
                     if hasattr(code_obj, 'modules') and code_obj.modules:
                         st.caption(f"Modules: {', '.join(code_obj.modules[:2])}{'...' if len(code_obj.modules) > 2 else ''}")
