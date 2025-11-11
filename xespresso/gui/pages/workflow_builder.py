@@ -209,8 +209,8 @@ def render_workflow_builder_page():
         st.write("**Code Version:**")
         if st.session_state.get('selected_machine_for_workflow'):
             try:
-                from xespresso.codes.manager import load_codes_config
-                codes = load_codes_config(st.session_state.selected_machine_for_workflow)
+                from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
+                codes = load_codes_config(st.session_state.selected_machine_for_workflow, DEFAULT_CODES_DIR)
                 
                 if codes and codes.codes:
                     code_options = list(codes.codes.keys())
