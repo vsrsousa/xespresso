@@ -179,7 +179,10 @@ def render_calculation_setup_page():
         # Machine Selection
         st.write("**Machine:**")
         try:
-            from xespresso.machines.config.loader import list_machines
+            from xespresso.machines.config.loader import (
+                list_machines, load_machine,
+                DEFAULT_CONFIG_PATH, DEFAULT_MACHINES_DIR
+            )
             available_machines = list_machines()
             
             if available_machines:
@@ -195,8 +198,12 @@ def render_calculation_setup_page():
                 
                 # Load the machine object
                 try:
-                    from xespresso.machines.config.loader import load_machine
-                    machine = load_machine(selected_machine_name)
+                    machine = load_machine(
+                        DEFAULT_CONFIG_PATH,
+                        selected_machine_name,
+                        DEFAULT_MACHINES_DIR,
+                        return_object=True
+                    )
                     st.session_state.calc_machine = machine
                     
                     # Show machine info
