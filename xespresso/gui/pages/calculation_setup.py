@@ -226,8 +226,8 @@ def render_calculation_setup_page():
         st.write("**Code Version:**")
         if st.session_state.get('selected_machine_for_calc'):
             try:
-                from xespresso.codes.manager import load_codes_config
-                codes = load_codes_config(st.session_state.selected_machine_for_calc)
+                from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
+                codes = load_codes_config(st.session_state.selected_machine_for_calc, DEFAULT_CODES_DIR)
                 
                 if codes and codes.codes:
                     code_options = list(codes.codes.keys())
