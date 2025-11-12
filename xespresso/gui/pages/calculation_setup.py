@@ -317,24 +317,53 @@ def render_calculation_setup_page():
                             st.caption(f"QE Version: {selected_version}")
                             config["qe_version"] = selected_version
 
-                    # Show available codes
+                    # Show available codes and allow selection
                     code_names = list(version_codes.keys())
                     if code_names:
                         st.caption(
                             f"✓ {len(code_names)} codes configured: {', '.join(code_names[:3])}{' ...' if len(code_names) > 3 else ''}"
                         )
+                        
+                        # Individual code selection
+                        st.markdown("**Select Code:**")
+                        default_code_idx = 0
+                        # Try to select 'pw' by default if available
+                        if 'pw' in code_names:
+                            default_code_idx = code_names.index('pw')
+                        elif st.session_state.get('calc_selected_code') and st.session_state.calc_selected_code in code_names:
+                            default_code_idx = code_names.index(st.session_state.calc_selected_code)
+                        
+                        selected_code = st.selectbox(
+                            "Choose code executable:",
+                            code_names,
+                            index=default_code_idx,
+                            key="calc_code_selector",
+                            help="Select which Quantum ESPRESSO executable to use (e.g., pw for scf/relax, ph for phonons, bands for band structure)"
+                        )
+                        
+                        # Store selected code
+                        st.session_state.calc_selected_code = selected_code
+                        config["selected_code"] = selected_code
+                        
+                        # Show code details
+                        selected_code_obj = version_codes[selected_code]
+                        st.caption(f"📍 Path: {selected_code_obj.path}")
+                        if hasattr(selected_code_obj, 'version') and selected_code_obj.version:
+                            st.caption(f"📦 Version: {selected_code_obj.version}")
 
                 else:
                     st.warning(
                         f"⚠️ No codes configured for machine '{st.session_state.selected_machine_for_calc}'. Please configure codes in the Codes Configuration page."
                     )
                     config["qe_version"] = None
+                    config["selected_code"] = None
             except Exception as e:
                 st.warning(f"Could not load codes: {e}")
                 config["qe_version"] = None
         else:
             st.info("Select a machine first")
             config["qe_version"] = None
+            config["selected_code"] = None
 
     st.markdown("---")
 

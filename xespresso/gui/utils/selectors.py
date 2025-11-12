@@ -189,6 +189,10 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
     if current_dir is None:
         current_dir = st.session_state.get('local_workdir', os.getcwd())
     
+    # Initialize session state if not set
+    if 'local_workdir' not in st.session_state:
+        st.session_state.local_workdir = current_dir
+    
     st.subheader("📁 Working Directory")
     
     # Quick access buttons
@@ -197,24 +201,27 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
     with col1:
         workdir = st.text_input(
             "Directory Path:",
-            value=current_dir,
+            value=st.session_state.local_workdir,
             key=f"{key}_input",
             help="Enter the path to your working directory or use the navigator below"
         )
+        # Update session state when user types in the text input
+        if workdir != st.session_state.local_workdir:
+            st.session_state.local_workdir = workdir
     
     with col2:
         if st.button("📂 Current", key=f"{key}_current", help="Go to current working directory"):
-            workdir = os.getcwd()
+            st.session_state.local_workdir = os.getcwd()
             st.rerun()
     
     with col3:
         if st.button("🏠 Home", key=f"{key}_home", help="Go to home directory"):
-            workdir = os.path.expanduser("~")
+            st.session_state.local_workdir = os.path.expanduser("~")
             st.rerun()
     
     with col4:
         if st.button("⬆️ Parent", key=f"{key}_parent", help="Go to parent directory"):
-            workdir = os.path.dirname(workdir)
+            st.session_state.local_workdir = os.path.dirname(workdir)
             st.rerun()
     
     # Validate directory
