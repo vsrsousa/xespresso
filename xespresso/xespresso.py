@@ -161,13 +161,29 @@ class Espresso(FileIOCalculator):
 
     def set_label(self, label, prefix):
         """Set directory and prefix from label"""
+        # If label is a relative path, make it absolute based on current directory
+        # This prevents permission errors when running from read-only directories
+        if not os.path.isabs(label):
+            label = os.path.abspath(label)
+        
         self.directory = label
         if not prefix:
             self.prefix = os.path.split(label)[1]
         else:
             self.prefix = prefix
+        
+        # Create directory with error handling for permission issues
         if not os.path.exists(self.directory):
-            os.makedirs(self.directory)
+            try:
+                os.makedirs(self.directory)
+            except PermissionError as e:
+                # If we can't create in the current location, use a temp directory
+                import tempfile
+                temp_base = tempfile.gettempdir()
+                self.directory = os.path.join(temp_base, os.path.basename(label))
+                logger.warning(f"Permission denied creating {label}, using {self.directory} instead")
+                if not os.path.exists(self.directory):
+                    os.makedirs(self.directory)
         self.label = os.path.join(self.directory, self.prefix)
         self.pwi = os.path.join(self.directory, "%s.pwi" % self.prefix)
         self.pwo = os.path.join(self.directory, "%s.pwo" % self.prefix)
