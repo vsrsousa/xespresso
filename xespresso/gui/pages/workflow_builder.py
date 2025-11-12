@@ -312,32 +312,40 @@ def render_workflow_builder_page():
                         st.caption(
                             f"✓ {len(code_names)} codes configured: {', '.join(code_names[:3])}{' ...' if len(code_names) > 3 else ''}"
                         )
-                        
+
                         # Individual code selection
                         st.markdown("**Select Code:**")
                         default_code_idx = 0
                         # Try to select 'pw' by default if available
-                        if 'pw' in code_names:
-                            default_code_idx = code_names.index('pw')
-                        elif st.session_state.get('workflow_selected_code') and st.session_state.workflow_selected_code in code_names:
-                            default_code_idx = code_names.index(st.session_state.workflow_selected_code)
-                        
+                        if "pw" in code_names:
+                            default_code_idx = code_names.index("pw")
+                        elif (
+                            st.session_state.get("workflow_selected_code")
+                            and st.session_state.workflow_selected_code in code_names
+                        ):
+                            default_code_idx = code_names.index(
+                                st.session_state.workflow_selected_code
+                            )
+
                         selected_code = st.selectbox(
                             "Choose code executable:",
                             code_names,
                             index=default_code_idx,
                             key="workflow_code_selector",
-                            help="Select which Quantum ESPRESSO executable to use (e.g., pw for scf/relax, ph for phonons, bands for band structure)"
+                            help="Select which Quantum ESPRESSO executable to use (e.g., pw for scf/relax, ph for phonons, bands for band structure)",
                         )
-                        
+
                         # Store selected code
                         st.session_state.workflow_selected_code = selected_code
                         config["selected_code"] = selected_code
-                        
+
                         # Show code details
                         selected_code_obj = version_codes[selected_code]
                         st.caption(f"📍 Path: {selected_code_obj.path}")
-                        if hasattr(selected_code_obj, 'version') and selected_code_obj.version:
+                        if (
+                            hasattr(selected_code_obj, "version")
+                            and selected_code_obj.version
+                        ):
                             st.caption(f"📦 Version: {selected_code_obj.version}")
 
                 else:
