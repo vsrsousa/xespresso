@@ -7,7 +7,6 @@ export ESPRESSO_PSEUDO="/path/to/pseudo"
 Run PACKAGE.x jobs.
 """
 
-
 from ase import io
 from ase.calculators.calculator import (
     FileIOCalculator,
@@ -107,7 +106,7 @@ class Espresso(FileIOCalculator):
         queue=None,
         debug=False,
         pseudo_group=None,
-        **kwargs
+        **kwargs,
     ):
 
         print("{0:=^60}".format(package))
@@ -127,7 +126,12 @@ class Espresso(FileIOCalculator):
         kwargs = self.check_input(kwargs, prefix=self.prefix)
         self.ase_parameters = kwargs
         FileIOCalculator.__init__(
-            self, restart=self.directory, label=self.label, atoms=atoms, command=self.command, **kwargs
+            self,
+            restart=self.directory,
+            label=self.label,
+            atoms=atoms,
+            command=self.command,
+            **kwargs,
         )
 
         self.queue = queue
@@ -165,13 +169,13 @@ class Espresso(FileIOCalculator):
         # This prevents permission errors when running from read-only directories
         if not os.path.isabs(label):
             label = os.path.abspath(label)
-        
+
         self.directory = label
         if not prefix:
             self.prefix = os.path.split(label)[1]
         else:
             self.prefix = prefix
-        
+
         # Create directory with error handling for permission issues
         if not os.path.exists(self.directory):
             try:
@@ -179,9 +183,12 @@ class Espresso(FileIOCalculator):
             except PermissionError as e:
                 # If we can't create in the current location, use a temp directory
                 import tempfile
+
                 temp_base = tempfile.gettempdir()
                 self.directory = os.path.join(temp_base, os.path.basename(label))
-                logger.warning(f"Permission denied creating {label}, using {self.directory} instead")
+                logger.warning(
+                    f"Permission denied creating {label}, using {self.directory} instead"
+                )
                 if not os.path.exists(self.directory):
                     os.makedirs(self.directory)
         self.label = os.path.join(self.directory, self.prefix)
