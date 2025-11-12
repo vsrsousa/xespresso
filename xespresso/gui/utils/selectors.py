@@ -225,7 +225,7 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
     st.subheader("📁 Working Directory")
 
     # Quick access buttons
-    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
 
     with col1:
         workdir = st.text_input(
@@ -234,9 +234,6 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
             key=f"{key}_input",
             help="Enter the path to your working directory or use the navigator below",
         )
-        # Update session state when user types in the text input
-        if workdir != st.session_state.local_workdir:
-            st.session_state.local_workdir = workdir
 
     with col2:
         if st.button(
@@ -252,8 +249,107 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
 
     with col4:
         if st.button("⬆️ Parent", key=f"{key}_parent", help="Go to parent directory"):
-            st.session_state.local_workdir = os.path.dirname(workdir)
+            current_dir = st.session_state.local_workdir
+            st.session_state.local_workdir = os.path.dirname(current_dir)
             st.rerun()
+
+    with col5:
+        if st.button("🗂️ Browse", key=f"{key}_browse", help="Browse for a folder"):
+            # Store the browse request in session state
+            st.session_state[f"{key}_show_browser"] = True
+            st.rerun()
+
+    # Show folder browser modal if requested
+    if st.session_state.get(f"{key}_show_browser", False):
+        st.markdown("---")
+        st.subheader("🗂️ Folder Browser")
+
+        # Start from current directory or home
+        if f"{key}_browser_current" not in st.session_state:
+            st.session_state[f"{key}_browser_current"] = st.session_state.local_workdir
+
+        browser_dir = st.session_state[f"{key}_browser_current"]
+
+        # Show current browser directory
+        st.info(f"📍 Browsing: `{browser_dir}`")
+
+        # Browser navigation buttons
+        bcol1, bcol2, bcol3 = st.columns([1, 1, 2])
+        with bcol1:
+            if st.button("⬆️ Up", key=f"{key}_browser_up"):
+                st.session_state[f"{key}_browser_current"] = os.path.dirname(
+                    browser_dir
+                )
+                st.rerun()
+        with bcol2:
+            if st.button("🏠 Home", key=f"{key}_browser_home"):
+                st.session_state[f"{key}_browser_current"] = os.path.expanduser("~")
+                st.rerun()
+
+        # List directories in browser_dir
+        try:
+            browser_dir = os.path.abspath(os.path.expanduser(browser_dir))
+            if os.path.exists(browser_dir) and os.path.isdir(browser_dir):
+                contents = os.listdir(browser_dir)
+                subdirs = [
+                    d
+                    for d in contents
+                    if os.path.isdir(os.path.join(browser_dir, d))
+                    and not d.startswith(".")
+                ]
+                subdirs.sort()
+
+                if subdirs:
+                    st.write("**📁 Select a folder:**")
+                    for subdir in subdirs[
+                        :30
+                    ]:  # Limit to 30 folders for UI performance
+                        col_folder, col_select = st.columns([3, 1])
+                        with col_folder:
+                            st.text(f"📁 {subdir}")
+                        with col_select:
+                            if st.button(
+                                "Select", key=f"{key}_browser_select_{subdir}"
+                            ):
+                                new_path = os.path.join(browser_dir, subdir)
+                                st.session_state[f"{key}_browser_current"] = new_path
+                                st.rerun()
+
+                    if len(subdirs) > 30:
+                        st.caption(
+                            f"... and {len(subdirs) - 30} more folders (scroll up to see more)"
+                        )
+                else:
+                    st.info("ℹ️ No subfolders in this directory")
+
+                # Action buttons
+                st.markdown("---")
+                bcol1, bcol2, bcol3 = st.columns(3)
+                with bcol1:
+                    if st.button(
+                        "✅ Use This Folder",
+                        key=f"{key}_browser_confirm",
+                        type="primary",
+                    ):
+                        st.session_state.local_workdir = browser_dir
+                        st.session_state[f"{key}_show_browser"] = False
+                        # Clean up browser state
+                        if f"{key}_browser_current" in st.session_state:
+                            del st.session_state[f"{key}_browser_current"]
+                        st.rerun()
+                with bcol2:
+                    if st.button("❌ Cancel", key=f"{key}_browser_cancel"):
+                        st.session_state[f"{key}_show_browser"] = False
+                        # Clean up browser state
+                        if f"{key}_browser_current" in st.session_state:
+                            del st.session_state[f"{key}_browser_current"]
+                        st.rerun()
+        except Exception as e:
+            st.error(f"❌ Error browsing directory: {e}")
+
+        st.markdown("---")
+        # Don't show the rest of the UI when browser is active
+        return st.session_state.local_workdir
 
     # Validate directory
     if workdir:
