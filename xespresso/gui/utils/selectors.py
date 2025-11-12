@@ -215,12 +215,15 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
     Returns:
         str: Selected directory path
     """
+    # Use per-key session state to avoid conflicts between multiple instances
+    workdir_key = f"{key}_workdir"
+    
     if current_dir is None:
-        current_dir = st.session_state.get("local_workdir", os.getcwd())
+        current_dir = st.session_state.get(workdir_key, st.session_state.get("local_workdir", os.getcwd()))
 
     # Initialize session state if not set
-    if "local_workdir" not in st.session_state:
-        st.session_state.local_workdir = current_dir
+    if workdir_key not in st.session_state:
+        st.session_state[workdir_key] = current_dir
 
     st.subheader("📁 Working Directory")
 
@@ -230,7 +233,7 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
     with col1:
         workdir = st.text_input(
             "Directory Path:",
-            value=st.session_state.local_workdir,
+            value=st.session_state[workdir_key],
             key=f"{key}_input",
             help="Enter the path to your working directory or use the navigator below",
         )
@@ -239,18 +242,18 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
         if st.button(
             "📂 Current", key=f"{key}_current", help="Go to current working directory"
         ):
-            st.session_state.local_workdir = os.getcwd()
+            st.session_state[workdir_key] = os.getcwd()
             st.rerun()
 
     with col3:
         if st.button("🏠 Home", key=f"{key}_home", help="Go to home directory"):
-            st.session_state.local_workdir = os.path.expanduser("~")
+            st.session_state[workdir_key] = os.path.expanduser("~")
             st.rerun()
 
     with col4:
         if st.button("⬆️ Parent", key=f"{key}_parent", help="Go to parent directory"):
-            current_dir = st.session_state.local_workdir
-            st.session_state.local_workdir = os.path.dirname(current_dir)
+            current_dir = st.session_state[workdir_key]
+            st.session_state[workdir_key] = os.path.dirname(current_dir)
             st.rerun()
 
     with col5:
@@ -266,7 +269,7 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
 
         # Start from current directory or home
         if f"{key}_browser_current" not in st.session_state:
-            st.session_state[f"{key}_browser_current"] = st.session_state.local_workdir
+            st.session_state[f"{key}_browser_current"] = st.session_state[workdir_key]
 
         browser_dir = st.session_state[f"{key}_browser_current"]
 
@@ -331,7 +334,7 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
                         key=f"{key}_browser_confirm",
                         type="primary",
                     ):
-                        st.session_state.local_workdir = browser_dir
+                        st.session_state[workdir_key] = browser_dir
                         st.session_state[f"{key}_show_browser"] = False
                         # Clean up browser state
                         if f"{key}_browser_current" in st.session_state:
@@ -349,7 +352,7 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
 
         st.markdown("---")
         # Don't show the rest of the UI when browser is active
-        return st.session_state.local_workdir
+        return st.session_state[workdir_key]
 
     # Validate directory
     if workdir:
@@ -358,7 +361,9 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
 
             if os.path.exists(workdir) and os.path.isdir(workdir):
                 st.success(f"✅ Current directory: `{workdir}`")
-                st.session_state.local_workdir = workdir
+                # Only update session state if the value actually changed to prevent infinite loops
+                if st.session_state[workdir_key] != workdir:
+                    st.session_state[workdir_key] = workdir
 
                 # Folder Navigator Section
                 st.markdown("---")
@@ -436,7 +441,7 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
                                             )
                                             == real_workdir
                                         ):
-                                            st.session_state.local_workdir = new_workdir
+                                            st.session_state[workdir_key] = new_workdir
                                             st.rerun()
                                         else:
                                             st.error("❌ Invalid navigation path")
