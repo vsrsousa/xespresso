@@ -36,6 +36,8 @@ def render_dry_run_tab():
     - Testing your configuration before submission
     - Manually reviewing and editing files before running
     - Creating files to transfer to another system
+    
+    **Note:** This uses the calculator prepared in Calculation Setup or creates a new one if needed.
     """)
     
     # Check if structure is loaded
@@ -169,11 +171,11 @@ def render_dry_run_tab():
         )
     
     if generate_button:
-        st.info("🧪 **Dry Run Mode** - Using calculation module to prepare and generate files...")
+        st.info("🧪 **Dry Run Mode** - Generating input files...")
         
         with st.spinner("Generating files..."):
             try:
-                from xespresso.gui.calculations import dry_run_calculation
+                from xespresso.gui.calculations import dry_run_calculation, prepare_calculation_from_gui
                 from ase import io as ase_io
                 
                 # Create output directory if it doesn't exist
@@ -190,13 +192,23 @@ def render_dry_run_tab():
                 if machine and hasattr(machine, 'queue'):
                     calc_config['queue'] = machine.queue
                 
-                # Use calculation module to prepare atoms and calculator, then generate files
-                # Following the principle: calculation modules create objects, job submission executes
-                st.info("🔧 Using calculation module to create Espresso calculator and atoms...")
+                # Check if calculator already exists in session_state (from Calculation Setup)
                 label = os.path.join(full_path, 'espresso')
-                prepared_atoms, calc = dry_run_calculation(atoms, calc_config, label=label)
                 
-                st.info("✅ Calculation module prepared objects and wrote input files using xespresso!")
+                if 'espresso_calculator' in st.session_state and st.session_state.espresso_calculator is not None:
+                    st.info("📦 Using pre-configured calculator from Calculation Setup...")
+                    calc = st.session_state.espresso_calculator
+                    prepared_atoms = st.session_state.get('prepared_atoms', atoms)
+                    
+                    # Update the label to use the current output path
+                    calc.label = label
+                    
+                    # Write input files using xespresso's method
+                    calc.write_input(prepared_atoms)
+                else:
+                    # Use calculation module to prepare atoms and calculator, then generate files
+                    st.info("🔧 Creating Espresso calculator and generating files...")
+                    prepared_atoms, calc = dry_run_calculation(atoms, calc_config, label=label)
                 
                 st.success("✅ Files generated successfully using xespresso!")
                 
@@ -279,14 +291,12 @@ def render_dry_run_tab():
                 # Next steps
                 st.subheader("✨ Next Steps")
                 st.info("""
-                **Files have been generated using xespresso!** You can now:
+                **Files have been generated!** You can now:
                 
                 1. **Review the files** using the File Browser tab above
                 2. **Edit the files** if needed (use Edit mode in File Browser)
                 3. **Run the calculation** using the Run Calculation tab
                 4. **Transfer files** to another system if needed
-                
-                The Espresso calculator was created with your configuration and used to generate these files.
                 """)
                     
             except Exception as e:

@@ -199,14 +199,15 @@ def render_codes_selector(machine_name, key="codes_selector", help_text=None):
 
 def render_workdir_browser(current_dir=None, key="workdir_browser"):
     """
-    Render an enhanced working directory browser/selector with folder navigation.
+    Render a clean and simple working directory browser/selector.
+
+    This is a streamlined version that provides a cleaner interface
+    similar to system file browsers, with direct folder navigation.
 
     Features:
-    - Text input for direct path entry
-    - Quick access buttons (Current, Home)
-    - Folder navigator with dropdown to browse subfolders
-    - Parent directory navigation
-    - Visual directory contents preview
+    - Text input for direct path entry  
+    - Quick access buttons (Current, Home, Parent)
+    - Simple folder list for direct selection (like system file browser)
 
     Args:
         current_dir: Current working directory path
@@ -227,15 +228,15 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
 
     st.subheader("📁 Working Directory")
 
-    # Quick access buttons
-    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
+    # Path input and quick access buttons in a clean layout
+    col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
 
     with col1:
         workdir = st.text_input(
             "Directory Path:",
             value=st.session_state[workdir_key],
             key=f"{key}_input",
-            help="Enter the path to your working directory or use the navigator below",
+            help="Enter the path to your working directory",
         )
 
     with col2:
@@ -251,149 +252,44 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
             st.rerun()
 
     with col4:
-        if st.button("⬆️ Parent", key=f"{key}_parent", help="Go to parent directory"):
+        if st.button("⬆️ Up", key=f"{key}_parent", help="Go to parent directory"):
             current_dir = st.session_state[workdir_key]
             st.session_state[workdir_key] = os.path.dirname(current_dir)
             st.rerun()
 
-    with col5:
-        if st.button("🗂️ Browse", key=f"{key}_browse", help="Browse for a folder"):
-            # Store the browse request in session state
-            st.session_state[f"{key}_show_browser"] = True
-            st.rerun()
-
-    # Show folder browser modal if requested
-    if st.session_state.get(f"{key}_show_browser", False):
-        st.markdown("---")
-        st.subheader("🗂️ Folder Browser")
-
-        # Start from current directory or home
-        if f"{key}_browser_current" not in st.session_state:
-            st.session_state[f"{key}_browser_current"] = st.session_state[workdir_key]
-
-        browser_dir = st.session_state[f"{key}_browser_current"]
-
-        # Show current browser directory
-        st.info(f"📍 Browsing: `{browser_dir}`")
-
-        # Browser navigation buttons
-        bcol1, bcol2, bcol3 = st.columns([1, 1, 2])
-        with bcol1:
-            if st.button("⬆️ Up", key=f"{key}_browser_up"):
-                st.session_state[f"{key}_browser_current"] = os.path.dirname(
-                    browser_dir
-                )
-                st.rerun()
-        with bcol2:
-            if st.button("🏠 Home", key=f"{key}_browser_home"):
-                st.session_state[f"{key}_browser_current"] = os.path.expanduser("~")
-                st.rerun()
-
-        # List directories in browser_dir
-        try:
-            browser_dir = os.path.abspath(os.path.expanduser(browser_dir))
-            if os.path.exists(browser_dir) and os.path.isdir(browser_dir):
-                contents = os.listdir(browser_dir)
-                subdirs = [
-                    d
-                    for d in contents
-                    if os.path.isdir(os.path.join(browser_dir, d))
-                    and not d.startswith(".")
-                ]
-                subdirs.sort()
-
-                if subdirs:
-                    st.write("**📁 Select a folder:**")
-                    for subdir in subdirs[
-                        :30
-                    ]:  # Limit to 30 folders for UI performance
-                        col_folder, col_select = st.columns([3, 1])
-                        with col_folder:
-                            st.text(f"📁 {subdir}")
-                        with col_select:
-                            if st.button(
-                                "Select", key=f"{key}_browser_select_{subdir}"
-                            ):
-                                new_path = os.path.join(browser_dir, subdir)
-                                st.session_state[f"{key}_browser_current"] = new_path
-                                st.rerun()
-
-                    if len(subdirs) > 30:
-                        st.caption(
-                            f"... and {len(subdirs) - 30} more folders (scroll up to see more)"
-                        )
-                else:
-                    st.info("ℹ️ No subfolders in this directory")
-
-                # Action buttons
-                st.markdown("---")
-                bcol1, bcol2, bcol3 = st.columns(3)
-                with bcol1:
-                    if st.button(
-                        "✅ Use This Folder",
-                        key=f"{key}_browser_confirm",
-                        type="primary",
-                    ):
-                        st.session_state[workdir_key] = browser_dir
-                        st.session_state[f"{key}_show_browser"] = False
-                        # Clean up browser state
-                        if f"{key}_browser_current" in st.session_state:
-                            del st.session_state[f"{key}_browser_current"]
-                        st.rerun()
-                with bcol2:
-                    if st.button("❌ Cancel", key=f"{key}_browser_cancel"):
-                        st.session_state[f"{key}_show_browser"] = False
-                        # Clean up browser state
-                        if f"{key}_browser_current" in st.session_state:
-                            del st.session_state[f"{key}_browser_current"]
-                        st.rerun()
-        except Exception as e:
-            st.error(f"❌ Error browsing directory: {e}")
-
-        st.markdown("---")
-        # Don't show the rest of the UI when browser is active
-        return st.session_state[workdir_key]
-
-    # Validate directory
+    # Validate and normalize directory
     if workdir:
         try:
             workdir = os.path.abspath(os.path.expanduser(workdir))
 
             if os.path.exists(workdir) and os.path.isdir(workdir):
-                st.success(f"✅ Current directory: `{workdir}`")
-                # Only update session state if the value actually changed to prevent infinite loops
+                st.success(f"✅ `{workdir}`")
+                # Only update session state if the value actually changed
                 if st.session_state[workdir_key] != workdir:
                     st.session_state[workdir_key] = workdir
 
-                # Folder Navigator Section
+                # Clean folder browser - similar to system file browser
                 st.markdown("---")
-                st.subheader("📂 Folder Navigator")
-                st.info("💡 Select a subfolder below to navigate into it")
+                st.subheader("📂 Browse Folders")
 
                 try:
-                    # List subdirectories (validate workdir first)
-                    # Note: workdir comes from user input, but this is intentional for a file browser.
-                    # Security measures in place:
-                    # 1. Path is validated to exist and be a directory
-                    # 2. Application runs with user's permissions (can only access what user can access)
-                    # 3. Symlinks are resolved with os.path.realpath()
-                    # 4. Navigation is constrained with os.path.commonpath() checks
-                    # 5. Directory names are validated to prevent traversal (no .., /, \)
+                    # Security validation
                     if not os.path.isabs(workdir):
                         st.error("❌ Invalid path: must be absolute")
                         return current_dir
 
-                    # Resolve any symlinks to get the real path
+                    # Resolve symlinks
                     real_workdir = os.path.realpath(workdir)
 
+                    # Get subdirectories
                     contents = os.listdir(real_workdir)
                     subdirs = []
                     for d in contents:
-                        # Skip hidden directories and validate each subdirectory
+                        # Skip hidden directories
                         if d.startswith("."):
                             continue
                         subdir_path = os.path.join(real_workdir, d)
-                        # Ensure the path doesn't escape the parent directory
+                        # Validate path doesn't escape parent
                         if (
                             os.path.isdir(subdir_path)
                             and os.path.commonpath(
@@ -405,79 +301,31 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
                     subdirs.sort()
 
                     if subdirs:
-                        # Create columns for better layout
-                        col1, col2 = st.columns([3, 1])
-
-                        with col1:
-                            selected_subdir = st.selectbox(
-                                "Select subfolder to navigate:",
-                                options=["(Stay in current directory)"] + subdirs,
-                                key=f"{key}_subdir_select",
-                                help="Choose a subfolder to navigate into",
-                            )
-
-                        with col2:
-                            st.write("")  # Spacing
-                            st.write("")  # Spacing
-                            if st.button(
-                                "➡️ Navigate", key=f"{key}_navigate", type="primary"
-                            ):
-                                if selected_subdir != "(Stay in current directory)":
-                                    # Validate selected subdirectory to prevent path traversal
-                                    if (
-                                        ".." in selected_subdir
-                                        or "/" in selected_subdir
-                                        or "\\" in selected_subdir
-                                    ):
-                                        st.error("❌ Invalid folder name")
-                                    else:
+                        st.info("💡 Double-click a folder to navigate into it")
+                        
+                        # Show folders in a clean list (like file browser)
+                        for subdir in subdirs[:50]:  # Limit to 50 for performance
+                            col_icon, col_name, col_nav = st.columns([0.5, 3, 0.5])
+                            with col_icon:
+                                st.text("📁")
+                            with col_name:
+                                st.text(subdir)
+                            with col_nav:
+                                if st.button("→", key=f"{key}_nav_{subdir}", help=f"Navigate to {subdir}"):
+                                    # Validate to prevent path traversal
+                                    if ".." not in subdir and "/" not in subdir and "\\" not in subdir:
                                         new_workdir = os.path.realpath(
-                                            os.path.join(real_workdir, selected_subdir)
+                                            os.path.join(real_workdir, subdir)
                                         )
-                                        # Ensure the new path is within the parent directory
-                                        if (
-                                            os.path.commonpath(
-                                                [real_workdir, new_workdir]
-                                            )
-                                            == real_workdir
-                                        ):
+                                        # Ensure new path is within parent
+                                        if os.path.commonpath([real_workdir, new_workdir]) == real_workdir:
                                             st.session_state[workdir_key] = new_workdir
                                             st.rerun()
-                                        else:
-                                            st.error("❌ Invalid navigation path")
+                                    else:
+                                        st.error("❌ Invalid folder name")
 
-                        # Show quick preview of selected subfolder
-                        if selected_subdir != "(Stay in current directory)":
-                            # Validate before using
-                            if (
-                                ".." not in selected_subdir
-                                and "/" not in selected_subdir
-                                and "\\" not in selected_subdir
-                            ):
-                                subdir_path = os.path.realpath(
-                                    os.path.join(real_workdir, selected_subdir)
-                                )
-                                # Ensure path is within parent directory
-                                if (
-                                    os.path.commonpath([real_workdir, subdir_path])
-                                    == real_workdir
-                                ):
-                                    try:
-                                        subdir_contents = os.listdir(subdir_path)
-                                        subdir_subdirs = []
-                                        subdir_files = []
-                                        for item in subdir_contents:
-                                            item_path = os.path.join(subdir_path, item)
-                                            if os.path.isdir(item_path):
-                                                subdir_subdirs.append(item)
-                                            elif os.path.isfile(item_path):
-                                                subdir_files.append(item)
-
-                                        st.caption(
-                                            f"📁 `{selected_subdir}` contains: {len(subdir_subdirs)} folders, {len(subdir_files)} files"
-                                        )
-                                    except:
-                                        pass
+                        if len(subdirs) > 50:
+                            st.caption(f"... and {len(subdirs) - 50} more folders")
                     else:
                         st.info("ℹ️ No subfolders in current directory")
 
@@ -486,62 +334,10 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
                 except Exception as e:
                     st.warning(f"⚠️ Could not list subfolders: {e}")
 
-                # Directory Contents Section
-                st.markdown("---")
-                with st.expander("📋 Directory Contents (Full View)", expanded=False):
-                    try:
-                        contents = os.listdir(workdir)
-                        dirs = [
-                            d
-                            for d in contents
-                            if os.path.isdir(os.path.join(workdir, d))
-                        ]
-                        files = [
-                            f
-                            for f in contents
-                            if os.path.isfile(os.path.join(workdir, f))
-                        ]
-
-                        # Show statistics
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Total Items", len(contents))
-                        with col2:
-                            st.metric("Directories", len(dirs))
-                        with col3:
-                            st.metric("Files", len(files))
-
-                        # Show directories
-                        if dirs:
-                            st.write("**📁 Directories:**")
-                            dirs_display = sorted(dirs)
-                            if len(dirs_display) > 20:
-                                st.write(", ".join(dirs_display[:20]))
-                                st.write(f"... and {len(dirs_display) - 20} more")
-                            else:
-                                st.write(", ".join(dirs_display))
-
-                        # Show files
-                        if files:
-                            st.write("**📄 Files:**")
-                            files_display = sorted(files)
-                            if len(files_display) > 20:
-                                st.write(", ".join(files_display[:20]))
-                                st.write(f"... and {len(files_display) - 20} more")
-                            else:
-                                st.write(", ".join(files_display))
-
-                    except PermissionError:
-                        st.warning("⚠️ Permission denied to list directory contents")
-                    except Exception as e:
-                        st.warning(f"⚠️ Could not list directory contents: {e}")
-
                 return workdir
             else:
                 st.error(f"❌ Directory does not exist: {workdir}")
-                st.info(
-                    "💡 Use the Home or Current button to navigate to a valid directory"
-                )
+                st.info("💡 Use the Home or Current button to navigate to a valid directory")
                 return current_dir
         except Exception as e:
             st.error(f"❌ Invalid path: {e}")
