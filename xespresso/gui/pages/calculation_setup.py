@@ -398,8 +398,10 @@ def render_calculation_setup_page():
                 st.error("❌ Please select a machine")
                 return
 
-            # Add machine to config as queue parameter (for backwards compatibility)
-            config["queue"] = st.session_state.calc_machine
+            # Add machine to config as queue parameter
+            # Convert Machine object to queue dict for compatibility
+            machine = st.session_state.calc_machine
+            config["queue"] = machine.to_queue() if hasattr(machine, 'to_queue') else machine
 
             # Use calculation module to prepare atoms and calculator
             st.info(
