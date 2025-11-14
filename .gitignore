@@ -136,3 +136,10 @@ tests/images/*
 # Espresso calculation directories (not in xespresso/gui/)
 /calculations/
 /scf/
+
+# Test artifacts and job files
+job_file
+*.pwi
+*.pwo
+*.asei
+*.save/
