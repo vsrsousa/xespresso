@@ -154,7 +154,7 @@ def render_dry_run_tab():
         
         with st.spinner("Generating files..."):
             try:
-                from xespresso.gui.calculations import dry_run_calculation, prepare_calculation_from_gui
+                from xespresso.gui.calculations import dry_run_calculation
                 from ase import io as ase_io
                 
                 # Create output directory if it doesn't exist
@@ -166,23 +166,10 @@ def render_dry_run_tab():
                 ase_io.write(structure_path, atoms)
                 st.info(f"💾 Saved structure: {structure_filename}")
                 
-                # Check if calculator already exists in session_state (from Calculation Setup)
+                # Always use dry_run_calculation for dry run to ensure proper calculator initialization
                 label = os.path.join(full_path, 'espresso')
-                
-                if 'espresso_calculator' in st.session_state and st.session_state.espresso_calculator is not None:
-                    st.info("📦 Using pre-configured calculator from Calculation Setup...")
-                    calc = st.session_state.espresso_calculator
-                    prepared_atoms = st.session_state.get('prepared_atoms', atoms)
-                    
-                    # Update the label to use the current output path
-                    calc.label = label
-                    
-                    # Write input files using xespresso's method
-                    calc.write_input(prepared_atoms)
-                else:
-                    # Use calculation module to prepare atoms and calculator, then generate files
-                    st.info("🔧 Creating Espresso calculator and generating files...")
-                    prepared_atoms, calc = dry_run_calculation(atoms, config, label=label)
+                st.info("🔧 Creating Espresso calculator and generating files...")
+                prepared_atoms, calc = dry_run_calculation(atoms, config, label=label)
                 
                 st.success("✅ Files generated successfully using xespresso!")
                 
