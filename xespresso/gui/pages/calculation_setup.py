@@ -403,61 +403,18 @@ def render_calculation_setup_page():
             machine = st.session_state.calc_machine
             config["queue"] = machine.to_queue() if hasattr(machine, 'to_queue') else machine
 
-            # Get selected code and configure command
-            if st.session_state.get("calc_selected_code"):
-                try:
-                    from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
-                    
-                    codes = load_codes_config(
-                        st.session_state.selected_machine_for_calc, DEFAULT_CODES_DIR
-                    )
-                    
-                    # Get the code object
-                    selected_version = st.session_state.get("calc_selected_version")
-                    if selected_version:
-                        version_codes = codes.get_all_codes(version=selected_version)
-                    else:
-                        version_codes = codes.get_all_codes()
-                    
-                    code_obj = version_codes.get(st.session_state.calc_selected_code)
-                    
-                    if code_obj:
-                        # Build the command string for the calculator
-                        # Format: PARALLEL CODE.x -in PREFIX.pwi > PREFIX.pwo
-                        code_path = code_obj.path
-                        package = code_obj.name
-                        
-                        # Set up command template
-                        if code_obj.parallel_command:
-                            # Use the parallel command from code config
-                            parallel = code_obj.parallel_command
-                            config["parallel"] = parallel
-                            command = f"{parallel} {code_path} -in PREFIX.pwi > PREFIX.pwo"
-                        else:
-                            # Use launcher from machine if available
-                            launcher = machine.launcher if hasattr(machine, 'launcher') and machine.launcher else ""
-                            if launcher:
-                                config["parallel"] = launcher
-                                command = f"{launcher} {code_path} -in PREFIX.pwi > PREFIX.pwo"
-                            else:
-                                command = f"{code_path} -in PREFIX.pwi > PREFIX.pwo"
-                        
-                        # Store command in environment for scheduler to use
-                        import os
-                        os.environ["ASE_ESPRESSO_COMMAND"] = command
-                        config["package"] = package
-                        
-                        st.info(f"   Code: {code_obj.name} ({code_path})")
-                    else:
-                        st.warning(f"⚠️ Could not find code object for {st.session_state.calc_selected_code}")
-                except Exception as e:
-                    st.warning(f"⚠️ Could not configure code command: {e}")
+            # Set environment variable for xespresso command template
+            # xespresso will replace LAUNCHER, PACKAGE, PARALLEL, PREFIX placeholders
+            import os
+            os.environ["ASE_ESPRESSO_COMMAND"] = "LAUNCHER PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
             
             # Use calculation module to prepare atoms and calculator
             st.info(
                 "📦 Using calculation module to prepare atoms and Espresso calculator..."
             )
             st.info(f"   Machine: {st.session_state.selected_machine_for_calc}")
+            if st.session_state.get("calc_selected_code"):
+                st.info(f"   Code: {st.session_state.calc_selected_code}")
 
             label = "prepared_calculation"  # Temporary label, will be updated in job submission
 
