@@ -22,7 +22,7 @@ def set_queue(calc, package=None, parallel=None, queue=None, command=None):
         calc: ASE calculator object.
         package (str, optional): Executable name (e.g., 'pw').
         parallel (str, optional): Parallel execution command (e.g., 'mpirun -np 4').
-        queue (dict, optional): Scheduler configuration dictionary.
+        queue (dict or Machine, optional): Scheduler configuration dictionary or Machine object.
         command (str, optional): Command template string with placeholders.
 
     Raises:
@@ -31,6 +31,12 @@ def set_queue(calc, package=None, parallel=None, queue=None, command=None):
     """
     logger = logging.getLogger(__name__)
     queue = queue or calc.queue
+    
+    # Convert Machine object to queue dict if necessary
+    from xespresso.machines.machine import Machine
+    if isinstance(queue, Machine):
+        queue = queue.to_queue()
+    
     calc.queue = queue
     package = package or calc.package
     parallel = parallel or calc.parallel
