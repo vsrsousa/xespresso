@@ -129,6 +129,7 @@ def render_codes_selector(machine_name, key="codes_selector", help_text=None):
         if codes_config.versions:
             available_versions = codes_config.list_versions()
 
+            # Show info about multiple versions if available
             if len(available_versions) > 1:
                 st.info(
                     f"📦 Multiple QE versions available: {', '.join(available_versions)}"
@@ -173,6 +174,12 @@ def render_codes_selector(machine_name, key="codes_selector", help_text=None):
                         label = version_config.versions[selected_version].get("label")
                         if label:
                             st.write(f"**Label:** {label}")
+                        
+                        # ALWAYS show modules if they exist in the codes JSON
+                        # regardless of how many versions there are
+                        modules = version_config.versions[selected_version].get('modules')
+                        if modules:
+                            st.write(f"**Modules:** {', '.join(modules)}")
                     st.write(f"**Codes:** {len(version_codes)} executables configured")
 
                     # Show code list
@@ -278,15 +285,24 @@ def render_workdir_browser_with_button(current_dir=None, key="workdir_browser", 
         workdir = st.session_state[workdir_key]
         st.info(f"📍 Current: `{workdir}`")
         
-        # Manual path entry
+        # Manual path entry - use on_change callback to prevent infinite loop
+        # Initialize the manual input key if not set
+        manual_input_key = f"{key}_manual_input"
+        if manual_input_key not in st.session_state:
+            st.session_state[manual_input_key] = workdir
+        
         new_path = st.text_input(
             "Or enter path manually:",
-            value=workdir,
-            key=f"{key}_manual_input",
+            value=st.session_state[manual_input_key],
+            key=manual_input_key,
             help="Type or paste the full path to your desired folder"
         )
         
-        # Normalize both paths for consistent comparison to prevent loops
+        # Only update workdir if the user actually changed the path
+        # and it's different from current workdir (prevents infinite loop)
+        if new_path and new_path != st.session_state[manual_input_key]:
+            st.session_state[manual_input_key] = new_path
+        
         if new_path:
             try:
                 normalized_new_path = os.path.abspath(os.path.expanduser(new_path))
@@ -295,6 +311,7 @@ def render_workdir_browser_with_button(current_dir=None, key="workdir_browser", 
                 if normalized_new_path != normalized_workdir:
                     if os.path.exists(normalized_new_path) and os.path.isdir(normalized_new_path):
                         st.session_state[workdir_key] = normalized_new_path
+                        st.session_state[manual_input_key] = normalized_new_path
                         st.rerun()
             except Exception:
                 pass
@@ -401,19 +418,21 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
     col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
 
     with col1:
-        workdir = st.text_input(
+        # Don't use a separate key for the text input to avoid state conflicts
+        # Just use value parameter and read from the return value
+        workdir_input = st.text_input(
             "Directory Path:",
             value=st.session_state[workdir_key],
-            key=f"{key}_input",
             help="Enter the path to your working directory",
         )
     
-    # Update session state immediately when user types (prevents infinite loop)
-    # Normalize the path first for consistent comparison
-    if workdir:
-        normalized_workdir = os.path.abspath(os.path.expanduser(workdir))
+    # Update session state only if value actually changed
+    if workdir_input:
+        normalized_workdir = os.path.abspath(os.path.expanduser(workdir_input))
+        # Only update and rerun if the normalized path is different
         if st.session_state[workdir_key] != normalized_workdir:
             st.session_state[workdir_key] = normalized_workdir
+            # Don't call st.rerun() here - let Streamlit handle it naturally
 
     with col2:
         if st.button(
