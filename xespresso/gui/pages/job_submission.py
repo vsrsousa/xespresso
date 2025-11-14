@@ -636,24 +636,14 @@ def render_job_submission_tab():
                 # Create output directory if it doesn't exist
                 os.makedirs(full_path, exist_ok=True)
                 
-                # Check if calculator already exists in session_state
-                # (created by Calculation Setup or Workflow Builder using calculation modules)
-                if 'espresso_calculator' in st.session_state and st.session_state.espresso_calculator is not None:
-                    st.info("📦 Using pre-configured calculator from Calculation Setup (prepared by calculation module)...")
-                    calc = st.session_state.espresso_calculator
-                    prepared_atoms = st.session_state.get('prepared_atoms', atoms)
-                    
-                    # Update the label to use the current output path
-                    calc.label = os.path.join(full_path, 'espresso')
-                else:
-                    # Use calculation module to prepare atoms and Espresso calculator
-                    # Following the principle: calculation modules create objects, job submission executes
-                    st.info("🔧 Using calculation module to prepare atoms and Espresso calculator...")
-                    
-                    label = os.path.join(full_path, 'espresso')
-                    prepared_atoms, calc = prepare_calculation_from_gui(atoms, config, label=label)
-                    
-                    st.info("✅ Calculation module prepared objects from configuration!")
+                # Always create fresh calculator for proper initialization
+                # Use calculation module to prepare atoms and Espresso calculator
+                st.info("🔧 Using calculation module to prepare atoms and Espresso calculator...")
+                
+                label = os.path.join(full_path, 'espresso')
+                prepared_atoms, calc = prepare_calculation_from_gui(atoms, config, label=label)
+                
+                st.info("✅ Calculation module prepared objects from configuration!")
                 
                 # Attach calculator to prepared atoms (relationship maintained by calculation module)
                 st.info("🔗 Attaching calculator to atoms object...")
