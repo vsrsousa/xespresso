@@ -138,27 +138,6 @@ def render_dry_run_tab():
     
     st.markdown("---")
     
-    # Machine and Queue Configuration
-    st.subheader("🖥️ Machine & Queue Configuration")
-    
-    try:
-        from xespresso.gui.utils.selectors import render_machine_selector
-        machine_name, machine = render_machine_selector(key="dry_run_machine")
-    except ImportError:
-        st.warning("Machine selector not available - will create input files without job script")
-        machine_name, machine = None, None
-    
-    if machine_name and machine:
-        st.success(f"✅ Machine selected: {machine_name}")
-        
-        # Show queue info if available
-        if hasattr(machine, 'queue') and machine.queue:
-            with st.expander("Queue Configuration"):
-                import json
-                st.json(machine.queue)
-    
-    st.markdown("---")
-    
     # Generate button
     col1, col2, col3 = st.columns([2, 1, 1])
     
@@ -187,11 +166,6 @@ def render_dry_run_tab():
                 ase_io.write(structure_path, atoms)
                 st.info(f"💾 Saved structure: {structure_filename}")
                 
-                # Prepare config with machine/queue if available
-                calc_config = config.copy()
-                if machine and hasattr(machine, 'queue'):
-                    calc_config['queue'] = machine.queue
-                
                 # Check if calculator already exists in session_state (from Calculation Setup)
                 label = os.path.join(full_path, 'espresso')
                 
@@ -208,7 +182,7 @@ def render_dry_run_tab():
                 else:
                     # Use calculation module to prepare atoms and calculator, then generate files
                     st.info("🔧 Creating Espresso calculator and generating files...")
-                    prepared_atoms, calc = dry_run_calculation(atoms, calc_config, label=label)
+                    prepared_atoms, calc = dry_run_calculation(atoms, config, label=label)
                 
                 st.success("✅ Files generated successfully using xespresso!")
                 
