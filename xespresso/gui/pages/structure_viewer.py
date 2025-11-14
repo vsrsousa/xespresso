@@ -76,18 +76,14 @@ def render_browse_tab():
     """Render the directory browser tab using structures module."""
     from xespresso.gui.structures import StructureLoader, load_structure_from_file
     
-    # Working directory browser
-    try:
-        from xespresso.gui.utils.selectors import render_workdir_browser
-        workdir = render_workdir_browser(key="structure_viewer_workdir")
-    except ImportError:
-        workdir = st.text_input("Working Directory:", value=os.getcwd())
-        workdir = os.path.abspath(os.path.expanduser(workdir))
+    # Use base working directory from session state
+    base_workdir = st.session_state.get('working_directory', os.path.expanduser("~"))
+    st.info(f"📍 Browsing in: `{base_workdir}`")
     
-    if os.path.exists(workdir) and os.path.isdir(workdir):
+    if os.path.exists(base_workdir) and os.path.isdir(base_workdir):
         # Use structures module to find structure files
         structure_files = StructureLoader.find_structure_files(
-            workdir,
+            base_workdir,
             max_depth=3,
             validate_safety=True
         )
@@ -98,7 +94,7 @@ def render_browse_tab():
             selected_file = st.selectbox(
                 "Select structure file:",
                 structure_files,
-                format_func=lambda x: os.path.relpath(x, workdir)
+                format_func=lambda x: os.path.relpath(x, base_workdir)
             )
             
             if selected_file and st.button("Load Structure"):
@@ -106,7 +102,7 @@ def render_browse_tab():
                     # Use structures module to load from file
                     atoms, loader = load_structure_from_file(selected_file)
                     
-                    st.success(f"✅ Loaded: {os.path.relpath(selected_file, workdir)}")
+                    st.success(f"✅ Loaded: {os.path.relpath(selected_file, base_workdir)}")
                     
                     # Store in session state
                     st.session_state.current_structure = atoms

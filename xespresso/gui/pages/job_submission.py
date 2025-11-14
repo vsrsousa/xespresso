@@ -84,57 +84,41 @@ def render_dry_run_tab():
     
     st.markdown("---")
     
-    # Working directory selection
+    # Use working directory from session state + calculation label
     st.subheader("📁 Output Directory")
     
-    try:
-        from xespresso.gui.utils.selectors import render_workdir_browser_with_button
-        workdir = render_workdir_browser_with_button(key="dry_run_workdir", label="Select output directory for calculation files")
-    except ImportError:
-        workdir = st.text_input(
-            "Working Directory:", 
-            value=os.path.join(os.getcwd(), "calculations"),
-            key="dry_run_workdir_input"
-        )
-        workdir = os.path.abspath(os.path.expanduser(workdir))
-    
-    # Validate and normalize workdir to prevent path traversal
-    try:
-        workdir = os.path.realpath(workdir)
-        # Check if workdir is under a safe base directory (e.g., user's home or /tmp)
-        safe_bases = [os.path.realpath(os.path.expanduser("~")), os.path.realpath("/tmp")]
-        is_safe = any(workdir.startswith(base) for base in safe_bases)
-        
-        if not is_safe:
-            st.warning("⚠️ For security, only directories under your home directory or /tmp are allowed")
-            return
-    except (OSError, ValueError) as e:
-        st.error(f"❌ Invalid directory path: {e}")
-        return
+    # Get base working directory from session state
+    base_workdir = st.session_state.get('working_directory', os.path.expanduser("~"))
+    st.info(f"📍 Base directory: `{base_workdir}`")
     
     # Label/subfolder for this calculation
+    # Try to get from workflow_config first, or use default
+    default_label = config.get('label', f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}")
+    
     label = st.text_input(
         "Calculation Label (subfolder):",
-        value=f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}",
+        value=default_label,
         help="Label for this calculation - will create subfolder under working directory",
         key="dry_run_label"
     )
     
     # Full path where files will be created
-    full_path = os.path.join(workdir, label)
+    full_path = os.path.join(base_workdir, label)
     
     # Validate the full path to prevent path traversal in the label
     try:
         full_path = os.path.realpath(full_path)
-        # Ensure full_path is under workdir (prevent path traversal via label)
-        if not full_path.startswith(workdir):
+        base_workdir_real = os.path.realpath(base_workdir)
+        
+        # Ensure full_path is under base_workdir (prevent path traversal via label)
+        if not full_path.startswith(base_workdir_real):
             st.error("❌ Invalid calculation label - path traversal detected")
             return
     except (OSError, ValueError) as e:
         st.error(f"❌ Invalid path: {e}")
         return
     
-    st.info(f"📍 Files will be created in: `{full_path}`")
+    st.success(f"✅ Files will be created in: `{full_path}`")
     
     st.markdown("---")
     
@@ -283,34 +267,30 @@ def render_dry_run_tab():
 def render_file_browser_tab():
     """Render the file browser tab."""
     # Working Directory Browser Section
-    st.subheader("📁 Working Directory Browser")
+    st.subheader("📁 Browse Calculation Folders")
     
-    # Import the workdir browser utility
-    try:
-        from xespresso.gui.utils.selectors import render_workdir_browser
-        workdir = render_workdir_browser(key="job_submission_workdir")
-    except ImportError:
-        workdir = st.text_input("Working Directory:", value=os.getcwd())
-        workdir = os.path.abspath(os.path.expanduser(workdir))
+    # Use base working directory from session state
+    base_workdir = st.session_state.get('working_directory', os.path.expanduser("~"))
+    st.info(f"📍 Browsing in: `{base_workdir}`")
     
-    if not os.path.exists(workdir) or not os.path.isdir(workdir):
-        st.error(f"❌ Invalid working directory: {workdir}")
+    if not os.path.exists(base_workdir) or not os.path.isdir(base_workdir):
+        st.error(f"❌ Invalid working directory: {base_workdir}")
         return
     
     st.markdown("---")
     
     # Calculation Folder Navigation
     st.subheader("📂 Calculation Folders")
-    st.info("💡 xespresso organizes calculations in label-based folders (e.g., 'calc/structure')")
+    st.info("💡 xespresso organizes calculations in label-based folders (e.g., 'scf/formula')")
     
     # Find calculation folders (those with input files)
     calc_folders = []
     input_file_extensions = ['.in', '.pwi', '.phi', '.ppi', '.bandi']
     
     try:
-        for root, dirs, files in os.walk(workdir, topdown=True):
+        for root, dirs, files in os.walk(base_workdir, topdown=True):
             # Limit depth to avoid too much recursion
-            depth = root[len(workdir):].count(os.sep)
+            depth = root[len(base_workdir):].count(os.sep)
             if depth < 4:
                 has_input_files = any(f.endswith(tuple(input_file_extensions)) or 
                                      f == 'job_file' or f.endswith('.sh') or f.endswith('.slurm')
@@ -325,11 +305,11 @@ def render_file_browser_tab():
             selected_folder = st.selectbox(
                 "Select Calculation Folder:",
                 calc_folders,
-                format_func=lambda x: os.path.relpath(x, workdir) if x != workdir else "."
+                format_func=lambda x: os.path.relpath(x, base_workdir) if x != base_workdir else "."
             )
             
             if selected_folder:
-                st.info(f"📍 Selected: `{os.path.relpath(selected_folder, workdir)}`")
+                st.info(f"📍 Selected: `{os.path.relpath(selected_folder, base_workdir)}`")
                 
                 # List files in the selected folder
                 try:
@@ -575,54 +555,37 @@ def render_job_submission_tab():
     # Working directory and label
     st.subheader("📁 Output Location")
     
-    try:
-        from xespresso.gui.utils.selectors import render_workdir_browser
-        workdir = render_workdir_browser(key="run_calc_workdir")
-    except ImportError:
-        workdir = st.text_input(
-            "Working Directory:", 
-            value=os.path.join(os.getcwd(), "calculations"),
-            key="run_calc_workdir_input"
-        )
-        workdir = os.path.abspath(os.path.expanduser(workdir))
+    # Use base working directory from session state
+    base_workdir = st.session_state.get('working_directory', os.path.expanduser("~"))
+    st.info(f"📍 Base directory: `{base_workdir}`")
     
-    # Validate and normalize workdir to prevent path traversal
-    try:
-        workdir = os.path.realpath(workdir)
-        # Check if workdir is under a safe base directory
-        safe_bases = [os.path.realpath(os.path.expanduser("~")), os.path.realpath("/tmp")]
-        is_safe = any(workdir.startswith(base) for base in safe_bases)
-        
-        if not is_safe:
-            st.warning("⚠️ For security, only directories under your home directory or /tmp are allowed")
-            return
-    except (OSError, ValueError) as e:
-        st.error(f"❌ Invalid directory path: {e}")
-        return
+    # Label for calculation - try to get from workflow_config first
+    default_label = config.get('label', f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}")
     
-    # Label for calculation
     label = st.text_input(
         "Calculation Label (subfolder):",
-        value=f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}",
+        value=default_label,
         help="Label for this calculation - will create subfolder under working directory",
         key="run_calc_label"
     )
     
     # Full path where calculation will run
-    full_path = os.path.join(workdir, label)
+    full_path = os.path.join(base_workdir, label)
     
     # Validate the full path to prevent path traversal in the label
     try:
         full_path = os.path.realpath(full_path)
-        # Ensure full_path is under workdir (prevent path traversal via label)
-        if not full_path.startswith(workdir):
+        base_workdir_real = os.path.realpath(base_workdir)
+        
+        # Ensure full_path is under base_workdir (prevent path traversal via label)
+        if not full_path.startswith(base_workdir_real):
             st.error("❌ Invalid calculation label - path traversal detected")
             return
     except (OSError, ValueError) as e:
         st.error(f"❌ Invalid path: {e}")
         return
     
-    st.info(f"📍 Calculation will run in: `{full_path}`")
+    st.success(f"✅ Calculation will run in: `{full_path}`")
     
     st.markdown("---")
     
