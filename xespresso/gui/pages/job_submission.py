@@ -88,8 +88,8 @@ def render_dry_run_tab():
     st.subheader("📁 Output Directory")
     
     try:
-        from xespresso.gui.utils.selectors import render_workdir_browser
-        workdir = render_workdir_browser(key="dry_run_workdir")
+        from xespresso.gui.utils.selectors import render_workdir_browser_with_button
+        workdir = render_workdir_browser_with_button(key="dry_run_workdir", label="Select output directory for calculation files")
     except ImportError:
         workdir = st.text_input(
             "Working Directory:", 

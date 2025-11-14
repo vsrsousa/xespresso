@@ -197,6 +197,169 @@ def render_codes_selector(machine_name, key="codes_selector", help_text=None):
         return None
 
 
+def render_workdir_browser_with_button(current_dir=None, key="workdir_browser", label="Output Directory"):
+    """
+    Render a folder browser that looks similar to st.file_uploader.
+    
+    This provides a button-based interface for folder selection that mimics
+    the appearance of the "Browse Files" button in file upload widgets.
+    
+    Args:
+        current_dir: Current working directory path
+        key: Unique key for the widget
+        label: Label to display for the directory selector
+        
+    Returns:
+        str: Selected directory path
+    """
+    import streamlit as st
+    import os
+    
+    # Use per-key session state to avoid conflicts between multiple instances
+    workdir_key = f"{key}_workdir"
+    browse_mode_key = f"{key}_browse_mode"
+    
+    if current_dir is None:
+        current_dir = st.session_state.get(workdir_key, os.path.join(os.getcwd(), "calculations"))
+    
+    # Initialize session state if not set
+    if workdir_key not in st.session_state:
+        st.session_state[workdir_key] = current_dir
+    if browse_mode_key not in st.session_state:
+        st.session_state[browse_mode_key] = False
+    
+    # Main container with similar styling to file_uploader
+    st.markdown(f"**{label}**")
+    
+    # Create a button that looks like file uploader's browse button
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        # Display current selection
+        current_path = st.session_state[workdir_key]
+        st.text_input(
+            "Selected folder:",
+            value=current_path,
+            key=f"{key}_display",
+            disabled=True,
+            label_visibility="collapsed"
+        )
+    
+    with col2:
+        if st.button("📁 Browse Folders", key=f"{key}_browse_btn", use_container_width=True):
+            st.session_state[browse_mode_key] = not st.session_state[browse_mode_key]
+            st.rerun()
+    
+    # Show folder browser when button is clicked (similar to file dialog)
+    if st.session_state[browse_mode_key]:
+        st.markdown("---")
+        st.markdown("**📂 Select a folder:**")
+        
+        # Quick navigation buttons
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("🏠 Home", key=f"{key}_home", use_container_width=True):
+                st.session_state[workdir_key] = os.path.expanduser("~")
+                st.rerun()
+        
+        with col2:
+            if st.button("📂 Current Dir", key=f"{key}_current", use_container_width=True):
+                st.session_state[workdir_key] = os.getcwd()
+                st.rerun()
+        
+        with col3:
+            if st.button("⬆️ Parent", key=f"{key}_parent", use_container_width=True):
+                current = st.session_state[workdir_key]
+                st.session_state[workdir_key] = os.path.dirname(current)
+                st.rerun()
+        
+        # Current path display
+        workdir = st.session_state[workdir_key]
+        st.info(f"📍 Current: `{workdir}`")
+        
+        # Manual path entry
+        new_path = st.text_input(
+            "Or enter path manually:",
+            value=workdir,
+            key=f"{key}_manual_input",
+            help="Type or paste the full path to your desired folder"
+        )
+        
+        if new_path != workdir:
+            try:
+                new_path = os.path.abspath(os.path.expanduser(new_path))
+                if os.path.exists(new_path) and os.path.isdir(new_path):
+                    st.session_state[workdir_key] = new_path
+                    st.rerun()
+            except Exception:
+                pass
+        
+        # Folder list for navigation
+        try:
+            # Security validation
+            if os.path.isabs(workdir):
+                real_workdir = os.path.realpath(workdir)
+                
+                if os.path.exists(real_workdir) and os.path.isdir(real_workdir):
+                    # Get subdirectories
+                    contents = os.listdir(real_workdir)
+                    subdirs = []
+                    for d in contents:
+                        if d.startswith("."):
+                            continue
+                        subdir_path = os.path.join(real_workdir, d)
+                        if os.path.isdir(subdir_path):
+                            try:
+                                # Validate path doesn't escape parent
+                                if os.path.commonpath([real_workdir, os.path.realpath(subdir_path)]) == real_workdir:
+                                    subdirs.append(d)
+                            except (ValueError, OSError):
+                                continue
+                    subdirs.sort()
+                    
+                    if subdirs:
+                        st.markdown("**Folders in current directory:**")
+                        
+                        # Show up to 20 folders
+                        for subdir in subdirs[:20]:
+                            col_icon, col_name, col_btn = st.columns([0.3, 2.5, 0.5])
+                            with col_icon:
+                                st.text("📁")
+                            with col_name:
+                                st.text(subdir)
+                            with col_btn:
+                                if st.button("→", key=f"{key}_select_{subdir}", help=f"Open {subdir}"):
+                                    # Validate to prevent path traversal
+                                    if ".." not in subdir and "/" not in subdir and "\\" not in subdir:
+                                        new_workdir = os.path.realpath(os.path.join(real_workdir, subdir))
+                                        # Ensure new path is within parent
+                                        try:
+                                            if os.path.commonpath([real_workdir, new_workdir]) == real_workdir:
+                                                st.session_state[workdir_key] = new_workdir
+                                                st.rerun()
+                                        except ValueError:
+                                            pass
+                        
+                        if len(subdirs) > 20:
+                            st.caption(f"... and {len(subdirs) - 20} more folders")
+                    else:
+                        st.info("ℹ️ No subfolders in current directory")
+        except PermissionError:
+            st.warning("⚠️ Permission denied to list directory contents")
+        except Exception as e:
+            st.warning(f"⚠️ Could not list folders: {e}")
+        
+        # Done button to close browser
+        if st.button("✅ Use This Folder", key=f"{key}_done", type="primary", use_container_width=True):
+            st.session_state[browse_mode_key] = False
+            st.rerun()
+        
+        st.markdown("---")
+    
+    return st.session_state[workdir_key]
+
+
 def render_workdir_browser(current_dir=None, key="workdir_browser"):
     """
     Render a clean and simple working directory browser/selector.
