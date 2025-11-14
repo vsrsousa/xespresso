@@ -90,6 +90,7 @@ except ImportError:
 # Import utility functions
 try:
     from xespresso.gui.utils import validate_path, create_3d_structure_plot, display_structure_info
+    from xespresso.gui.utils.session_manager import render_session_manager
     UTILS_AVAILABLE = True
 except ImportError as e:
     st.warning(f"⚠️ GUI utilities not fully available: {e}")
@@ -106,6 +107,10 @@ except ImportError as e:
     def display_structure_info(atoms):
         """Fallback structure info display."""
         st.write(f"Structure: {atoms.get_chemical_formula()}")
+    
+    def render_session_manager(key="session_manager"):
+        """Fallback session manager."""
+        pass
 
 # Initialize session state
 if 'current_structure' not in st.session_state:
@@ -137,6 +142,10 @@ page = st.sidebar.radio(
         "📈 Results & Post-Processing"
     ]
 )
+
+# Add session manager to sidebar
+if UTILS_AVAILABLE:
+    render_session_manager()
 
 # Page routing
 if page == "🖥️ Machine Configuration":

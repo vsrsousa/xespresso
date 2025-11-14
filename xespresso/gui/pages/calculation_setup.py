@@ -259,14 +259,15 @@ def render_calculation_setup_page():
                 )
 
                 if codes and codes.has_any_codes():
-                    # Check if multiple versions are available
+                    # Check if versions are available
                     available_versions = codes.list_versions()
 
-                    if codes.versions and len(available_versions) > 1:
-                        # Multiple versions available - show version selector
-                        st.info(
-                            f"📦 Multiple QE versions available: {', '.join(available_versions)}"
-                        )
+                    if codes.versions and available_versions:
+                        # Show version selector (whether single or multiple versions)
+                        if len(available_versions) > 1:
+                            st.info(
+                                f"📦 Multiple QE versions available: {', '.join(available_versions)}"
+                            )
 
                         # Version selector
                         default_idx = 0
@@ -294,7 +295,7 @@ def render_calculation_setup_page():
                         # Get codes for selected version
                         version_codes = codes.get_all_codes(version=selected_version)
 
-                        # Show version details
+                        # Show version details and ALWAYS retrieve modules if defined
                         with st.expander("⚙️ Version Details", expanded=False):
                             st.write(f"**Version:** {selected_version}")
                             if codes.versions and selected_version in codes.versions:
@@ -305,6 +306,11 @@ def render_calculation_setup_page():
                                     st.write(
                                         f"**Prefix:** {version_config['qe_prefix']}"
                                     )
+                                # ALWAYS show and store modules if they exist in codes JSON
+                                if version_config.get("modules"):
+                                    modules = version_config["modules"]
+                                    st.write(f"**Modules:** {', '.join(modules)}")
+                                    config["modules"] = modules
                             st.write(
                                 f"**Available codes:** {', '.join(version_codes.keys())}"
                             )
