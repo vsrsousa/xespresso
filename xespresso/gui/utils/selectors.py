@@ -325,28 +325,30 @@ def render_workdir_browser_with_button(current_dir=None, key="workdir_browser", 
                     if subdirs:
                         st.markdown("**Folders in current directory:**")
                         
-                        # Show up to 20 folders
-                        for subdir in subdirs[:20]:
-                            col_icon, col_name, col_btn = st.columns([0.3, 2.5, 0.5])
-                            with col_icon:
-                                st.text("📁")
-                            with col_name:
-                                st.text(subdir)
-                            with col_btn:
-                                if st.button("→", key=f"{key}_select_{subdir}", help=f"Open {subdir}"):
-                                    # Validate to prevent path traversal
-                                    if ".." not in subdir and "/" not in subdir and "\\" not in subdir:
-                                        new_workdir = os.path.realpath(os.path.join(real_workdir, subdir))
-                                        # Ensure new path is within parent
-                                        try:
-                                            if os.path.commonpath([real_workdir, new_workdir]) == real_workdir:
-                                                st.session_state[workdir_key] = new_workdir
-                                                st.rerun()
-                                        except ValueError:
-                                            pass
+                        # Use dropdown for folder selection
+                        selected_subdir = st.selectbox(
+                            "Select a folder:",
+                            options=[""] + subdirs,
+                            format_func=lambda x: "-- Select a folder --" if x == "" else f"📁 {x}",
+                            key=f"{key}_folder_dropdown",
+                            help="Choose a folder to navigate into"
+                        )
                         
-                        if len(subdirs) > 20:
-                            st.caption(f"... and {len(subdirs) - 20} more folders")
+                        # Navigate button (only enabled when a folder is selected)
+                        if selected_subdir:
+                            if st.button("→ Open Folder", key=f"{key}_open_selected", 
+                                        type="primary",
+                                        use_container_width=True):
+                                # Validate to prevent path traversal
+                                if ".." not in selected_subdir and "/" not in selected_subdir and "\\" not in selected_subdir:
+                                    new_workdir = os.path.realpath(os.path.join(real_workdir, selected_subdir))
+                                    # Ensure new path is within parent
+                                    try:
+                                        if os.path.commonpath([real_workdir, new_workdir]) == real_workdir:
+                                            st.session_state[workdir_key] = new_workdir
+                                            st.rerun()
+                                    except ValueError:
+                                        pass
                     else:
                         st.info("ℹ️ No subfolders in current directory")
         except PermissionError:
@@ -471,31 +473,39 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
                     subdirs.sort()
 
                     if subdirs:
-                        st.info("💡 Double-click a folder to navigate into it")
+                        st.info("💡 Select a folder from the dropdown to navigate into it")
                         
-                        # Show folders in a clean list (like file browser)
-                        for subdir in subdirs[:50]:  # Limit to 50 for performance
-                            col_icon, col_name, col_nav = st.columns([0.5, 3, 0.5])
-                            with col_icon:
-                                st.text("📁")
-                            with col_name:
-                                st.text(subdir)
-                            with col_nav:
-                                if st.button("→", key=f"{key}_nav_{subdir}", help=f"Navigate to {subdir}"):
-                                    # Validate to prevent path traversal
-                                    if ".." not in subdir and "/" not in subdir and "\\" not in subdir:
-                                        new_workdir = os.path.realpath(
-                                            os.path.join(real_workdir, subdir)
-                                        )
-                                        # Ensure new path is within parent
-                                        if os.path.commonpath([real_workdir, new_workdir]) == real_workdir:
-                                            st.session_state[workdir_key] = new_workdir
-                                            st.rerun()
-                                    else:
-                                        st.error("❌ Invalid folder name")
-
-                        if len(subdirs) > 50:
-                            st.caption(f"... and {len(subdirs) - 50} more folders")
+                        # Use dropdown for folder selection
+                        selected_subdir = st.selectbox(
+                            "Available folders:",
+                            options=[""] + subdirs,  # Empty option to allow no selection
+                            format_func=lambda x: "-- Select a folder --" if x == "" else f"📁 {x}",
+                            key=f"{key}_folder_dropdown",
+                            help="Choose a folder to navigate into"
+                        )
+                        
+                        # Navigate button (only enabled when a folder is selected)
+                        col1, col2 = st.columns([3, 1])
+                        with col2:
+                            if st.button("→ Open", key=f"{key}_open_folder", 
+                                        disabled=(selected_subdir == ""),
+                                        type="primary" if selected_subdir else "secondary",
+                                        use_container_width=True):
+                                # Validate to prevent path traversal
+                                if selected_subdir and ".." not in selected_subdir and "/" not in selected_subdir and "\\" not in selected_subdir:
+                                    new_workdir = os.path.realpath(
+                                        os.path.join(real_workdir, selected_subdir)
+                                    )
+                                    # Ensure new path is within parent
+                                    if os.path.commonpath([real_workdir, new_workdir]) == real_workdir:
+                                        st.session_state[workdir_key] = new_workdir
+                                        st.rerun()
+                                else:
+                                    st.error("❌ Invalid folder name")
+                        
+                        with col1:
+                            if selected_subdir:
+                                st.caption(f"Selected: {selected_subdir}")
                     else:
                         st.info("ℹ️ No subfolders in current directory")
 
