@@ -286,12 +286,16 @@ def render_workdir_browser_with_button(current_dir=None, key="workdir_browser", 
             help="Type or paste the full path to your desired folder"
         )
         
-        if new_path != workdir:
+        # Normalize both paths for consistent comparison to prevent loops
+        if new_path:
             try:
-                new_path = os.path.abspath(os.path.expanduser(new_path))
-                if os.path.exists(new_path) and os.path.isdir(new_path):
-                    st.session_state[workdir_key] = new_path
-                    st.rerun()
+                normalized_new_path = os.path.abspath(os.path.expanduser(new_path))
+                normalized_workdir = os.path.abspath(os.path.expanduser(workdir))
+                
+                if normalized_new_path != normalized_workdir:
+                    if os.path.exists(normalized_new_path) and os.path.isdir(normalized_new_path):
+                        st.session_state[workdir_key] = normalized_new_path
+                        st.rerun()
             except Exception:
                 pass
         
@@ -401,6 +405,13 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
             key=f"{key}_input",
             help="Enter the path to your working directory",
         )
+    
+    # Update session state immediately when user types (prevents infinite loop)
+    # Normalize the path first for consistent comparison
+    if workdir:
+        normalized_workdir = os.path.abspath(os.path.expanduser(workdir))
+        if st.session_state[workdir_key] != normalized_workdir:
+            st.session_state[workdir_key] = normalized_workdir
 
     with col2:
         if st.button(
@@ -420,16 +431,12 @@ def render_workdir_browser(current_dir=None, key="workdir_browser"):
             st.session_state[workdir_key] = os.path.dirname(current_dir)
             st.rerun()
 
-    # Validate and normalize directory
+    # Validate and normalize directory (use the value from session state)
+    workdir = st.session_state[workdir_key]
     if workdir:
         try:
-            workdir = os.path.abspath(os.path.expanduser(workdir))
-
             if os.path.exists(workdir) and os.path.isdir(workdir):
                 st.success(f"✅ `{workdir}`")
-                # Only update session state if the value actually changed
-                if st.session_state[workdir_key] != workdir:
-                    st.session_state[workdir_key] = workdir
 
                 # Clean folder browser - similar to system file browser
                 st.markdown("---")
