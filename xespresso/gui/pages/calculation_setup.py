@@ -403,6 +403,28 @@ def render_calculation_setup_page():
             machine = st.session_state.calc_machine
             config["queue"] = machine.to_queue() if hasattr(machine, 'to_queue') else machine
 
+            # If use_modules is True and a version-specific module is configured, add it to queue
+            if config["queue"].get("use_modules") and st.session_state.get("calc_selected_version"):
+                try:
+                    from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
+                    
+                    codes = load_codes_config(
+                        st.session_state.selected_machine_for_calc, DEFAULT_CODES_DIR
+                    )
+                    
+                    if codes and codes.versions:
+                        selected_version = st.session_state.calc_selected_version
+                        if selected_version in codes.versions:
+                            version_config = codes.versions[selected_version]
+                            version_modules = version_config.get("modules")
+                            
+                            if version_modules:
+                                # Replace machine modules with version-specific modules
+                                config["queue"]["modules"] = version_modules
+                                st.info(f"   Using version-specific modules: {', '.join(version_modules)}")
+                except Exception as e:
+                    st.warning(f"⚠️ Could not load version-specific modules: {e}")
+
             # Set environment variable for xespresso command template
             # xespresso will replace LAUNCHER, PACKAGE, PARALLEL, PREFIX placeholders
             import os
