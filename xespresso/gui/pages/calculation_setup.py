@@ -415,6 +415,116 @@ def render_calculation_setup_page():
 
     st.markdown("---")
 
+    # Resources Configuration
+    st.subheader("⚙️ Resources Configuration")
+    st.info(
+        """
+    Configure computational resources for this calculation.
+    By default, resources are taken from the machine configuration.
+    Enable "Adjust Resources" to customize values for this specific calculation.
+    """
+    )
+    
+    # Initialize resources in config if not present
+    if "resources" not in config:
+        config["resources"] = {}
+    
+    # Checkbox to enable custom resources
+    adjust_resources = st.checkbox(
+        "Adjust Resources",
+        value=config.get("adjust_resources", False),
+        help="Enable to customize resource values for this calculation. Otherwise, defaults from machine configuration are used."
+    )
+    config["adjust_resources"] = adjust_resources
+    
+    if adjust_resources:
+        st.markdown("**Custom Resources:**")
+        
+        # Get default resources from machine if available
+        default_resources = {}
+        if st.session_state.get("calc_machine"):
+            machine = st.session_state.calc_machine
+            if hasattr(machine, 'resources'):
+                default_resources = machine.resources or {}
+        
+        # Resource inputs in columns
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            nodes = st.number_input(
+                "Nodes:",
+                value=int(config["resources"].get("nodes", default_resources.get("nodes", 1))),
+                min_value=1,
+                max_value=1000,
+                help="Number of compute nodes to use"
+            )
+            config["resources"]["nodes"] = nodes
+            
+            ntasks_per_node = st.number_input(
+                "Tasks per Node:",
+                value=int(config["resources"].get("ntasks-per-node", default_resources.get("ntasks-per-node", 16))),
+                min_value=1,
+                max_value=256,
+                help="Number of MPI tasks per node"
+            )
+            config["resources"]["ntasks-per-node"] = ntasks_per_node
+            
+            mem = st.text_input(
+                "Memory:",
+                value=config["resources"].get("mem", default_resources.get("mem", "32G")),
+                help="Memory per node (e.g., 32G, 64GB)"
+            )
+            config["resources"]["mem"] = mem
+        
+        with col2:
+            time = st.text_input(
+                "Time Limit:",
+                value=config["resources"].get("time", default_resources.get("time", "02:00:00")),
+                help="Wall time limit (format: HH:MM:SS)"
+            )
+            config["resources"]["time"] = time
+            
+            partition = st.text_input(
+                "Partition/Queue:",
+                value=config["resources"].get("partition", default_resources.get("partition", "compute")),
+                help="Scheduler partition or queue name"
+            )
+            config["resources"]["partition"] = partition
+            
+            # Additional resource options
+            account = st.text_input(
+                "Account (optional):",
+                value=config["resources"].get("account", default_resources.get("account", "")),
+                help="Account or project code for billing"
+            )
+            if account:
+                config["resources"]["account"] = account
+        
+        st.caption("💡 These custom resources will override the machine defaults for this calculation.")
+    else:
+        # Show default resources from machine
+        if st.session_state.get("calc_machine"):
+            machine = st.session_state.calc_machine
+            if hasattr(machine, 'resources') and machine.resources:
+                st.info("**Using default resources from machine configuration:**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if "nodes" in machine.resources:
+                        st.caption(f"Nodes: {machine.resources['nodes']}")
+                    if "ntasks-per-node" in machine.resources:
+                        st.caption(f"Tasks per node: {machine.resources['ntasks-per-node']}")
+                    if "mem" in machine.resources:
+                        st.caption(f"Memory: {machine.resources['mem']}")
+                with col2:
+                    if "time" in machine.resources:
+                        st.caption(f"Time limit: {machine.resources['time']}")
+                    if "partition" in machine.resources:
+                        st.caption(f"Partition: {machine.resources['partition']}")
+        else:
+            st.caption("Select a machine to see default resources")
+
+    st.markdown("---")
+
     # Prepare Calculation Button
     st.subheader("✨ Prepare Calculation")
     st.info(
@@ -442,6 +552,11 @@ def render_calculation_setup_page():
             # Convert Machine object to queue dict for compatibility
             machine = st.session_state.calc_machine
             config["queue"] = machine.to_queue() if hasattr(machine, 'to_queue') else machine
+
+            # Apply custom resources if enabled
+            if config.get("adjust_resources") and config.get("resources"):
+                config["queue"]["resources"] = config["resources"]
+                st.info(f"   Using custom resources: {config['resources']}")
 
             # If use_modules is True and a version-specific module is configured, add it to queue
             if config["queue"].get("use_modules") and st.session_state.get("calc_selected_version"):
