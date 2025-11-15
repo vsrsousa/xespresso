@@ -66,10 +66,143 @@ def render_upload_tab():
             st.session_state.current_structure = atoms
             st.session_state.structure_info = loader.get_info()
             
+            # Add option to save to database
+            with st.expander("💾 Save to ASE Database", expanded=False):
+                render_upload_save_to_database(atoms, uploaded_file.name)
+            
             render_structure_controls_and_viewer(atoms)
             
         except Exception as e:
             st.error(f"❌ Error loading file: {e}")
+
+
+def render_upload_save_to_database(atoms, filename):
+    """Render save to database section for uploaded files.
+    
+    Args:
+        atoms: ASE Atoms object to save
+        filename: Original filename of the uploaded structure
+    """
+    st.markdown(f"""
+    Save **{atoms.get_chemical_formula()}** ({len(atoms)} atoms) to your ASE database for easy access later.
+    """)
+    
+    # Database path configuration
+    default_db_path = os.path.expanduser("~/.xespresso/structures.db")
+    db_path = st.text_input(
+        "Database Path",
+        value=st.session_state.get('ase_db_path', default_db_path),
+        help="Path to ASE database file",
+        key="upload_save_db_path"
+    )
+    
+    # Store for next use
+    st.session_state.ase_db_path = db_path
+    
+    # Validate database path
+    try:
+        from xespresso.gui.utils.validation import validate_path
+    except ImportError:
+        # Fallback validation
+        def validate_path(path, allow_creation=False):
+            if not path:
+                return False, None, "Path cannot be empty"
+            try:
+                normalized = os.path.abspath(os.path.expanduser(path))
+                if '\0' in normalized:
+                    return False, None, "Path contains null bytes"
+                return True, normalized, None
+            except Exception as e:
+                return False, None, f"Invalid path: {str(e)}"
+    
+    is_valid, normalized_path, error_msg = validate_path(db_path, allow_creation=True)
+    
+    if not is_valid:
+        st.error(f"❌ Invalid path: {error_msg}")
+        return
+    
+    # Metadata inputs
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        save_name = st.text_input(
+            "Structure Name",
+            value=filename.rsplit('.', 1)[0],  # Remove extension
+            help="Name for this structure in the database",
+            key="upload_save_name"
+        )
+    
+    with col2:
+        save_tags = st.text_input(
+            "Tags (comma-separated)",
+            value="uploaded",
+            help="Tags to help identify this structure",
+            key="upload_save_tags"
+        )
+    
+    save_description = st.text_area(
+        "Description (optional)",
+        help="Add notes about this structure",
+        key="upload_save_description"
+    )
+    
+    # Save button
+    if st.button("💾 Save to Database", key="upload_save_to_db_btn", type="primary"):
+        try:
+            from ase.db import connect
+            
+            # Import safe utilities
+            try:
+                from xespresso.gui.utils.validation import safe_makedirs
+            except ImportError:
+                def safe_makedirs(path):
+                    try:
+                        os.makedirs(path, exist_ok=True)
+                    except OSError as e:
+                        raise OSError(f"Failed to create directory: {e}") from e
+            
+            # Create database directory if it doesn't exist
+            db_dir = os.path.dirname(normalized_path)
+            if db_dir:
+                safe_makedirs(db_dir)
+            
+            # Connect to database
+            db = connect(normalized_path)
+            
+            # Prepare metadata
+            key_value_pairs = {}
+            
+            # Add name
+            if save_name:
+                key_value_pairs['name'] = save_name
+            
+            # Add source filename
+            key_value_pairs['source_file'] = filename
+            
+            # Parse and add tags
+            if save_tags:
+                for tag in save_tags.split(','):
+                    tag = tag.strip()
+                    if tag:
+                        key_value_pairs[tag] = True
+            
+            # Add description
+            if save_description:
+                key_value_pairs['description'] = save_description
+            
+            # Save to database
+            db.write(atoms, **key_value_pairs)
+            
+            st.success(f"✅ Structure saved to database: {normalized_path}")
+            st.info("💡 You can load this structure from the 'ASE Database' tab.")
+            
+        except ImportError:
+            st.error("❌ ASE not available. Cannot save to database.")
+        except Exception as e:
+            st.error(f"❌ Error saving to database: {e}")
+            import traceback
+            with st.expander("Error Details"):
+                st.code(traceback.format_exc())
 
 
 def render_browse_tab():
