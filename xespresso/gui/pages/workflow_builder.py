@@ -426,16 +426,35 @@ def render_workflow_builder_page():
             )
             config["nprocs"] = nprocs
             
-            # Store the launcher configuration with resolved nprocs
-            # This ensures the launcher will use the adjusted nprocs value
+            # Update launcher to use the adjusted nprocs value
+            # Handles both template placeholders {nprocs} and hardcoded values
+            import re
+            
             if "{nprocs}" in default_launcher:
+                # Template placeholder - replace it
                 resolved_launcher = default_launcher.replace('{nprocs}', str(nprocs))
                 config["launcher"] = default_launcher  # Store template for future adjustments
                 st.caption(f"💡 Launcher will be: `{resolved_launcher}`")
             else:
-                # Launcher doesn't use placeholder, store as-is
-                config["launcher"] = default_launcher
-                st.caption(f"💡 Launcher: `{default_launcher}`")
+                # Check for hardcoded nprocs values and replace them
+                # Pattern matches: -np <number>, -n <number>, --np <number>
+                patterns = [
+                    (r'(-np\s+)\d+', r'\g<1>' + str(nprocs)),  # -np 16 -> -np 8
+                    (r'(-n\s+)\d+', r'\g<1>' + str(nprocs)),    # -n 16 -> -n 8
+                    (r'(--np\s+)\d+', r'\g<1>' + str(nprocs)),  # --np 16 -> --np 8
+                ]
+                
+                resolved_launcher = default_launcher
+                for pattern, replacement in patterns:
+                    resolved_launcher = re.sub(pattern, replacement, resolved_launcher)
+                
+                # Store the updated launcher
+                config["launcher"] = resolved_launcher
+                
+                if resolved_launcher != default_launcher:
+                    st.caption(f"💡 Launcher will be: `{resolved_launcher}` (updated from machine default)")
+                else:
+                    st.caption(f"💡 Launcher: `{resolved_launcher}`")
         else:
             # For schedulers (slurm, pbs, sge), show full resource configuration
             st.info(f"ℹ️ **Scheduler Mode ({scheduler_type.upper()})**: Configure resources for job scheduler submission.")
