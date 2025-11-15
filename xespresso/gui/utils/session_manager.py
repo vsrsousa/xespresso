@@ -254,6 +254,17 @@ def get_current_session_id() -> str:
         # Create first session automatically
         st.session_state._current_session_id = 'session_1'
         st.session_state._session_counter = 1
+        
+        # Initialize active sessions and add the first session
+        if '_active_sessions' not in st.session_state:
+            st.session_state._active_sessions = {}
+        
+        st.session_state._active_sessions['session_1'] = {
+            'name': 'Session 1',
+            'created_at': datetime.now().isoformat(),
+            'state': {}
+        }
+    
     return st.session_state._current_session_id
 
 
