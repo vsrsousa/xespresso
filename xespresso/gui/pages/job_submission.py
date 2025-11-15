@@ -91,16 +91,23 @@ def render_dry_run_tab():
     base_workdir = st.session_state.get('working_directory', os.path.expanduser("~"))
     st.info(f"📍 Base directory: `{base_workdir}`")
     
-    # Label/subfolder for this calculation
-    # Try to get from workflow_config first, or use default
-    default_label = config.get('label', f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}")
-    
-    label = st.text_input(
-        "Calculation Label (subfolder):",
-        value=default_label,
-        help="Label for this calculation - will create subfolder under working directory",
-        key="dry_run_label"
-    )
+    # Label/subfolder for this calculation - inherited from Calculation Setup
+    # If label is in workflow_config, use it (set in Calculation Setup)
+    # Otherwise, generate a default
+    if 'label' in config and config['label']:
+        label = config['label']
+        st.success(f"📋 Using label from Calculation Setup: `{label}`")
+        st.caption("💡 To change the label, go back to Calculation Setup page")
+    else:
+        # Fallback: generate default label
+        default_label = f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}"
+        st.warning("⚠️ No label set in Calculation Setup. Using default.")
+        label = st.text_input(
+            "Calculation Label (subfolder):",
+            value=default_label,
+            help="Label for this calculation - will create subfolder under working directory",
+            key="dry_run_label"
+        )
     
     # Full path where files will be created
     full_path = os.path.join(base_workdir, label)
@@ -559,15 +566,23 @@ def render_job_submission_tab():
     base_workdir = st.session_state.get('working_directory', os.path.expanduser("~"))
     st.info(f"📍 Base directory: `{base_workdir}`")
     
-    # Label for calculation - try to get from workflow_config first
-    default_label = config.get('label', f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}")
-    
-    label = st.text_input(
-        "Calculation Label (subfolder):",
-        value=default_label,
-        help="Label for this calculation - will create subfolder under working directory",
-        key="run_calc_label"
-    )
+    # Label for calculation - inherited from Calculation Setup
+    # If label is in workflow_config, use it (set in Calculation Setup)
+    # Otherwise, generate a default
+    if 'label' in config and config['label']:
+        label = config['label']
+        st.success(f"📋 Using label from Calculation Setup: `{label}`")
+        st.caption("💡 To change the label, go back to Calculation Setup page")
+    else:
+        # Fallback: generate default label
+        default_label = f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}"
+        st.warning("⚠️ No label set in Calculation Setup. Using default.")
+        label = st.text_input(
+            "Calculation Label (subfolder):",
+            value=default_label,
+            help="Label for this calculation - will create subfolder under working directory",
+            key="run_calc_label"
+        )
     
     # Full path where calculation will run
     full_path = os.path.join(base_workdir, label)

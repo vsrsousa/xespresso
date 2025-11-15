@@ -61,6 +61,24 @@ def render_calculation_setup_page():
         help="Type of calculation to perform",
     )
     config["calc_type"] = calc_type
+    
+    # Calculation Label
+    st.subheader("🏷️ Calculation Label")
+    
+    # Default label: calc_type/structure_formula (e.g., "scf/Al", "relax/H2O")
+    structure_name = atoms.get_chemical_formula()
+    default_label = config.get("label", f"{calc_type}/{structure_name}")
+    
+    label = st.text_input(
+        "Label (subfolder name):",
+        value=default_label,
+        help="Label for this calculation - creates subfolder under working directory. Format: calc_type/structure_name",
+        key="calc_label_input"
+    )
+    config["label"] = label
+    
+    st.caption(f"📁 Files will be saved in: working_directory/{label}/")
+    st.info("💡 Label format: `calc_type/structure_name` (e.g., `scf/Al`, `relax/H2O`)")
 
     # Basic Parameters
     st.subheader("🔧 Basic Parameters")
@@ -444,11 +462,13 @@ def render_calculation_setup_page():
             if st.session_state.get("calc_selected_code"):
                 st.info(f"   Code: {st.session_state.calc_selected_code}")
 
-            label = "prepared_calculation"  # Temporary label, will be updated in job submission
+            # Temporary label for preparation - uses structure name as prefix
+            # The actual output path will be set in job submission based on workflow_config['label']
+            temp_label = f"temp_{atoms.get_chemical_formula()}"
 
             with st.spinner("Preparing calculation objects..."):
                 prepared_atoms, calc = prepare_calculation_from_gui(
-                    atoms, config, label=label
+                    atoms, config, label=temp_label
                 )
 
             # Store prepared objects in session state
