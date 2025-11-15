@@ -179,8 +179,6 @@ if selected_workdir != st.session_state.working_directory:
 st.sidebar.caption(f"📍 {st.session_state.working_directory}")
 st.sidebar.info("💡 Calculation folders will be created here based on calc/label")
 
-st.sidebar.markdown("---")
-
 # Add toggle for configuration pages
 show_config = st.sidebar.checkbox(
     "⚙️ Show Configuration",
@@ -191,6 +189,7 @@ show_config = st.sidebar.checkbox(
 st.sidebar.markdown("---")
 
 # Build page list based on whether config is shown
+# Working directory selection is ALWAYS first (not a page, always visible above)
 if show_config:
     page = st.sidebar.radio(
         "Select Page:",
