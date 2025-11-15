@@ -73,22 +73,74 @@ def render_workflow_builder_page():
         )
         config["ecutwfc"] = ecutwfc
 
-        kpts_input = st.text_input("K-points (e.g., 4,4,4):", value="4,4,4")
-        try:
-            kpts = tuple(int(k.strip()) for k in kpts_input.split(","))
-            if len(kpts) == 3:
-                config["kpts"] = kpts
-        except:
-            st.warning("Invalid k-points format")
-
     with col2:
         ecutrho = st.number_input(
             "Charge Density Cutoff (Ry):", value=ecutwfc * 8, min_value=40.0, step=20.0
         )
         config["ecutrho"] = ecutrho
 
-        occupations = st.selectbox("Occupations:", ["smearing", "fixed", "tetrahedra"])
-        config["occupations"] = occupations
+    # K-points
+    st.subheader("🔷 K-points")
+    kpts_mode = st.radio(
+        "K-points Mode:", ["K-spacing", "Explicit Grid"], horizontal=True,
+        key="workflow_kpts_mode"
+    )
+
+    if kpts_mode == "K-spacing":
+        # K-spacing mode: use slider to adjust density, then convert to kpts
+        kspacing_value = st.slider(
+            "K-spacing (Å⁻¹):",
+            min_value=0.1,
+            max_value=1.0,
+            value=float(config.get("kspacing_ui", 0.3)),
+            step=0.05,
+            help="K-point density in reciprocal space. This will be converted to k-point grid.",
+            key="workflow_kspacing_slider"
+        )
+        
+        # Store the UI value for persistence (not in actual config)
+        config["kspacing_ui"] = kspacing_value
+        
+        # Convert kspacing to kpts using the structure
+        from xespresso import kpts_from_spacing
+        computed_kpts = kpts_from_spacing(atoms, kspacing_value)
+        
+        # Store the computed kpts in config (not kspacing)
+        config["kpts"] = computed_kpts
+        
+        # Display the computed k-points to the user
+        st.info(f"ℹ️ Computed k-point grid: {computed_kpts[0]} × {computed_kpts[1]} × {computed_kpts[2]}")
+        
+        # Remove kspacing from config as it should not be passed as a parameter
+        if "kspacing" in config:
+            del config["kspacing"]
+    else:
+        # Explicit Grid mode
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            k1 = st.number_input(
+                "k₁:", value=config.get("kpts", (4, 4, 4))[0], min_value=1, max_value=20,
+                key="workflow_k1"
+            )
+        with col2:
+            k2 = st.number_input(
+                "k₂:", value=config.get("kpts", (4, 4, 4))[1], min_value=1, max_value=20,
+                key="workflow_k2"
+            )
+        with col3:
+            k3 = st.number_input(
+                "k₃:", value=config.get("kpts", (4, 4, 4))[2], min_value=1, max_value=20,
+                key="workflow_k3"
+            )
+        config["kpts"] = (int(k1), int(k2), int(k3))
+        # Remove kspacing from config as we're using explicit grid
+        if "kspacing" in config:
+            del config["kspacing"]
+
+    # Occupations
+    occupations = st.selectbox("Occupations:", ["smearing", "fixed", "tetrahedra"],
+                                key="workflow_occupations")
+    config["occupations"] = occupations
 
     # Pseudopotentials
     st.subheader("🧪 Pseudopotentials")

@@ -153,28 +153,10 @@ def render_calculation_setup_page():
     # K-points
     st.subheader("🔷 K-points")
     kpts_mode = st.radio(
-        "K-points Mode:", ["Explicit Grid", "K-spacing"], horizontal=True
+        "K-points Mode:", ["K-spacing", "Explicit Grid"], horizontal=True
     )
 
-    if kpts_mode == "Explicit Grid":
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            k1 = st.number_input(
-                "k₁:", value=config.get("kpts", (4, 4, 4))[0], min_value=1, max_value=20
-            )
-        with col2:
-            k2 = st.number_input(
-                "k₂:", value=config.get("kpts", (4, 4, 4))[1], min_value=1, max_value=20
-            )
-        with col3:
-            k3 = st.number_input(
-                "k₃:", value=config.get("kpts", (4, 4, 4))[2], min_value=1, max_value=20
-            )
-        config["kpts"] = (int(k1), int(k2), int(k3))
-        # Remove kspacing from config as we're using explicit grid
-        if "kspacing" in config:
-            del config["kspacing"]
-    else:
+    if kpts_mode == "K-spacing":
         # K-spacing mode: use slider to adjust density, then convert to kpts
         kspacing_value = st.slider(
             "K-spacing (Å⁻¹):",
@@ -199,6 +181,25 @@ def render_calculation_setup_page():
         st.info(f"ℹ️ Computed k-point grid: {computed_kpts[0]} × {computed_kpts[1]} × {computed_kpts[2]}")
         
         # Remove kspacing from config as it should not be passed as a parameter
+        if "kspacing" in config:
+            del config["kspacing"]
+    else:
+        # Explicit Grid mode
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            k1 = st.number_input(
+                "k₁:", value=config.get("kpts", (4, 4, 4))[0], min_value=1, max_value=20
+            )
+        with col2:
+            k2 = st.number_input(
+                "k₂:", value=config.get("kpts", (4, 4, 4))[1], min_value=1, max_value=20
+            )
+        with col3:
+            k3 = st.number_input(
+                "k₃:", value=config.get("kpts", (4, 4, 4))[2], min_value=1, max_value=20
+            )
+        config["kpts"] = (int(k1), int(k2), int(k3))
+        # Remove kspacing from config as we're using explicit grid
         if "kspacing" in config:
             del config["kspacing"]
 
