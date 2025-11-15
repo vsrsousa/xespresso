@@ -82,8 +82,10 @@ def render_workflow_builder_page():
     # K-points
     st.subheader("🔷 K-points")
     kpts_mode = st.radio(
-        "K-points Mode:", ["K-spacing", "Explicit Grid"], horizontal=True,
-        key="workflow_kpts_mode"
+        "K-points Mode:",
+        ["K-spacing", "Explicit Grid"],
+        horizontal=True,
+        key="workflow_kpts_mode",
     )
 
     if kpts_mode == "K-spacing":
@@ -95,22 +97,25 @@ def render_workflow_builder_page():
             value=float(config.get("kspacing_ui", 0.3)),
             step=0.05,
             help="K-point density in reciprocal space. This will be converted to k-point grid.",
-            key="workflow_kspacing_slider"
+            key="workflow_kspacing_slider",
         )
-        
+
         # Store the UI value for persistence (not in actual config)
         config["kspacing_ui"] = kspacing_value
-        
+
         # Convert kspacing to kpts using the structure
         from xespresso import kpts_from_spacing
+
         computed_kpts = kpts_from_spacing(atoms, kspacing_value)
-        
+
         # Store the computed kpts in config (not kspacing)
         config["kpts"] = computed_kpts
-        
+
         # Display the computed k-points to the user
-        st.info(f"ℹ️ Computed k-point grid: {computed_kpts[0]} × {computed_kpts[1]} × {computed_kpts[2]}")
-        
+        st.info(
+            f"ℹ️ Computed k-point grid: {computed_kpts[0]} × {computed_kpts[1]} × {computed_kpts[2]}"
+        )
+
         # Remove kspacing from config as it should not be passed as a parameter
         if "kspacing" in config:
             del config["kspacing"]
@@ -119,18 +124,27 @@ def render_workflow_builder_page():
         col1, col2, col3 = st.columns(3)
         with col1:
             k1 = st.number_input(
-                "k₁:", value=config.get("kpts", (4, 4, 4))[0], min_value=1, max_value=20,
-                key="workflow_k1"
+                "k₁:",
+                value=config.get("kpts", (4, 4, 4))[0],
+                min_value=1,
+                max_value=20,
+                key="workflow_k1",
             )
         with col2:
             k2 = st.number_input(
-                "k₂:", value=config.get("kpts", (4, 4, 4))[1], min_value=1, max_value=20,
-                key="workflow_k2"
+                "k₂:",
+                value=config.get("kpts", (4, 4, 4))[1],
+                min_value=1,
+                max_value=20,
+                key="workflow_k2",
             )
         with col3:
             k3 = st.number_input(
-                "k₃:", value=config.get("kpts", (4, 4, 4))[2], min_value=1, max_value=20,
-                key="workflow_k3"
+                "k₃:",
+                value=config.get("kpts", (4, 4, 4))[2],
+                min_value=1,
+                max_value=20,
+                key="workflow_k3",
             )
         config["kpts"] = (int(k1), int(k2), int(k3))
         # Remove kspacing from config as we're using explicit grid
@@ -138,8 +152,9 @@ def render_workflow_builder_page():
             del config["kspacing"]
 
     # Occupations
-    occupations = st.selectbox("Occupations:", ["smearing", "fixed", "tetrahedra"],
-                                key="workflow_occupations")
+    occupations = st.selectbox(
+        "Occupations:", ["smearing", "fixed", "tetrahedra"], key="workflow_occupations"
+    )
     config["occupations"] = occupations
 
     # Pseudopotentials
@@ -432,41 +447,43 @@ def render_workflow_builder_page():
     Enable "Adjust Resources" to customize values for this workflow.
     """
     )
-    
+
     # Initialize resources in config if not present
     if "resources" not in config:
         config["resources"] = {}
-    
+
     # Checkbox to enable custom resources
     adjust_resources = st.checkbox(
         "Adjust Resources",
         value=config.get("adjust_resources", False),
         help="Enable to customize resource values for this workflow. Otherwise, defaults from machine configuration are used.",
-        key="workflow_adjust_resources"
+        key="workflow_adjust_resources",
     )
     config["adjust_resources"] = adjust_resources
-    
+
     if adjust_resources:
         st.markdown("**Custom Resources:**")
-        
+
         # Get scheduler type and default resources from machine if available
         scheduler_type = "direct"
         default_resources = {}
         default_nprocs = 1
         default_launcher = "mpirun -np {nprocs}"
-        
+
         if st.session_state.get("workflow_machine"):
             machine = st.session_state.workflow_machine
-            scheduler_type = getattr(machine, 'scheduler', 'direct')
-            default_nprocs = getattr(machine, 'nprocs', 1)
-            default_launcher = getattr(machine, 'launcher', 'mpirun -np {nprocs}')
-            if hasattr(machine, 'resources'):
+            scheduler_type = getattr(machine, "scheduler", "direct")
+            default_nprocs = getattr(machine, "nprocs", 1)
+            default_launcher = getattr(machine, "launcher", "mpirun -np {nprocs}")
+            if hasattr(machine, "resources"):
                 default_resources = machine.resources or {}
-        
+
         # For direct execution, only show nprocs
         if scheduler_type == "direct":
-            st.info("ℹ️ **Direct Execution Mode**: Only processor count is configurable. Scheduler resources (nodes, memory, time, etc.) are not applicable for direct execution.")
-            
+            st.info(
+                "ℹ️ **Direct Execution Mode**: Only processor count is configurable. Scheduler resources (nodes, memory, time, etc.) are not applicable for direct execution."
+            )
+
             # Number of processors for direct execution
             nprocs = st.number_input(
                 "Number of Processors (nprocs):",
@@ -474,117 +491,144 @@ def render_workflow_builder_page():
                 min_value=1,
                 max_value=256,
                 help="Number of processor cores to use for the calculation",
-                key="workflow_nprocs"
+                key="workflow_nprocs",
             )
             config["nprocs"] = nprocs
-            
+
             # Update launcher to use the adjusted nprocs value
             # Handles both template placeholders {nprocs} and hardcoded values
             import re
-            
+
             if "{nprocs}" in default_launcher:
                 # Template placeholder - replace it
-                resolved_launcher = default_launcher.replace('{nprocs}', str(nprocs))
-                config["launcher"] = default_launcher  # Store template for future adjustments
+                resolved_launcher = default_launcher.replace("{nprocs}", str(nprocs))
+                config[
+                    "launcher"
+                ] = default_launcher  # Store template for future adjustments
                 st.caption(f"💡 Launcher will be: `{resolved_launcher}`")
             else:
                 # Check for hardcoded nprocs values and replace them
                 # Pattern matches: -np <number>, -n <number>, --np <number>
                 patterns = [
-                    (r'(-np\s+)\d+', r'\g<1>' + str(nprocs)),  # -np 16 -> -np 8
-                    (r'(-n\s+)\d+', r'\g<1>' + str(nprocs)),    # -n 16 -> -n 8
-                    (r'(--np\s+)\d+', r'\g<1>' + str(nprocs)),  # --np 16 -> --np 8
+                    (r"(-np\s+)\d+", r"\g<1>" + str(nprocs)),  # -np 16 -> -np 8
+                    (r"(-n\s+)\d+", r"\g<1>" + str(nprocs)),  # -n 16 -> -n 8
+                    (r"(--np\s+)\d+", r"\g<1>" + str(nprocs)),  # --np 16 -> --np 8
                 ]
-                
+
                 resolved_launcher = default_launcher
                 for pattern, replacement in patterns:
                     resolved_launcher = re.sub(pattern, replacement, resolved_launcher)
-                
+
                 # Store the updated launcher
                 config["launcher"] = resolved_launcher
-                
+
                 if resolved_launcher != default_launcher:
-                    st.caption(f"💡 Launcher will be: `{resolved_launcher}` (updated from machine default)")
+                    st.caption(
+                        f"💡 Launcher will be: `{resolved_launcher}` (updated from machine default)"
+                    )
                 else:
                     st.caption(f"💡 Launcher: `{resolved_launcher}`")
         else:
             # For schedulers (slurm, pbs, sge), show full resource configuration
-            st.info(f"ℹ️ **Scheduler Mode ({scheduler_type.upper()})**: Configure resources for job scheduler submission.")
-            
+            st.info(
+                f"ℹ️ **Scheduler Mode ({scheduler_type.upper()})**: Configure resources for job scheduler submission."
+            )
+
             # Resource inputs in columns
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 nodes = st.number_input(
                     "Nodes:",
-                    value=int(config["resources"].get("nodes", default_resources.get("nodes", 1))),
+                    value=int(
+                        config["resources"].get(
+                            "nodes", default_resources.get("nodes", 1)
+                        )
+                    ),
                     min_value=1,
                     max_value=1000,
                     help="Number of compute nodes to use",
-                    key="workflow_nodes"
+                    key="workflow_nodes",
                 )
                 config["resources"]["nodes"] = nodes
-                
+
                 ntasks_per_node = st.number_input(
                     "Tasks per Node:",
-                    value=int(config["resources"].get("ntasks-per-node", default_resources.get("ntasks-per-node", 16))),
+                    value=int(
+                        config["resources"].get(
+                            "ntasks-per-node",
+                            default_resources.get("ntasks-per-node", 16),
+                        )
+                    ),
                     min_value=1,
                     max_value=256,
                     help="Number of MPI tasks per node",
-                    key="workflow_ntasks"
+                    key="workflow_ntasks",
                 )
                 config["resources"]["ntasks-per-node"] = ntasks_per_node
-                
+
                 mem = st.text_input(
                     "Memory:",
-                    value=config["resources"].get("mem", default_resources.get("mem", "32G")),
+                    value=config["resources"].get(
+                        "mem", default_resources.get("mem", "32G")
+                    ),
                     help="Memory per node (e.g., 32G, 64GB)",
-                    key="workflow_mem"
+                    key="workflow_mem",
                 )
                 config["resources"]["mem"] = mem
-            
+
             with col2:
                 time = st.text_input(
                     "Time Limit:",
-                    value=config["resources"].get("time", default_resources.get("time", "02:00:00")),
+                    value=config["resources"].get(
+                        "time", default_resources.get("time", "02:00:00")
+                    ),
                     help="Wall time limit (format: HH:MM:SS)",
-                    key="workflow_time"
+                    key="workflow_time",
                 )
                 config["resources"]["time"] = time
-                
+
                 partition = st.text_input(
                     "Partition/Queue:",
-                    value=config["resources"].get("partition", default_resources.get("partition", "compute")),
+                    value=config["resources"].get(
+                        "partition", default_resources.get("partition", "compute")
+                    ),
                     help="Scheduler partition or queue name",
-                    key="workflow_partition"
+                    key="workflow_partition",
                 )
                 config["resources"]["partition"] = partition
-                
+
                 # Additional resource options
                 account = st.text_input(
                     "Account (optional):",
-                    value=config["resources"].get("account", default_resources.get("account", "")),
+                    value=config["resources"].get(
+                        "account", default_resources.get("account", "")
+                    ),
                     help="Account or project code for billing",
-                    key="workflow_account"
+                    key="workflow_account",
                 )
                 if account:
                     config["resources"]["account"] = account
-            
-            st.caption("💡 These custom resources will override the machine defaults for this workflow.")
+
+            st.caption(
+                "💡 These custom resources will override the machine defaults for this workflow."
+            )
     else:
         # Show default resources from machine
         if st.session_state.get("workflow_machine"):
             machine = st.session_state.workflow_machine
-            scheduler_type = getattr(machine, 'scheduler', 'direct')
-            
+            scheduler_type = getattr(machine, "scheduler", "direct")
+
             if scheduler_type == "direct":
                 # For direct execution, only show nprocs
                 st.info("**Using default configuration from machine:**")
-                nprocs = getattr(machine, 'nprocs', 1)
-                launcher = getattr(machine, 'launcher', 'mpirun -np {nprocs}')
+                nprocs = getattr(machine, "nprocs", 1)
+                launcher = getattr(machine, "launcher", "mpirun -np {nprocs}")
                 st.caption(f"Number of Processors: {nprocs}")
-                st.caption(f"Launcher: {launcher.replace('{nprocs}', str(nprocs)) if '{nprocs}' in launcher else launcher}")
-            elif hasattr(machine, 'resources') and machine.resources:
+                st.caption(
+                    f"Launcher: {launcher.replace('{nprocs}', str(nprocs)) if '{nprocs}' in launcher else launcher}"
+                )
+            elif hasattr(machine, "resources") and machine.resources:
                 # For schedulers, show full resource configuration
                 st.info("**Using default resources from machine configuration:**")
                 col1, col2 = st.columns(2)
@@ -592,7 +636,9 @@ def render_workflow_builder_page():
                     if "nodes" in machine.resources:
                         st.caption(f"Nodes: {machine.resources['nodes']}")
                     if "ntasks-per-node" in machine.resources:
-                        st.caption(f"Tasks per node: {machine.resources['ntasks-per-node']}")
+                        st.caption(
+                            f"Tasks per node: {machine.resources['ntasks-per-node']}"
+                        )
                     if "mem" in machine.resources:
                         st.caption(f"Memory: {machine.resources['mem']}")
                 with col2:

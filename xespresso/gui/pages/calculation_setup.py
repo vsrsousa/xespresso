@@ -61,22 +61,22 @@ def render_calculation_setup_page():
         help="Type of calculation to perform",
     )
     config["calc_type"] = calc_type
-    
+
     # Calculation Label
     st.subheader("🏷️ Calculation Label")
-    
+
     # Default label: calc_type/structure_formula (e.g., "scf/Al", "relax/H2O")
     structure_name = atoms.get_chemical_formula()
     default_label = config.get("label", f"{calc_type}/{structure_name}")
-    
+
     label = st.text_input(
         "Label (subfolder name):",
         value=default_label,
         help="Label for this calculation - creates subfolder under working directory. Format: calc_type/structure_name",
-        key="calc_label_input"
+        key="calc_label_input",
     )
     config["label"] = label
-    
+
     st.caption(f"📁 Files will be saved in: working_directory/{label}/")
     st.info("💡 Label format: `calc_type/structure_name` (e.g., `scf/Al`, `relax/H2O`)")
 
@@ -166,20 +166,23 @@ def render_calculation_setup_page():
             step=0.05,
             help="K-point density in reciprocal space. This will be converted to k-point grid.",
         )
-        
+
         # Store the UI value for persistence (not in actual config)
         config["kspacing_ui"] = kspacing_value
-        
+
         # Convert kspacing to kpts using the structure
         from xespresso import kpts_from_spacing
+
         computed_kpts = kpts_from_spacing(atoms, kspacing_value)
-        
+
         # Store the computed kpts in config (not kspacing)
         config["kpts"] = computed_kpts
-        
+
         # Display the computed k-points to the user
-        st.info(f"ℹ️ Computed k-point grid: {computed_kpts[0]} × {computed_kpts[1]} × {computed_kpts[2]}")
-        
+        st.info(
+            f"ℹ️ Computed k-point grid: {computed_kpts[0]} × {computed_kpts[1]} × {computed_kpts[2]}"
+        )
+
         # Remove kspacing from config as it should not be passed as a parameter
         if "kspacing" in config:
             del config["kspacing"]
@@ -425,95 +428,113 @@ def render_calculation_setup_page():
     Enable "Adjust Resources" to customize values for this specific calculation.
     """
     )
-    
+
     # Initialize resources in config if not present
     if "resources" not in config:
         config["resources"] = {}
-    
+
     # Checkbox to enable custom resources
     adjust_resources = st.checkbox(
         "Adjust Resources",
         value=config.get("adjust_resources", False),
-        help="Enable to customize resource values for this calculation. Otherwise, defaults from machine configuration are used."
+        help="Enable to customize resource values for this calculation. Otherwise, defaults from machine configuration are used.",
     )
     config["adjust_resources"] = adjust_resources
-    
+
     if adjust_resources:
         st.markdown("**Custom Resources:**")
-        
+
         # Get default resources from machine if available
         default_resources = {}
         if st.session_state.get("calc_machine"):
             machine = st.session_state.calc_machine
-            if hasattr(machine, 'resources'):
+            if hasattr(machine, "resources"):
                 default_resources = machine.resources or {}
-        
+
         # Resource inputs in columns
         col1, col2 = st.columns(2)
-        
+
         with col1:
             nodes = st.number_input(
                 "Nodes:",
-                value=int(config["resources"].get("nodes", default_resources.get("nodes", 1))),
+                value=int(
+                    config["resources"].get("nodes", default_resources.get("nodes", 1))
+                ),
                 min_value=1,
                 max_value=1000,
-                help="Number of compute nodes to use"
+                help="Number of compute nodes to use",
             )
             config["resources"]["nodes"] = nodes
-            
+
             ntasks_per_node = st.number_input(
                 "Tasks per Node:",
-                value=int(config["resources"].get("ntasks-per-node", default_resources.get("ntasks-per-node", 16))),
+                value=int(
+                    config["resources"].get(
+                        "ntasks-per-node", default_resources.get("ntasks-per-node", 16)
+                    )
+                ),
                 min_value=1,
                 max_value=256,
-                help="Number of MPI tasks per node"
+                help="Number of MPI tasks per node",
             )
             config["resources"]["ntasks-per-node"] = ntasks_per_node
-            
+
             mem = st.text_input(
                 "Memory:",
-                value=config["resources"].get("mem", default_resources.get("mem", "32G")),
-                help="Memory per node (e.g., 32G, 64GB)"
+                value=config["resources"].get(
+                    "mem", default_resources.get("mem", "32G")
+                ),
+                help="Memory per node (e.g., 32G, 64GB)",
             )
             config["resources"]["mem"] = mem
-        
+
         with col2:
             time = st.text_input(
                 "Time Limit:",
-                value=config["resources"].get("time", default_resources.get("time", "02:00:00")),
-                help="Wall time limit (format: HH:MM:SS)"
+                value=config["resources"].get(
+                    "time", default_resources.get("time", "02:00:00")
+                ),
+                help="Wall time limit (format: HH:MM:SS)",
             )
             config["resources"]["time"] = time
-            
+
             partition = st.text_input(
                 "Partition/Queue:",
-                value=config["resources"].get("partition", default_resources.get("partition", "compute")),
-                help="Scheduler partition or queue name"
+                value=config["resources"].get(
+                    "partition", default_resources.get("partition", "compute")
+                ),
+                help="Scheduler partition or queue name",
             )
             config["resources"]["partition"] = partition
-            
+
             # Additional resource options
             account = st.text_input(
                 "Account (optional):",
-                value=config["resources"].get("account", default_resources.get("account", "")),
-                help="Account or project code for billing"
+                value=config["resources"].get(
+                    "account", default_resources.get("account", "")
+                ),
+                help="Account or project code for billing",
             )
             if account:
                 config["resources"]["account"] = account
-        
-        st.caption("💡 These custom resources will override the machine defaults for this calculation.")
+
+        st.caption(
+            "💡 These custom resources will override the machine defaults for this calculation."
+        )
     else:
         # Show default resources from machine
         if st.session_state.get("calc_machine"):
             machine = st.session_state.calc_machine
-            if hasattr(machine, 'resources') and machine.resources:
+            if hasattr(machine, "resources") and machine.resources:
                 st.info("**Using default resources from machine configuration:**")
                 col1, col2 = st.columns(2)
                 with col1:
                     if "nodes" in machine.resources:
                         st.caption(f"Nodes: {machine.resources['nodes']}")
                     if "ntasks-per-node" in machine.resources:
-                        st.caption(f"Tasks per node: {machine.resources['ntasks-per-node']}")
+                        st.caption(
+                            f"Tasks per node: {machine.resources['ntasks-per-node']}"
+                        )
                     if "mem" in machine.resources:
                         st.caption(f"Memory: {machine.resources['mem']}")
                 with col2:
@@ -552,7 +573,9 @@ def render_calculation_setup_page():
             # Add machine to config as queue parameter
             # Convert Machine object to queue dict for compatibility
             machine = st.session_state.calc_machine
-            config["queue"] = machine.to_queue() if hasattr(machine, 'to_queue') else machine
+            config["queue"] = (
+                machine.to_queue() if hasattr(machine, "to_queue") else machine
+            )
 
             # Apply custom resources if enabled
             if config.get("adjust_resources") and config.get("resources"):
@@ -560,32 +583,42 @@ def render_calculation_setup_page():
                 st.info(f"   Using custom resources: {config['resources']}")
 
             # If use_modules is True and a version-specific module is configured, add it to queue
-            if config["queue"].get("use_modules") and st.session_state.get("calc_selected_version"):
+            if config["queue"].get("use_modules") and st.session_state.get(
+                "calc_selected_version"
+            ):
                 try:
-                    from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
-                    
+                    from xespresso.codes.manager import (
+                        load_codes_config,
+                        DEFAULT_CODES_DIR,
+                    )
+
                     codes = load_codes_config(
                         st.session_state.selected_machine_for_calc, DEFAULT_CODES_DIR
                     )
-                    
+
                     if codes and codes.versions:
                         selected_version = st.session_state.calc_selected_version
                         if selected_version in codes.versions:
                             version_config = codes.versions[selected_version]
                             version_modules = version_config.get("modules")
-                            
+
                             if version_modules:
                                 # Replace machine modules with version-specific modules
                                 config["queue"]["modules"] = version_modules
-                                st.info(f"   Using version-specific modules: {', '.join(version_modules)}")
+                                st.info(
+                                    f"   Using version-specific modules: {', '.join(version_modules)}"
+                                )
                 except Exception as e:
                     st.warning(f"⚠️ Could not load version-specific modules: {e}")
 
             # Set environment variable for xespresso command template
             # xespresso will replace LAUNCHER, PACKAGE, PARALLEL, PREFIX placeholders
             import os
-            os.environ["ASE_ESPRESSO_COMMAND"] = "LAUNCHER PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
-            
+
+            os.environ[
+                "ASE_ESPRESSO_COMMAND"
+            ] = "LAUNCHER PACKAGE.x PARALLEL -in PREFIX.PACKAGEi > PREFIX.PACKAGEo"
+
             # Use calculation module to prepare atoms and calculator
             st.info(
                 "📦 Using calculation module to prepare atoms and Espresso calculator..."
