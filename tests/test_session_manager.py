@@ -86,15 +86,15 @@ def test_save_and_load_session(mock_st, temp_session_dir):
     mock_st.session_state['qe_version'] = '7.2'
     mock_st.session_state['test_config'] = {'ecutwfc': 50, 'kpts': [4, 4, 4]}
     
-    # Save session with session name
-    filepath = save_session(filename='test_session.json', session_dir=temp_session_dir, session_name='Test Session')
+    # Save session
+    filepath = save_session(filename='test_session.json', session_dir=temp_session_dir)
     
     # Verify file was created
     assert os.path.exists(filepath)
     assert filepath.endswith('test_session.json')
     
     # Load session
-    loaded_state, session_name = load_session(filepath)
+    loaded_state = load_session(filepath)
     
     # Verify loaded state
     assert 'machine_name' in loaded_state
@@ -103,8 +103,6 @@ def test_save_and_load_session(mock_st, temp_session_dir):
     assert loaded_state['qe_version'] == '7.2'
     assert 'test_config' in loaded_state
     assert loaded_state['test_config'] == {'ecutwfc': 50, 'kpts': [4, 4, 4]}
-    # Verify session name
-    assert session_name == 'Test Session'
 
 
 def test_save_session_with_metadata(mock_st, temp_session_dir):
@@ -113,8 +111,8 @@ def test_save_session_with_metadata(mock_st, temp_session_dir):
     
     mock_st.session_state['test_key'] = 'test_value'
     
-    # Save session with session name
-    filepath = save_session(session_dir=temp_session_dir, session_name='My Session')
+    # Save session
+    filepath = save_session(session_dir=temp_session_dir)
     
     # Load and verify metadata
     with open(filepath, 'r') as f:
@@ -123,8 +121,6 @@ def test_save_session_with_metadata(mock_st, temp_session_dir):
     assert 'metadata' in data
     assert 'saved_at' in data['metadata']
     assert 'version' in data['metadata']
-    assert 'session_name' in data['metadata']
-    assert data['metadata']['session_name'] == 'My Session'
     assert 'state' in data
 
 
@@ -273,35 +269,3 @@ def test_load_session_invalid_format(temp_session_dir):
     
     with pytest.raises(ValueError):
         load_session(invalid_file)
-
-
-def test_session_name_in_filename(mock_st, temp_session_dir):
-    """Test that session name is used as filename."""
-    from xespresso.gui.utils.session_manager import save_session
-    
-    mock_st.session_state['test_key'] = 'test_value'
-    
-    # Save session with custom name
-    filepath = save_session(session_dir=temp_session_dir, session_name='Al_scf')
-    
-    # Verify filename matches session name
-    assert os.path.basename(filepath) == 'Al_scf.json'
-    assert os.path.exists(filepath)
-
-
-def test_load_session_preserves_name(mock_st, temp_session_dir):
-    """Test that loading a session preserves the session name."""
-    from xespresso.gui.utils.session_manager import save_session, load_session
-    
-    mock_st.session_state['test_key'] = 'test_value'
-    
-    # Save with a specific session name
-    filepath = save_session(session_dir=temp_session_dir, session_name='Al_scf')
-    
-    # Load the session
-    state, session_name = load_session(filepath)
-    
-    # Verify session name is preserved
-    assert session_name == 'Al_scf'
-    assert 'test_key' in state
-    assert state['test_key'] == 'test_value'
