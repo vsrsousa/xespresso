@@ -389,7 +389,8 @@ def render_session_manager(key: str = "session_manager"):
     """
     Render multi-session management UI component.
     
-    Similar to Jupyter notebooks - users can create, switch, and manage multiple independent sessions.
+    Uses a compact selectbox design that scales well with many sessions.
+    Shows current session info prominently, with actions and dropdown for switching.
     
     Args:
         key: Unique key for the component
@@ -401,18 +402,25 @@ def render_session_manager(key: str = "session_manager"):
     active_sessions = get_active_sessions()
     current_session_id = get_current_session_id()
     
-    # Create new session button
-    col1, col2 = st.sidebar.columns([2, 1])
+    # Display current session info prominently
+    if active_sessions and current_session_id in active_sessions:
+        current_session = active_sessions[current_session_id]
+        current_name = current_session.get('name', current_session_id)
+        
+        st.sidebar.markdown("**Current Session:**")
+        st.sidebar.info(f"→ {current_name} ✓")
+    
+    # Session actions row
+    col1, col2, col3 = st.sidebar.columns(3)
     with col1:
-        if st.button("➕ New Session", key=f"{key}_new", use_container_width=True, 
-                    help="Start a new calculation session"):
+        if st.button("➕ New", key=f"{key}_new", use_container_width=True, 
+                    help="Create a new calculation session"):
             new_id = create_new_session()
-            st.sidebar.success(f"✅ Created new session!")
             st.rerun()
     
     with col2:
         if st.button("💾 Save", key=f"{key}_save", use_container_width=True, 
-                    help="Save current session"):
+                    help="Save current session to file"):
             try:
                 # Save current session state first
                 if current_session_id in active_sessions:
@@ -424,64 +432,82 @@ def render_session_manager(key: str = "session_manager"):
                 filename = f"{session_name.replace(' ', '_')}_{timestamp}.json"
                 
                 filepath = save_session(filename=filename)
-                st.sidebar.success(f"✅ Saved!")
-                st.sidebar.caption(f"📁 {os.path.basename(filepath)}")
+                st.sidebar.success(f"✅ Saved to {os.path.basename(filepath)}")
             except Exception as e:
                 st.sidebar.error(f"❌ Error: {e}")
     
-    # Active sessions list
-    if active_sessions:
-        st.sidebar.markdown("**Active Sessions:**")
+    with col3:
+        # Show rename button for current session
+        if st.button("✏️ Rename", key=f"{key}_rename_current", use_container_width=True,
+                    help="Rename current session"):
+            st.session_state[f'{key}_renaming'] = True
+            st.rerun()
+    
+    # Rename input for current session (if renaming)
+    if st.session_state.get(f'{key}_renaming', False):
+        current_name = active_sessions[current_session_id].get('name', current_session_id)
+        new_name = st.sidebar.text_input(
+            "New name:",
+            value=current_name,
+            key=f"{key}_new_name_input"
+        )
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            if st.button("✓ OK", key=f"{key}_rename_ok", use_container_width=True):
+                rename_session(current_session_id, new_name)
+                st.session_state[f'{key}_renaming'] = False
+                st.rerun()
+        with col2:
+            if st.button("✗ Cancel", key=f"{key}_rename_cancel", use_container_width=True):
+                st.session_state[f'{key}_renaming'] = False
+                st.rerun()
+    
+    # Switch to another session (only show if there are multiple sessions)
+    if len(active_sessions) > 1:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("**Switch Session:**")
         
+        # Create list of session options (exclude current session)
+        session_options = []
+        session_ids = []
         for sess_id, sess_data in active_sessions.items():
-            is_current = (sess_id == current_session_id)
-            
-            col1, col2, col3 = st.sidebar.columns([4, 1, 1])
-            with col1:
-                # Session name - all sessions are buttons with visual indicator for current
+            if sess_id != current_session_id:
                 name = sess_data.get('name', sess_id)
-                button_label = f"{'→ ' if is_current else ''}{name}{' ✓' if is_current else ''}"
-                button_type = "primary" if is_current else "secondary"
-                
-                if st.button(button_label, key=f"{key}_switch_{sess_id}", 
-                           use_container_width=True, type=button_type,
-                           help="Switch to this session" if not is_current else "Current session"):
-                    if not is_current:
-                        switch_session(sess_id)
-                        st.rerun()
+                session_options.append(name)
+                session_ids.append(sess_id)
+        
+        if session_options:
+            # Use selectbox for switching - more scalable than buttons
+            selected_name = st.sidebar.selectbox(
+                "Select session to switch to:",
+                options=session_options,
+                key=f"{key}_switch_select",
+                help=f"Switch from '{current_name}' to another session"
+            )
             
-            with col2:
-                # Rename button
-                if st.button("✏️", key=f"{key}_rename_{sess_id}", 
-                           help="Rename this session"):
-                    st.session_state[f'{key}_renaming_{sess_id}'] = True
+            col1, col2 = st.sidebar.columns(2)
+            with col1:
+                if st.button("🔄 Switch", key=f"{key}_switch_btn", use_container_width=True):
+                    # Find the session ID for the selected name
+                    idx = session_options.index(selected_name)
+                    target_session_id = session_ids[idx]
+                    switch_session(target_session_id)
                     st.rerun()
             
-            with col3:
-                # Close button (only if more than 1 session)
-                if len(active_sessions) > 1:
-                    if st.button("✖", key=f"{key}_close_{sess_id}", 
-                               help="Close this session"):
-                        close_session(sess_id)
-                        st.rerun()
-            
-            # Rename input (if renaming this session)
-            if st.session_state.get(f'{key}_renaming_{sess_id}', False):
-                new_name = st.sidebar.text_input(
-                    "New name:",
-                    value=name,
-                    key=f"{key}_new_name_{sess_id}"
-                )
-                col1, col2 = st.sidebar.columns(2)
-                with col1:
-                    if st.button("✓ OK", key=f"{key}_rename_ok_{sess_id}", use_container_width=True):
-                        rename_session(sess_id, new_name)
-                        st.session_state[f'{key}_renaming_{sess_id}'] = False
-                        st.rerun()
-                with col2:
-                    if st.button("✗ Cancel", key=f"{key}_rename_cancel_{sess_id}", use_container_width=True):
-                        st.session_state[f'{key}_renaming_{sess_id}'] = False
-                        st.rerun()
+            with col2:
+                # Close button for selected session
+                if st.button("✖ Close", key=f"{key}_close_selected", use_container_width=True,
+                           help=f"Close '{selected_name}'"):
+                    idx = session_options.index(selected_name)
+                    target_session_id = session_ids[idx]
+                    close_session(target_session_id)
+                    st.rerun()
+        
+        # Show session count
+        st.sidebar.caption(f"📊 {len(active_sessions)} active session(s)")
+    else:
+        # Only one session
+        st.sidebar.caption("💡 Create a new session to work on multiple calculations")
     
     # Load saved sessions
     with st.sidebar.expander("📂 Load Saved Session", expanded=False):
