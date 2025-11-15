@@ -426,9 +426,16 @@ def render_workflow_builder_page():
             )
             config["nprocs"] = nprocs
             
-            # Check if launcher uses {nprocs} placeholder and show info
+            # Store the launcher configuration with resolved nprocs
+            # This ensures the launcher will use the adjusted nprocs value
             if "{nprocs}" in default_launcher:
-                st.caption(f"💡 Launcher will be: `{default_launcher.replace('{nprocs}', str(nprocs))}`")
+                resolved_launcher = default_launcher.replace('{nprocs}', str(nprocs))
+                config["launcher"] = default_launcher  # Store template for future adjustments
+                st.caption(f"💡 Launcher will be: `{resolved_launcher}`")
+            else:
+                # Launcher doesn't use placeholder, store as-is
+                config["launcher"] = default_launcher
+                st.caption(f"💡 Launcher: `{default_launcher}`")
         else:
             # For schedulers (slurm, pbs, sge), show full resource configuration
             st.info(f"ℹ️ **Scheduler Mode ({scheduler_type.upper()})**: Configure resources for job scheduler submission.")
