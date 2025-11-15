@@ -46,7 +46,21 @@ def render_dry_run_tab():
         return
     
     atoms = st.session_state.current_structure
-    st.success(f"✅ Structure loaded: {atoms.get_chemical_formula()} ({len(atoms)} atoms)")
+    
+    # Safety check: Ensure atoms is actually an Atoms object, not a string
+    try:
+        from ase import Atoms
+        if not isinstance(atoms, Atoms):
+            st.error(f"❌ Structure is not a valid ASE Atoms object (type: {type(atoms).__name__}). Please reload the structure in the Structure Viewer page.")
+            if isinstance(atoms, str):
+                st.info(f"Debug: Structure appears to be a string: {atoms[:100]}...")
+            st.info("💡 Tip: Go to Structure Viewer and reload your structure, then try again.")
+            return
+    except ImportError:
+        st.error("❌ ASE not available. Cannot verify structure.")
+        return
+    
+    st.success(f"✅ Structure loaded: {atoms.get_chemical_formula()} ({len(atoms)} atoms}")
     
     st.markdown("---")
     
@@ -521,6 +535,20 @@ def render_job_submission_tab():
         return
     
     atoms = st.session_state.current_structure
+    
+    # Safety check: Ensure atoms is actually an Atoms object, not a string
+    try:
+        from ase import Atoms
+        if not isinstance(atoms, Atoms):
+            st.error(f"❌ Structure is not a valid ASE Atoms object (type: {type(atoms).__name__}). Please reload the structure in the Structure Viewer page.")
+            if isinstance(atoms, str):
+                st.info(f"Debug: Structure appears to be a string: {atoms[:100]}...")
+            st.info("💡 Tip: Go to Structure Viewer and reload your structure, then try again.")
+            return
+    except ImportError:
+        st.error("❌ ASE not available. Cannot verify structure.")
+        return
+    
     st.success(f"✅ Structure loaded: {atoms.get_chemical_formula()} ({len(atoms)} atoms)")
     
     st.markdown("---")

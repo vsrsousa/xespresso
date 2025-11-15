@@ -117,12 +117,14 @@ def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str
             continue
         
         # Special handling for ASE Atoms objects
+        is_atoms = False
         try:
             from ase import Atoms
             from ase.io import write
             import io
             
             if isinstance(value, Atoms):
+                is_atoms = True
                 # Convert Atoms to JSON string
                 sio = io.StringIO()
                 write(sio, value, format='json')
@@ -131,22 +133,25 @@ def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str
                     '__data__': sio.getvalue()
                 }
                 continue
-        except (ImportError, Exception):
+        except ImportError:
+            # ASE not available, can't check if it's an Atoms object
             pass
+        except Exception as e:
+            # Error serializing Atoms - log and skip this key
+            print(f"Warning: Could not serialize {key} as Atoms: {e}")
+            continue
         
-        # Try to serialize the value
+        # Try to serialize the value as regular JSON
         try:
             # Test if value is JSON serializable
             json.dumps(value)
             serializable_state[key] = value
         except (TypeError, ValueError):
             # Skip non-serializable values
-            # Try to convert common types
-            if hasattr(value, '__dict__'):
-                try:
-                    serializable_state[key] = str(value)
-                except:
-                    pass
+            # Don't convert to string - this was causing the bug
+            # where Atoms objects would become strings if serialization failed
+            print(f"Warning: Skipping non-serializable key '{key}' of type {type(value)}")
+            pass
     
     return serializable_state
 
@@ -274,12 +279,16 @@ def restore_session(state: Dict[str, Any], clear_first: bool = True):
                     sio = io.StringIO(value['__data__'])
                     atoms = read(sio, format='json')
                     st.session_state[key] = atoms
+                    print(f"Successfully restored Atoms object for key '{key}': {atoms.get_chemical_formula()}")
                     continue
                 except (ImportError, Exception) as e:
-                    # If deserialization fails, skip this key
-                    print(f"Warning: Could not deserialize {key}: {e}")
+                    # If deserialization fails, log error and skip this key
+                    print(f"ERROR: Could not deserialize {key} as Atoms object: {e}")
+                    import traceback
+                    traceback.print_exc()
                     continue
         
+        # Regular value - restore directly
         st.session_state[key] = value
 
 
