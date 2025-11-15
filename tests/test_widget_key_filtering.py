@@ -69,6 +69,12 @@ def test_widget_keys_are_filtered(mock_st):
     mock_st.session_state.session_manager_switch_select = "Session 2"
     mock_st.session_state.session_manager_renaming = False
     
+    # Add button widget keys that should be filtered out (the bug fix)
+    mock_st.session_state.build_crystal_btn = True
+    mock_st.session_state.build_molecule_btn = False
+    mock_st.session_state.load_db_structure_btn = True
+    mock_st.session_state.save_db_structure_btn = False
+    
     # Get serializable state
     state = get_serializable_state()
     
@@ -90,6 +96,12 @@ def test_widget_keys_are_filtered(mock_st):
     assert 'session_manager_save' not in state
     assert 'session_manager_switch_select' not in state
     assert 'session_manager_renaming' not in state
+    
+    # Button widget keys should be filtered out (the bug fix)
+    assert 'build_crystal_btn' not in state
+    assert 'build_molecule_btn' not in state
+    assert 'load_db_structure_btn' not in state
+    assert 'save_db_structure_btn' not in state
 
 
 def test_restore_session_filters_widget_keys(mock_st):
@@ -106,6 +118,11 @@ def test_restore_session_filters_widget_keys(mock_st):
         'workdir_browser_subdir_selector': "test",
         'session_manager_new': True,
         'session_manager_renaming': False,
+        # Button widget keys that should be filtered (the bug fix)
+        'build_crystal_btn': True,
+        'build_molecule_btn': False,
+        'load_db_structure_btn': True,
+        'save_db_structure_btn': False,
     }
     
     # Restore session
@@ -124,6 +141,12 @@ def test_restore_session_filters_widget_keys(mock_st):
     assert 'workdir_browser_subdir_selector' not in mock_st.session_state
     assert 'session_manager_new' not in mock_st.session_state
     assert 'session_manager_renaming' not in mock_st.session_state
+    
+    # Button widget keys should NOT be restored (the bug fix)
+    assert 'build_crystal_btn' not in mock_st.session_state
+    assert 'build_molecule_btn' not in mock_st.session_state
+    assert 'load_db_structure_btn' not in mock_st.session_state
+    assert 'save_db_structure_btn' not in mock_st.session_state
 
 
 def test_switch_session_no_widget_key_conflict(mock_st):
@@ -188,6 +211,17 @@ def test_is_widget_key():
     assert _is_widget_key('session_load_file')
     assert _is_widget_key('session_renaming')
     
+    # Button widget keys should be identified (ending with _btn)
+    assert _is_widget_key('build_crystal_btn')
+    assert _is_widget_key('build_molecule_btn')
+    assert _is_widget_key('load_db_structure_btn')
+    assert _is_widget_key('save_db_structure_btn')
+    assert _is_widget_key('any_button_btn')
+    
+    # Button widget keys with _button suffix should also be identified
+    assert _is_widget_key('submit_button')
+    assert _is_widget_key('cancel_button')
+    
     # Application state keys should NOT be identified as widget keys
     assert not _is_widget_key('working_directory')
     assert not _is_widget_key('current_structure')
@@ -195,3 +229,7 @@ def test_is_widget_key():
     assert not _is_widget_key('workdir_browser_current_path')  # This is app state, not widget
     assert not _is_widget_key('selected_code_version')
     assert not _is_widget_key('espresso_calculator')
+    
+    # Keys that contain 'btn' but don't end with it should NOT be widget keys
+    assert not _is_widget_key('btn_config')
+    assert not _is_widget_key('button_state')

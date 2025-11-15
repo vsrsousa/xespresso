@@ -54,6 +54,18 @@ def _is_widget_key(key: str) -> bool:
         if pattern in key:
             return True
     
+    # Check for common widget suffixes
+    # Button widgets typically end with _btn
+    # Other interactive widgets may have similar patterns
+    widget_suffixes = [
+        '_btn',         # Button widgets (e.g., build_crystal_btn)
+        '_button',      # Alternative button naming
+    ]
+    
+    for suffix in widget_suffixes:
+        if key.endswith(suffix):
+            return True
+    
     return False
 
 
