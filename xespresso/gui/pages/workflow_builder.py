@@ -397,78 +397,117 @@ def render_workflow_builder_page():
     if adjust_resources:
         st.markdown("**Custom Resources:**")
         
-        # Get default resources from machine if available
+        # Get scheduler type and default resources from machine if available
+        scheduler_type = "direct"
         default_resources = {}
+        default_nprocs = 1
+        default_launcher = "mpirun -np {nprocs}"
+        
         if st.session_state.get("workflow_machine"):
             machine = st.session_state.workflow_machine
+            scheduler_type = getattr(machine, 'scheduler', 'direct')
+            default_nprocs = getattr(machine, 'nprocs', 1)
+            default_launcher = getattr(machine, 'launcher', 'mpirun -np {nprocs}')
             if hasattr(machine, 'resources'):
                 default_resources = machine.resources or {}
         
-        # Resource inputs in columns
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            nodes = st.number_input(
-                "Nodes:",
-                value=int(config["resources"].get("nodes", default_resources.get("nodes", 1))),
-                min_value=1,
-                max_value=1000,
-                help="Number of compute nodes to use",
-                key="workflow_nodes"
-            )
-            config["resources"]["nodes"] = nodes
+        # For direct execution, only show nprocs
+        if scheduler_type == "direct":
+            st.info("ℹ️ **Direct Execution Mode**: Only processor count is configurable. Scheduler resources (nodes, memory, time, etc.) are not applicable for direct execution.")
             
-            ntasks_per_node = st.number_input(
-                "Tasks per Node:",
-                value=int(config["resources"].get("ntasks-per-node", default_resources.get("ntasks-per-node", 16))),
+            # Number of processors for direct execution
+            nprocs = st.number_input(
+                "Number of Processors (nprocs):",
+                value=int(config.get("nprocs", default_nprocs)),
                 min_value=1,
                 max_value=256,
-                help="Number of MPI tasks per node",
-                key="workflow_ntasks"
+                help="Number of processor cores to use for the calculation",
+                key="workflow_nprocs"
             )
-            config["resources"]["ntasks-per-node"] = ntasks_per_node
+            config["nprocs"] = nprocs
             
-            mem = st.text_input(
-                "Memory:",
-                value=config["resources"].get("mem", default_resources.get("mem", "32G")),
-                help="Memory per node (e.g., 32G, 64GB)",
-                key="workflow_mem"
-            )
-            config["resources"]["mem"] = mem
-        
-        with col2:
-            time = st.text_input(
-                "Time Limit:",
-                value=config["resources"].get("time", default_resources.get("time", "02:00:00")),
-                help="Wall time limit (format: HH:MM:SS)",
-                key="workflow_time"
-            )
-            config["resources"]["time"] = time
+            # Check if launcher uses {nprocs} placeholder and show info
+            if "{nprocs}" in default_launcher:
+                st.caption(f"💡 Launcher will be: `{default_launcher.replace('{nprocs}', str(nprocs))}`")
+        else:
+            # For schedulers (slurm, pbs, sge), show full resource configuration
+            st.info(f"ℹ️ **Scheduler Mode ({scheduler_type.upper()})**: Configure resources for job scheduler submission.")
             
-            partition = st.text_input(
-                "Partition/Queue:",
-                value=config["resources"].get("partition", default_resources.get("partition", "compute")),
-                help="Scheduler partition or queue name",
-                key="workflow_partition"
-            )
-            config["resources"]["partition"] = partition
+            # Resource inputs in columns
+            col1, col2 = st.columns(2)
             
-            # Additional resource options
-            account = st.text_input(
-                "Account (optional):",
-                value=config["resources"].get("account", default_resources.get("account", "")),
-                help="Account or project code for billing",
-                key="workflow_account"
-            )
-            if account:
-                config["resources"]["account"] = account
-        
-        st.caption("💡 These custom resources will override the machine defaults for this workflow.")
+            with col1:
+                nodes = st.number_input(
+                    "Nodes:",
+                    value=int(config["resources"].get("nodes", default_resources.get("nodes", 1))),
+                    min_value=1,
+                    max_value=1000,
+                    help="Number of compute nodes to use",
+                    key="workflow_nodes"
+                )
+                config["resources"]["nodes"] = nodes
+                
+                ntasks_per_node = st.number_input(
+                    "Tasks per Node:",
+                    value=int(config["resources"].get("ntasks-per-node", default_resources.get("ntasks-per-node", 16))),
+                    min_value=1,
+                    max_value=256,
+                    help="Number of MPI tasks per node",
+                    key="workflow_ntasks"
+                )
+                config["resources"]["ntasks-per-node"] = ntasks_per_node
+                
+                mem = st.text_input(
+                    "Memory:",
+                    value=config["resources"].get("mem", default_resources.get("mem", "32G")),
+                    help="Memory per node (e.g., 32G, 64GB)",
+                    key="workflow_mem"
+                )
+                config["resources"]["mem"] = mem
+            
+            with col2:
+                time = st.text_input(
+                    "Time Limit:",
+                    value=config["resources"].get("time", default_resources.get("time", "02:00:00")),
+                    help="Wall time limit (format: HH:MM:SS)",
+                    key="workflow_time"
+                )
+                config["resources"]["time"] = time
+                
+                partition = st.text_input(
+                    "Partition/Queue:",
+                    value=config["resources"].get("partition", default_resources.get("partition", "compute")),
+                    help="Scheduler partition or queue name",
+                    key="workflow_partition"
+                )
+                config["resources"]["partition"] = partition
+                
+                # Additional resource options
+                account = st.text_input(
+                    "Account (optional):",
+                    value=config["resources"].get("account", default_resources.get("account", "")),
+                    help="Account or project code for billing",
+                    key="workflow_account"
+                )
+                if account:
+                    config["resources"]["account"] = account
+            
+            st.caption("💡 These custom resources will override the machine defaults for this workflow.")
     else:
         # Show default resources from machine
         if st.session_state.get("workflow_machine"):
             machine = st.session_state.workflow_machine
-            if hasattr(machine, 'resources') and machine.resources:
+            scheduler_type = getattr(machine, 'scheduler', 'direct')
+            
+            if scheduler_type == "direct":
+                # For direct execution, only show nprocs
+                st.info("**Using default configuration from machine:**")
+                nprocs = getattr(machine, 'nprocs', 1)
+                launcher = getattr(machine, 'launcher', 'mpirun -np {nprocs}')
+                st.caption(f"Number of Processors: {nprocs}")
+                st.caption(f"Launcher: {launcher.replace('{nprocs}', str(nprocs)) if '{nprocs}' in launcher else launcher}")
+            elif hasattr(machine, 'resources') and machine.resources:
+                # For schedulers, show full resource configuration
                 st.info("**Using default resources from machine configuration:**")
                 col1, col2 = st.columns(2)
                 with col1:

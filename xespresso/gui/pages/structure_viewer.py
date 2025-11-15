@@ -23,6 +23,40 @@ def render_structure_viewer_page():
     **Modular Design:** This page uses the structures module to handle loading and exporting.
     """)
     
+    # Display currently selected structure if one exists
+    if 'current_structure' in st.session_state and st.session_state.current_structure is not None:
+        st.markdown("---")
+        st.subheader("📍 Currently Selected Structure")
+        
+        current_atoms = st.session_state.current_structure
+        
+        # Show structure info in an info box
+        try:
+            from ase import Atoms
+            if isinstance(current_atoms, Atoms):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Formula", current_atoms.get_chemical_formula())
+                with col2:
+                    st.metric("Number of Atoms", len(current_atoms))
+                with col3:
+                    # Get source info if available
+                    source = st.session_state.get('structure_source', 'Unknown')
+                    st.metric("Source", source)
+                
+                # Add button to view/edit the current structure
+                with st.expander("🔬 View Current Structure", expanded=False):
+                    st.info("This is the structure that will be used for calculations.")
+                    render_structure_controls_and_viewer(current_atoms)
+                
+                st.success("✅ Structure ready for calculations. Navigate to Calculation Setup or Workflow Builder to configure your calculation.")
+            else:
+                st.warning("⚠️ Current structure is not a valid ASE Atoms object. Please reload a structure.")
+        except Exception as e:
+            st.error(f"❌ Error displaying current structure: {e}")
+        
+        st.markdown("---")
+    
     # File upload section
     st.subheader("📂 Load Structure")
     
@@ -62,9 +96,10 @@ def render_upload_tab():
             
             st.success(f"✅ Loaded: {uploaded_file.name}")
             
-            # Store in session state
+            # Store in session state with source information
             st.session_state.current_structure = atoms
             st.session_state.structure_info = loader.get_info()
+            st.session_state.structure_source = f"Upload: {uploaded_file.name}"
             
             # Add option to save to database
             with st.expander("💾 Save to ASE Database", expanded=False):
@@ -237,9 +272,10 @@ def render_browse_tab():
                     
                     st.success(f"✅ Loaded: {os.path.relpath(selected_file, base_workdir)}")
                     
-                    # Store in session state
+                    # Store in session state with source information
                     st.session_state.current_structure = atoms
                     st.session_state.structure_info = loader.get_info()
+                    st.session_state.structure_source = f"File: {os.path.basename(selected_file)}"
                     
                     render_structure_controls_and_viewer(atoms)
                 except Exception as e:
@@ -300,8 +336,9 @@ def render_build_structure_tab():
                 )
                 st.success(f"✅ Built {element} {crystal_structure} structure")
                 
-                # Store in session state
+                # Store in session state with source information
                 st.session_state.current_structure = atoms
+                st.session_state.structure_source = f"Built: {element} {crystal_structure}"
                 
                 render_structure_controls_and_viewer(atoms)
             except Exception as e:
@@ -329,8 +366,9 @@ def render_build_structure_tab():
                 atoms.center(vacuum=5.0)
                 st.success(f"✅ Built {molecule_name} molecule")
                 
-                # Store in session state
+                # Store in session state with source information
                 st.session_state.current_structure = atoms
+                st.session_state.structure_source = f"Built: {molecule_name} molecule"
                 
                 render_structure_controls_and_viewer(atoms)
             except Exception as e:
@@ -464,8 +502,9 @@ def render_database_load_section(db_path):
                         atoms = row.toatoms()
                         st.success(f"✅ Loaded structure ID {selected_id}: {atoms.get_chemical_formula()}")
                         
-                        # Store in session state
+                        # Store in session state with source information
                         st.session_state.current_structure = atoms
+                        st.session_state.structure_source = f"Database: ID {selected_id}"
                         
                         render_structure_controls_and_viewer(atoms)
                     except Exception as e:
