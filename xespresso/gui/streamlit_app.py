@@ -104,7 +104,8 @@ except ImportError:
 # Import utility functions
 try:
     from xespresso.gui.utils import validate_path, create_3d_structure_plot, display_structure_info
-    from xespresso.gui.utils.session_manager import render_session_manager
+    from xespresso.gui.utils.session_manager import render_session_manager, get_current_session_id, get_active_sessions
+    from xespresso.gui.utils.directory_browser import render_directory_browser
     UTILS_AVAILABLE = True
 except ImportError as e:
     st.warning(f"⚠️ GUI utilities not fully available: {e}")
@@ -125,6 +126,10 @@ except ImportError as e:
     def render_session_manager(key="session_manager"):
         """Fallback session manager."""
         pass
+    
+    def render_directory_browser(key="directory_browser", initial_path=None, help_text=""):
+        """Fallback directory browser."""
+        return initial_path or os.path.expanduser("~")
 
 # Initialize session state
 if 'current_structure' not in st.session_state:
@@ -139,6 +144,9 @@ if 'selected_code_version' not in st.session_state:
     st.session_state.selected_code_version = None
 if 'workflow_config' not in st.session_state:
     st.session_state.workflow_config = {}
+
+# Working directory is now session-specific
+# Initialize only if not already set (will be restored from session state when switching)
 if 'working_directory' not in st.session_state:
     st.session_state.working_directory = os.path.expanduser("~")
 
@@ -187,49 +195,57 @@ if is_calculation_page:
     st.sidebar.markdown("---")
     st.sidebar.subheader("📁 Working Directory")
     
-    # Common working directory options
-    common_dirs = [
-        os.path.expanduser("~"),  # Home
-        os.getcwd(),  # Current directory
-        os.path.join(os.path.expanduser("~"), "calculations"),
-        os.path.join(os.path.expanduser("~"), "Documents"),
-        os.path.join(os.path.expanduser("~"), "Desktop"),
-    ]
-    
-    # Add current working directory if not in list
-    if st.session_state.working_directory not in common_dirs:
-        common_dirs.insert(0, st.session_state.working_directory)
-    
-    # Format function to show shortened paths
-    def format_dir(path):
-        """Format directory path for display."""
-        if path == os.path.expanduser("~"):
-            return "🏠 Home"
-        elif path == os.getcwd():
-            return "📂 Current Directory"
-        elif path.endswith("calculations"):
-            return "📊 Calculations"
-        elif path.endswith("Documents"):
-            return "📄 Documents"
-        elif path.endswith("Desktop"):
-            return "🖥️ Desktop"
-        else:
-            return f"📁 {os.path.basename(path)}"
-    
-    selected_workdir = st.sidebar.selectbox(
-        "Select working directory:",
-        options=common_dirs,
-        format_func=format_dir,
-        key="workdir_selector",
-        help="Choose the base directory where calculation folders will be created"
-    )
-    
-    # Update session state
-    if selected_workdir != st.session_state.working_directory:
-        st.session_state.working_directory = selected_workdir
-    
-    st.sidebar.caption(f"📍 {st.session_state.working_directory}")
-    st.sidebar.info("💡 Calculation folders will be created here based on calc/label")
+    # Use enhanced directory browser
+    if UTILS_AVAILABLE:
+        selected_workdir = render_directory_browser(
+            key="workdir_browser",
+            initial_path=st.session_state.get('working_directory', os.path.expanduser("~")),
+            help_text="Choose the base directory where calculation folders will be created"
+        )
+        
+        # Update session state when directory changes
+        if selected_workdir != st.session_state.get('working_directory'):
+            st.session_state.working_directory = selected_workdir
+    else:
+        # Fallback to simple selectbox if utils not available
+        common_dirs = [
+            os.path.expanduser("~"),
+            os.getcwd(),
+            os.path.join(os.path.expanduser("~"), "calculations"),
+            os.path.join(os.path.expanduser("~"), "Documents"),
+            os.path.join(os.path.expanduser("~"), "Desktop"),
+        ]
+        
+        if st.session_state.working_directory not in common_dirs:
+            common_dirs.insert(0, st.session_state.working_directory)
+        
+        def format_dir(path):
+            if path == os.path.expanduser("~"):
+                return "🏠 Home"
+            elif path == os.getcwd():
+                return "📂 Current Directory"
+            elif path.endswith("calculations"):
+                return "📊 Calculations"
+            elif path.endswith("Documents"):
+                return "📄 Documents"
+            elif path.endswith("Desktop"):
+                return "🖥️ Desktop"
+            else:
+                return f"📁 {os.path.basename(path)}"
+        
+        selected_workdir = st.sidebar.selectbox(
+            "Select working directory:",
+            options=common_dirs,
+            format_func=format_dir,
+            key="workdir_selector",
+            help="Choose the base directory where calculation folders will be created"
+        )
+        
+        if selected_workdir != st.session_state.working_directory:
+            st.session_state.working_directory = selected_workdir
+        
+        st.sidebar.caption(f"📍 {st.session_state.working_directory}")
+        st.sidebar.info("💡 Calculation folders will be created here based on calc/label")
 
 # Add session manager to sidebar
 if UTILS_AVAILABLE:

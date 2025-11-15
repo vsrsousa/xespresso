@@ -349,6 +349,21 @@ def close_session(session_id: str):
             create_new_session()
 
 
+def rename_session(session_id: str, new_name: str):
+    """
+    Rename an active session.
+    
+    Args:
+        session_id: ID of session to rename
+        new_name: New name for the session
+    """
+    if '_active_sessions' not in st.session_state:
+        return
+    
+    if session_id in st.session_state._active_sessions:
+        st.session_state._active_sessions[session_id]['name'] = new_name
+
+
 def render_session_manager(key: str = "session_manager"):
     """
     Render multi-session management UI component.
@@ -400,23 +415,51 @@ def render_session_manager(key: str = "session_manager"):
         for sess_id, sess_data in active_sessions.items():
             is_current = (sess_id == current_session_id)
             
-            col1, col2 = st.sidebar.columns([3, 1])
+            col1, col2, col3 = st.sidebar.columns([4, 1, 1])
             with col1:
-                # Session name with indicator if current
+                # Session name - all sessions are buttons with visual indicator for current
                 name = sess_data.get('name', sess_id)
-                if is_current:
-                    st.sidebar.markdown(f"**→ {name}** ✓")
-                else:
-                    if st.sidebar.button(name, key=f"{key}_switch_{sess_id}", use_container_width=True):
+                button_label = f"{'→ ' if is_current else ''}{name}{' ✓' if is_current else ''}"
+                button_type = "primary" if is_current else "secondary"
+                
+                if st.button(button_label, key=f"{key}_switch_{sess_id}", 
+                           use_container_width=True, type=button_type,
+                           help="Switch to this session" if not is_current else "Current session"):
+                    if not is_current:
                         switch_session(sess_id)
                         st.rerun()
             
             with col2:
+                # Rename button
+                if st.button("✏️", key=f"{key}_rename_{sess_id}", 
+                           help="Rename this session"):
+                    st.session_state[f'{key}_renaming_{sess_id}'] = True
+                    st.rerun()
+            
+            with col3:
                 # Close button (only if more than 1 session)
                 if len(active_sessions) > 1:
-                    if st.sidebar.button("✖", key=f"{key}_close_{sess_id}", 
-                                       help="Close this session"):
+                    if st.button("✖", key=f"{key}_close_{sess_id}", 
+                               help="Close this session"):
                         close_session(sess_id)
+                        st.rerun()
+            
+            # Rename input (if renaming this session)
+            if st.session_state.get(f'{key}_renaming_{sess_id}', False):
+                new_name = st.sidebar.text_input(
+                    "New name:",
+                    value=name,
+                    key=f"{key}_new_name_{sess_id}"
+                )
+                col1, col2 = st.sidebar.columns(2)
+                with col1:
+                    if st.button("✓ OK", key=f"{key}_rename_ok_{sess_id}", use_container_width=True):
+                        rename_session(sess_id, new_name)
+                        st.session_state[f'{key}_renaming_{sess_id}'] = False
+                        st.rerun()
+                with col2:
+                    if st.button("✗ Cancel", key=f"{key}_rename_cancel_{sess_id}", use_container_width=True):
+                        st.session_state[f'{key}_renaming_{sess_id}'] = False
                         st.rerun()
     
     # Load saved sessions
