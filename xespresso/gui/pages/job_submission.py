@@ -60,7 +60,7 @@ def render_dry_run_tab():
         st.error("❌ ASE not available. Cannot verify structure.")
         return
     
-    st.success(f"✅ Structure loaded: {atoms.get_chemical_formula()} ({len(atoms)} atoms}")
+    st.success(f"✅ Structure loaded: {atoms.get_chemical_formula()} ({len(atoms)} atoms)")
     
     st.markdown("---")
     
