@@ -76,6 +76,8 @@ def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str
     Excludes machine and code configurations as these are persistent
     and stored separately in ~/.xespresso/
     
+    Special handling for ASE Atoms objects - converts to JSON string format.
+    
     Args:
         exclude_keys: List of keys to exclude from serialization
         
@@ -93,6 +95,10 @@ def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str
             # Machine and code configurations (persistent, not session-specific)
             'current_machine',  # Machine object - config stored in ~/.xespresso/machines/
             'current_codes',    # Codes config - stored in ~/.xespresso/codes/
+            # Calculator objects (will be recreated from config)
+            'espresso_calculator',
+            'calc_machine',
+            'workflow_machine',
         ]
     
     serializable_state = {}
@@ -109,6 +115,24 @@ def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str
         # Skip widget keys to avoid conflicts when restoring
         if _is_widget_key(key):
             continue
+        
+        # Special handling for ASE Atoms objects
+        try:
+            from ase import Atoms
+            from ase.io import write
+            import io
+            
+            if isinstance(value, Atoms):
+                # Convert Atoms to JSON string
+                sio = io.StringIO()
+                write(sio, value, format='json')
+                serializable_state[key] = {
+                    '__type__': 'ase.Atoms',
+                    '__data__': sio.getvalue()
+                }
+                continue
+        except (ImportError, Exception):
+            pass
         
         # Try to serialize the value
         try:
@@ -220,6 +244,8 @@ def restore_session(state: Dict[str, Any], clear_first: bool = True):
     """
     Restore session state from a dictionary.
     
+    Handles special deserialization for ASE Atoms objects.
+    
     Args:
         state: Dictionary of session state to restore
         clear_first: Whether to clear current session state first
@@ -231,11 +257,29 @@ def restore_session(state: Dict[str, Any], clear_first: bool = True):
             if key not in keys_to_keep:
                 del st.session_state[key]
     
-    # Restore state, but skip widget keys to avoid conflicts
+    # Restore state, with special handling for certain types
     for key, value in state.items():
         # Skip widget keys - they should not be restored
         if _is_widget_key(key):
             continue
+        
+        # Check for special types that need deserialization
+        if isinstance(value, dict) and '__type__' in value:
+            if value['__type__'] == 'ase.Atoms':
+                # Deserialize ASE Atoms object
+                try:
+                    from ase.io import read
+                    import io
+                    
+                    sio = io.StringIO(value['__data__'])
+                    atoms = read(sio, format='json')
+                    st.session_state[key] = atoms
+                    continue
+                except (ImportError, Exception) as e:
+                    # If deserialization fails, skip this key
+                    print(f"Warning: Could not deserialize {key}: {e}")
+                    continue
+        
         st.session_state[key] = value
 
 
