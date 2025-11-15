@@ -127,13 +127,15 @@ def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str
     return serializable_state
 
 
-def save_session(filename: Optional[str] = None, session_dir: Optional[str] = None) -> str:
+def save_session(filename: Optional[str] = None, session_dir: Optional[str] = None, session_name: Optional[str] = None) -> str:
     """
     Save current session state to a JSON file.
     
     Args:
-        filename: Name of the session file. If None, generates timestamp-based name
+        filename: Name of the session file. If None, generates name from session_name or timestamp
         session_dir: Directory to save session files. If None, uses default
+        session_name: Name of the session to store in metadata. If provided and filename is None,
+                     this will be used as the base filename.
         
     Returns:
         Path to saved session file
@@ -149,8 +151,12 @@ def save_session(filename: Optional[str] = None, session_dir: Optional[str] = No
     
     # Generate filename if not provided
     if filename is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"session_{timestamp}.json"
+        if session_name:
+            # Use session name as the base filename
+            filename = f"{session_name.replace(' ', '_')}.json"
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"session_{timestamp}.json"
     
     # Ensure .json extension
     if not filename.endswith('.json'):
@@ -161,11 +167,12 @@ def save_session(filename: Optional[str] = None, session_dir: Optional[str] = No
     # Get serializable state
     state = get_serializable_state()
     
-    # Add metadata
+    # Add metadata including session name
     session_data = {
         "metadata": {
             "saved_at": datetime.now().isoformat(),
             "version": "1.0",
+            "session_name": session_name or filename.replace('.json', '').replace('_', ' '),
         },
         "state": state
     }
@@ -177,7 +184,7 @@ def save_session(filename: Optional[str] = None, session_dir: Optional[str] = No
     return filepath
 
 
-def load_session(filepath: str) -> Dict[str, Any]:
+def load_session(filepath: str) -> tuple[Dict[str, Any], Optional[str]]:
     """
     Load session state from a JSON file.
     
@@ -185,7 +192,7 @@ def load_session(filepath: str) -> Dict[str, Any]:
         filepath: Path to session file
         
     Returns:
-        Dictionary of session state
+        Tuple of (session state dictionary, session name from metadata)
         
     Raises:
         IOError: If unable to read file
@@ -201,7 +208,12 @@ def load_session(filepath: str) -> Dict[str, Any]:
     if "state" not in session_data:
         raise ValueError("Invalid session file format: missing 'state' key")
     
-    return session_data["state"]
+    # Extract session name from metadata
+    session_name = None
+    if "metadata" in session_data:
+        session_name = session_data["metadata"].get("session_name")
+    
+    return session_data["state"], session_name
 
 
 def restore_session(state: Dict[str, Any], clear_first: bool = True):
@@ -490,12 +502,11 @@ def render_session_manager(key: str = "session_manager"):
                 if current_session_id in active_sessions:
                     active_sessions[current_session_id]['state'] = get_serializable_state()
                 
-                # Generate filename with session name
+                # Get session name
                 session_name = active_sessions[current_session_id].get('name', 'Session')
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"{session_name.replace(' ', '_')}_{timestamp}.json"
                 
-                filepath = save_session(filename=filename)
+                # Save with session name as filename (no timestamp)
+                filepath = save_session(session_name=session_name)
                 st.sidebar.success(f"✅ Saved to {os.path.basename(filepath)}")
             except Exception as e:
                 st.sidebar.error(f"❌ Error: {e}")
@@ -589,14 +600,18 @@ def render_session_manager(key: str = "session_manager"):
                     if st.button("Load", key=f"{key}_load_{session['filename']}", 
                                use_container_width=True):
                         try:
-                            state = load_session(session['path'])
+                            state, session_name = load_session(session['path'])
                             
                             # Create new session for loaded state
                             new_id = create_new_session()
                             
-                            # Set session name from filename
-                            name = session['filename'].replace('.json', '').replace('_', ' ')
-                            active_sessions[new_id]['name'] = name
+                            # Set session name from metadata (or filename as fallback)
+                            if session_name:
+                                active_sessions[new_id]['name'] = session_name
+                            else:
+                                # Fallback: use filename without .json
+                                name = session['filename'].replace('.json', '').replace('_', ' ')
+                                active_sessions[new_id]['name'] = name
                             
                             # Restore state
                             restore_session(state, clear_first=True)
