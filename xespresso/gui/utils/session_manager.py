@@ -22,6 +22,9 @@ def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str
     """
     Extract serializable items from session state.
     
+    Excludes machine and code configurations as these are persistent
+    and stored separately in ~/.xespresso/
+    
     Args:
         exclude_keys: List of keys to exclude from serialization
         
@@ -36,6 +39,9 @@ def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str
             'FileUploader',
             # Widget keys that will be recreated
             '_widget_state',
+            # Machine and code configurations (persistent, not session-specific)
+            'current_machine',  # Machine object - config stored in ~/.xespresso/machines/
+            'current_codes',    # Codes config - stored in ~/.xespresso/codes/
         ]
     
     serializable_state = {}
@@ -234,6 +240,18 @@ def render_session_manager(key: str = "session_manager"):
     """
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔄 Session Management")
+    
+    st.sidebar.caption("""
+    **What gets saved:**
+    - Structure and calculation parameters
+    - Workflow configuration
+    - Working directory selection
+    - Selected machine/code names
+    
+    **Not saved (persistent configs):**
+    - Machine configurations
+    - Code configurations
+    """)
     
     col1, col2 = st.sidebar.columns(2)
     
