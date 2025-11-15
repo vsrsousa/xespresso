@@ -26,8 +26,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Title and description
-st.title("⚛️ xespresso Configuration GUI")
+# Import session manager functions early to get current session
+try:
+    from xespresso.gui.utils.session_manager import get_current_session_id, get_active_sessions
+    SESSION_MANAGER_AVAILABLE = True
+except ImportError:
+    SESSION_MANAGER_AVAILABLE = False
+
+# Title and description with session info
+if SESSION_MANAGER_AVAILABLE:
+    current_id = get_current_session_id()
+    active_sessions = get_active_sessions()
+    session_name = active_sessions.get(current_id, {}).get('name', 'Session 1')
+    st.title(f"⚛️ xespresso - {session_name}")
+else:
+    st.title("⚛️ xespresso Configuration GUI")
+
 st.markdown("""
 Welcome to the xespresso graphical interface for Quantum ESPRESSO calculations.
 Configure your computational environment, select structures, and submit jobs easily.
