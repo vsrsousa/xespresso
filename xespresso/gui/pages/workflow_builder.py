@@ -371,6 +371,123 @@ def render_workflow_builder_page():
 
     st.markdown("---")
 
+    # Resources Configuration
+    st.subheader("⚙️ Resources Configuration")
+    st.info(
+        """
+    Configure computational resources for this workflow.
+    By default, resources are taken from the machine configuration.
+    Enable "Adjust Resources" to customize values for this workflow.
+    """
+    )
+    
+    # Initialize resources in config if not present
+    if "resources" not in config:
+        config["resources"] = {}
+    
+    # Checkbox to enable custom resources
+    adjust_resources = st.checkbox(
+        "Adjust Resources",
+        value=config.get("adjust_resources", False),
+        help="Enable to customize resource values for this workflow. Otherwise, defaults from machine configuration are used.",
+        key="workflow_adjust_resources"
+    )
+    config["adjust_resources"] = adjust_resources
+    
+    if adjust_resources:
+        st.markdown("**Custom Resources:**")
+        
+        # Get default resources from machine if available
+        default_resources = {}
+        if st.session_state.get("workflow_machine"):
+            machine = st.session_state.workflow_machine
+            if hasattr(machine, 'resources'):
+                default_resources = machine.resources or {}
+        
+        # Resource inputs in columns
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            nodes = st.number_input(
+                "Nodes:",
+                value=int(config["resources"].get("nodes", default_resources.get("nodes", 1))),
+                min_value=1,
+                max_value=1000,
+                help="Number of compute nodes to use",
+                key="workflow_nodes"
+            )
+            config["resources"]["nodes"] = nodes
+            
+            ntasks_per_node = st.number_input(
+                "Tasks per Node:",
+                value=int(config["resources"].get("ntasks-per-node", default_resources.get("ntasks-per-node", 16))),
+                min_value=1,
+                max_value=256,
+                help="Number of MPI tasks per node",
+                key="workflow_ntasks"
+            )
+            config["resources"]["ntasks-per-node"] = ntasks_per_node
+            
+            mem = st.text_input(
+                "Memory:",
+                value=config["resources"].get("mem", default_resources.get("mem", "32G")),
+                help="Memory per node (e.g., 32G, 64GB)",
+                key="workflow_mem"
+            )
+            config["resources"]["mem"] = mem
+        
+        with col2:
+            time = st.text_input(
+                "Time Limit:",
+                value=config["resources"].get("time", default_resources.get("time", "02:00:00")),
+                help="Wall time limit (format: HH:MM:SS)",
+                key="workflow_time"
+            )
+            config["resources"]["time"] = time
+            
+            partition = st.text_input(
+                "Partition/Queue:",
+                value=config["resources"].get("partition", default_resources.get("partition", "compute")),
+                help="Scheduler partition or queue name",
+                key="workflow_partition"
+            )
+            config["resources"]["partition"] = partition
+            
+            # Additional resource options
+            account = st.text_input(
+                "Account (optional):",
+                value=config["resources"].get("account", default_resources.get("account", "")),
+                help="Account or project code for billing",
+                key="workflow_account"
+            )
+            if account:
+                config["resources"]["account"] = account
+        
+        st.caption("💡 These custom resources will override the machine defaults for this workflow.")
+    else:
+        # Show default resources from machine
+        if st.session_state.get("workflow_machine"):
+            machine = st.session_state.workflow_machine
+            if hasattr(machine, 'resources') and machine.resources:
+                st.info("**Using default resources from machine configuration:**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if "nodes" in machine.resources:
+                        st.caption(f"Nodes: {machine.resources['nodes']}")
+                    if "ntasks-per-node" in machine.resources:
+                        st.caption(f"Tasks per node: {machine.resources['ntasks-per-node']}")
+                    if "mem" in machine.resources:
+                        st.caption(f"Memory: {machine.resources['mem']}")
+                with col2:
+                    if "time" in machine.resources:
+                        st.caption(f"Time limit: {machine.resources['time']}")
+                    if "partition" in machine.resources:
+                        st.caption(f"Partition: {machine.resources['partition']}")
+        else:
+            st.caption("Select a machine to see default resources")
+
+    st.markdown("---")
+
     # Build Workflow Button
     st.subheader("✨ Build Workflow")
     st.info(
@@ -396,6 +513,11 @@ def render_workflow_builder_page():
 
             # Add machine to config as queue parameter (for backwards compatibility)
             config["queue"] = st.session_state.workflow_machine
+
+            # Apply custom resources if enabled
+            if config.get("adjust_resources") and config.get("resources"):
+                config["queue"]["resources"] = config["resources"]
+                st.info(f"   Using custom resources: {config['resources']}")
 
             # Create workflow using workflow module
             st.info("📦 Creating workflow using workflow module...")
