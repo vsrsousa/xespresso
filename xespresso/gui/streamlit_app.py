@@ -131,55 +131,7 @@ if 'working_directory' not in st.session_state:
 # Sidebar navigation
 st.sidebar.title("Navigation")
 
-# Working directory selector at the top of sidebar
-st.sidebar.markdown("---")
-st.sidebar.subheader("📁 Working Directory")
-
-# Common working directory options
-common_dirs = [
-    os.path.expanduser("~"),  # Home
-    os.getcwd(),  # Current directory
-    os.path.join(os.path.expanduser("~"), "calculations"),
-    os.path.join(os.path.expanduser("~"), "Documents"),
-    os.path.join(os.path.expanduser("~"), "Desktop"),
-]
-
-# Add current working directory if not in list
-if st.session_state.working_directory not in common_dirs:
-    common_dirs.insert(0, st.session_state.working_directory)
-
-# Format function to show shortened paths
-def format_dir(path):
-    """Format directory path for display."""
-    if path == os.path.expanduser("~"):
-        return "🏠 Home"
-    elif path == os.getcwd():
-        return "📂 Current Directory"
-    elif path.endswith("calculations"):
-        return "📊 Calculations"
-    elif path.endswith("Documents"):
-        return "📄 Documents"
-    elif path.endswith("Desktop"):
-        return "🖥️ Desktop"
-    else:
-        return f"📁 {os.path.basename(path)}"
-
-selected_workdir = st.sidebar.selectbox(
-    "Select working directory:",
-    options=common_dirs,
-    format_func=format_dir,
-    key="workdir_selector",
-    help="Choose the base directory where calculation folders will be created"
-)
-
-# Update session state
-if selected_workdir != st.session_state.working_directory:
-    st.session_state.working_directory = selected_workdir
-
-st.sidebar.caption(f"📍 {st.session_state.working_directory}")
-st.sidebar.info("💡 Calculation folders will be created here based on calc/label")
-
-# Add toggle for configuration pages
+# Add toggle for configuration pages first
 show_config = st.sidebar.checkbox(
     "⚙️ Show Configuration",
     value=False,
@@ -189,7 +141,6 @@ show_config = st.sidebar.checkbox(
 st.sidebar.markdown("---")
 
 # Build page list based on whether config is shown
-# Working directory selection is ALWAYS first (not a page, always visible above)
 if show_config:
     page = st.sidebar.radio(
         "Select Page:",
@@ -214,6 +165,57 @@ else:
             "📈 Results & Post-Processing"
         ]
     )
+
+# Only show working directory selector for calculation pages (not configuration pages)
+is_calculation_page = page not in ["🖥️ Machine Configuration", "⚙️ Codes Configuration"]
+
+if is_calculation_page:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📁 Working Directory")
+    
+    # Common working directory options
+    common_dirs = [
+        os.path.expanduser("~"),  # Home
+        os.getcwd(),  # Current directory
+        os.path.join(os.path.expanduser("~"), "calculations"),
+        os.path.join(os.path.expanduser("~"), "Documents"),
+        os.path.join(os.path.expanduser("~"), "Desktop"),
+    ]
+    
+    # Add current working directory if not in list
+    if st.session_state.working_directory not in common_dirs:
+        common_dirs.insert(0, st.session_state.working_directory)
+    
+    # Format function to show shortened paths
+    def format_dir(path):
+        """Format directory path for display."""
+        if path == os.path.expanduser("~"):
+            return "🏠 Home"
+        elif path == os.getcwd():
+            return "📂 Current Directory"
+        elif path.endswith("calculations"):
+            return "📊 Calculations"
+        elif path.endswith("Documents"):
+            return "📄 Documents"
+        elif path.endswith("Desktop"):
+            return "🖥️ Desktop"
+        else:
+            return f"📁 {os.path.basename(path)}"
+    
+    selected_workdir = st.sidebar.selectbox(
+        "Select working directory:",
+        options=common_dirs,
+        format_func=format_dir,
+        key="workdir_selector",
+        help="Choose the base directory where calculation folders will be created"
+    )
+    
+    # Update session state
+    if selected_workdir != st.session_state.working_directory:
+        st.session_state.working_directory = selected_workdir
+    
+    st.sidebar.caption(f"📍 {st.session_state.working_directory}")
+    st.sidebar.info("💡 Calculation folders will be created here based on calc/label")
 
 # Add session manager to sidebar
 if UTILS_AVAILABLE:
