@@ -231,66 +231,227 @@ def list_sessions(session_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     return sessions
 
 
+def get_active_sessions() -> Dict[str, Dict[str, Any]]:
+    """
+    Get all active sessions from session state.
+    
+    Returns:
+        Dictionary mapping session IDs to session data
+    """
+    if '_active_sessions' not in st.session_state:
+        st.session_state._active_sessions = {}
+    return st.session_state._active_sessions
+
+
+def get_current_session_id() -> str:
+    """
+    Get the current active session ID.
+    
+    Returns:
+        Current session ID
+    """
+    if '_current_session_id' not in st.session_state:
+        # Create first session automatically
+        st.session_state._current_session_id = 'session_1'
+        st.session_state._session_counter = 1
+    return st.session_state._current_session_id
+
+
+def create_new_session() -> str:
+    """
+    Create a new calculation session.
+    
+    Returns:
+        New session ID
+    """
+    # Increment session counter
+    if '_session_counter' not in st.session_state:
+        st.session_state._session_counter = 1
+    else:
+        st.session_state._session_counter += 1
+    
+    # Create new session ID
+    new_session_id = f"session_{st.session_state._session_counter}"
+    
+    # Initialize sessions dict if needed
+    if '_active_sessions' not in st.session_state:
+        st.session_state._active_sessions = {}
+    
+    # Create new session with empty state
+    st.session_state._active_sessions[new_session_id] = {
+        'name': f"Session {st.session_state._session_counter}",
+        'created_at': datetime.now().isoformat(),
+        'state': {}
+    }
+    
+    # Switch to new session
+    st.session_state._current_session_id = new_session_id
+    
+    # Clear current calculation state (but keep machine/code configs)
+    keys_to_clear = [
+        'current_structure', 'workflow_config', 'working_directory',
+        'selected_code_version', 'current_machine_name',
+        'espresso_calculator', 'prepared_atoms'
+    ]
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
+    
+    return new_session_id
+
+
+def switch_session(session_id: str):
+    """
+    Switch to a different active session.
+    
+    Args:
+        session_id: ID of session to switch to
+    """
+    if '_active_sessions' not in st.session_state:
+        st.session_state._active_sessions = {}
+    
+    if session_id not in st.session_state._active_sessions:
+        return
+    
+    # Save current session state before switching
+    current_id = get_current_session_id()
+    if current_id in st.session_state._active_sessions:
+        st.session_state._active_sessions[current_id]['state'] = get_serializable_state()
+    
+    # Switch to new session
+    st.session_state._current_session_id = session_id
+    
+    # Restore new session state
+    session_data = st.session_state._active_sessions[session_id]
+    if session_data.get('state'):
+        restore_session(session_data['state'], clear_first=True)
+
+
+def close_session(session_id: str):
+    """
+    Close an active session.
+    
+    Args:
+        session_id: ID of session to close
+    """
+    if '_active_sessions' not in st.session_state:
+        return
+    
+    if session_id in st.session_state._active_sessions:
+        del st.session_state._active_sessions[session_id]
+    
+    # If closing current session, switch to another or create new
+    if st.session_state._current_session_id == session_id:
+        remaining = list(st.session_state._active_sessions.keys())
+        if remaining:
+            switch_session(remaining[0])
+        else:
+            create_new_session()
+
+
 def render_session_manager(key: str = "session_manager"):
     """
-    Render session management UI component.
+    Render multi-session management UI component.
+    
+    Similar to Jupyter notebooks - users can create, switch, and manage multiple independent sessions.
     
     Args:
         key: Unique key for the component
     """
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🔄 Session Management")
+    st.sidebar.subheader("📑 Sessions")
     
-    st.sidebar.caption("""
-    **What gets saved:**
-    - Structure and calculation parameters
-    - Workflow configuration
-    - Working directory selection
-    - Selected machine/code names
+    # Get active sessions
+    active_sessions = get_active_sessions()
+    current_session_id = get_current_session_id()
     
-    **Not saved (persistent configs):**
-    - Machine configurations
-    - Code configurations
-    """)
-    
-    col1, col2 = st.sidebar.columns(2)
-    
+    # Create new session button
+    col1, col2 = st.sidebar.columns([2, 1])
     with col1:
-        if st.button("💾 Save", key=f"{key}_save", use_container_width=True, help="Save current session state"):
-            try:
-                filepath = save_session()
-                st.sidebar.success(f"✅ Session saved!")
-                st.sidebar.caption(f"📁 {os.path.basename(filepath)}")
-            except Exception as e:
-                st.sidebar.error(f"❌ Error saving: {e}")
-    
-    with col2:
-        if st.button("🔄 Reset", key=f"{key}_reset", use_container_width=True, help="Clear all session data"):
-            reset_session()
-            st.sidebar.success("✅ Session reset!")
+        if st.button("➕ New Session", key=f"{key}_new", use_container_width=True, 
+                    help="Start a new calculation session"):
+            new_id = create_new_session()
+            st.sidebar.success(f"✅ Created new session!")
             st.rerun()
     
-    # Load session section
-    with st.sidebar.expander("📂 Load Session", expanded=False):
+    with col2:
+        if st.button("💾 Save", key=f"{key}_save", use_container_width=True, 
+                    help="Save current session"):
+            try:
+                # Save current session state first
+                if current_session_id in active_sessions:
+                    active_sessions[current_session_id]['state'] = get_serializable_state()
+                
+                # Generate filename with session name
+                session_name = active_sessions[current_session_id].get('name', 'Session')
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"{session_name.replace(' ', '_')}_{timestamp}.json"
+                
+                filepath = save_session(filename=filename)
+                st.sidebar.success(f"✅ Saved!")
+                st.sidebar.caption(f"📁 {os.path.basename(filepath)}")
+            except Exception as e:
+                st.sidebar.error(f"❌ Error: {e}")
+    
+    # Active sessions list
+    if active_sessions:
+        st.sidebar.markdown("**Active Sessions:**")
+        
+        for sess_id, sess_data in active_sessions.items():
+            is_current = (sess_id == current_session_id)
+            
+            col1, col2 = st.sidebar.columns([3, 1])
+            with col1:
+                # Session name with indicator if current
+                name = sess_data.get('name', sess_id)
+                if is_current:
+                    st.sidebar.markdown(f"**→ {name}** ✓")
+                else:
+                    if st.sidebar.button(name, key=f"{key}_switch_{sess_id}", use_container_width=True):
+                        switch_session(sess_id)
+                        st.rerun()
+            
+            with col2:
+                # Close button (only if more than 1 session)
+                if len(active_sessions) > 1:
+                    if st.sidebar.button("✖", key=f"{key}_close_{sess_id}", 
+                                       help="Close this session"):
+                        close_session(sess_id)
+                        st.rerun()
+    
+    # Load saved sessions
+    with st.sidebar.expander("📂 Load Saved Session", expanded=False):
         sessions = list_sessions()
         
         if sessions:
-            st.markdown("**Available sessions:**")
+            st.markdown("**Saved sessions:**")
             
-            for session in sessions:
+            for session in sessions[:5]:  # Show last 5
                 col1, col2 = st.columns([3, 1])
                 with col1:
                     st.caption(f"📄 {session['filename']}")
                     st.caption(f"🕐 {session['saved_at'][:19]}")
                 with col2:
-                    if st.button("Load", key=f"{key}_load_{session['filename']}", use_container_width=True):
+                    if st.button("Load", key=f"{key}_load_{session['filename']}", 
+                               use_container_width=True):
                         try:
                             state = load_session(session['path'])
-                            restore_session(state)
+                            
+                            # Create new session for loaded state
+                            new_id = create_new_session()
+                            
+                            # Set session name from filename
+                            name = session['filename'].replace('.json', '').replace('_', ' ')
+                            active_sessions[new_id]['name'] = name
+                            
+                            # Restore state
+                            restore_session(state, clear_first=True)
+                            active_sessions[new_id]['state'] = state
+                            
                             st.success("✅ Session loaded!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"❌ Error loading: {e}")
+                            st.error(f"❌ Error: {e}")
                 st.markdown("---")
         else:
             st.info("No saved sessions found")
