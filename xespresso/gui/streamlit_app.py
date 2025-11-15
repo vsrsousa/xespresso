@@ -181,18 +181,40 @@ st.sidebar.info("💡 Calculation folders will be created here based on calc/lab
 
 st.sidebar.markdown("---")
 
-page = st.sidebar.radio(
-    "Select Page:",
-    [
-        "🖥️ Machine Configuration",
-        "⚙️ Codes Configuration", 
-        "🔬 Structure Viewer",
-        "📊 Calculation Setup",
-        "🔄 Workflow Builder",
-        "🚀 Job Submission & Files",
-        "📈 Results & Post-Processing"
-    ]
+# Add toggle for configuration pages
+show_config = st.sidebar.checkbox(
+    "⚙️ Show Configuration",
+    value=False,
+    help="Show machine and codes configuration (needed only for initial setup)"
 )
+
+st.sidebar.markdown("---")
+
+# Build page list based on whether config is shown
+if show_config:
+    page = st.sidebar.radio(
+        "Select Page:",
+        [
+            "🖥️ Machine Configuration",
+            "⚙️ Codes Configuration",
+            "🔬 Structure Viewer",
+            "📊 Calculation Setup",
+            "🔄 Workflow Builder",
+            "🚀 Job Submission & Files",
+            "📈 Results & Post-Processing"
+        ]
+    )
+else:
+    page = st.sidebar.radio(
+        "Select Page:",
+        [
+            "🔬 Structure Viewer",
+            "📊 Calculation Setup",
+            "🔄 Workflow Builder",
+            "🚀 Job Submission & Files",
+            "📈 Results & Post-Processing"
+        ]
+    )
 
 # Add session manager to sidebar
 if UTILS_AVAILABLE:
