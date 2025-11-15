@@ -288,14 +288,19 @@ def create_new_session() -> str:
     st.session_state._current_session_id = new_session_id
     
     # Clear current calculation state (but keep machine/code configs)
+    # Reset to defaults for session-specific values
     keys_to_clear = [
-        'current_structure', 'workflow_config', 'working_directory',
+        'current_structure', 'workflow_config',
         'selected_code_version', 'current_machine_name',
         'espresso_calculator', 'prepared_atoms'
     ]
     for key in keys_to_clear:
         if key in st.session_state:
             del st.session_state[key]
+    
+    # Initialize working_directory for the new session to default
+    import os
+    st.session_state.working_directory = os.path.expanduser("~")
     
     return new_session_id
 
@@ -325,6 +330,11 @@ def switch_session(session_id: str):
     session_data = st.session_state._active_sessions[session_id]
     if session_data.get('state'):
         restore_session(session_data['state'], clear_first=True)
+    else:
+        # If no saved state yet, initialize with defaults
+        import os
+        if 'working_directory' not in st.session_state:
+            st.session_state.working_directory = os.path.expanduser("~")
 
 
 def close_session(session_id: str):
