@@ -18,6 +18,45 @@ from typing import Dict, Any, Optional, List
 DEFAULT_SESSION_DIR = os.path.expanduser("~/.xespresso/sessions")
 
 
+def _is_widget_key(key: str) -> bool:
+    """
+    Check if a session state key appears to be a widget key.
+    
+    Widget keys are created by Streamlit widgets and should not be
+    saved/restored as they conflict with widget rendering.
+    
+    Args:
+        key: Session state key to check
+        
+    Returns:
+        True if the key appears to be a widget key
+    """
+    # Common widget key patterns used in the GUI
+    widget_patterns = [
+        '_quick_',      # Quick access buttons in directory browser
+        '_up',          # Up/parent directory button
+        '_subdir_selector',  # Subfolder selectbox
+        '_enter_subdir',     # Enter subfolder button
+        '_custom_path',      # Custom path text input
+        '_go_custom',        # Go to custom path button
+        '_create_dir',       # Create directory button
+        '_new',              # New session button
+        '_save',             # Save session button
+        '_rename_',          # Rename session buttons/inputs
+        '_switch_',          # Switch session controls
+        '_close_',           # Close session button
+        '_load_',            # Load session button
+        '_renaming',         # Renaming flag
+    ]
+    
+    # Check if key matches any widget pattern
+    for pattern in widget_patterns:
+        if pattern in key:
+            return True
+    
+    return False
+
+
 def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     Extract serializable items from session state.
@@ -53,6 +92,10 @@ def get_serializable_state(exclude_keys: Optional[List[str]] = None) -> Dict[str
             
         # Skip keys starting with underscore (usually internal)
         if key.startswith('_'):
+            continue
+        
+        # Skip widget keys to avoid conflicts when restoring
+        if _is_widget_key(key):
             continue
         
         # Try to serialize the value
@@ -164,8 +207,11 @@ def restore_session(state: Dict[str, Any], clear_first: bool = True):
             if key not in keys_to_keep:
                 del st.session_state[key]
     
-    # Restore state
+    # Restore state, but skip widget keys to avoid conflicts
     for key, value in state.items():
+        # Skip widget keys - they should not be restored
+        if _is_widget_key(key):
+            continue
         st.session_state[key] = value
 
 
@@ -275,6 +321,12 @@ def create_new_session() -> str:
     Returns:
         New session ID
     """
+    # Save current session state before creating new one
+    if '_active_sessions' in st.session_state and '_current_session_id' in st.session_state:
+        current_id = st.session_state._current_session_id
+        if current_id in st.session_state._active_sessions:
+            st.session_state._active_sessions[current_id]['state'] = get_serializable_state()
+    
     # Increment session counter
     if '_session_counter' not in st.session_state:
         st.session_state._session_counter = 1
