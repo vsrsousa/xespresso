@@ -100,9 +100,8 @@ class CalculationPreparation(BaseCalculationPreparation):
         calc_params['input_data'] = input_data
         
         # Add k-points from config
-        if 'kspacing' in config:
-            calc_params['kspacing'] = config['kspacing']
-        elif 'kpts' in config:
+        # Note: kspacing is converted to kpts in the GUI, so we only handle kpts here
+        if 'kpts' in config:
             calc_params['kpts'] = config['kpts']
         else:
             # Default to gamma point

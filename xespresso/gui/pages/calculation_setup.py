@@ -171,20 +171,36 @@ def render_calculation_setup_page():
                 "k₃:", value=config.get("kpts", (4, 4, 4))[2], min_value=1, max_value=20
             )
         config["kpts"] = (int(k1), int(k2), int(k3))
+        # Remove kspacing from config as we're using explicit grid
         if "kspacing" in config:
             del config["kspacing"]
     else:
-        kspacing = st.number_input(
+        # K-spacing mode: use slider to adjust density, then convert to kpts
+        kspacing_value = st.slider(
             "K-spacing (Å⁻¹):",
-            value=float(config.get("kspacing", 0.3)),
             min_value=0.1,
             max_value=1.0,
+            value=float(config.get("kspacing_ui", 0.3)),
             step=0.05,
-            help="K-point density in reciprocal space",
+            help="K-point density in reciprocal space. This will be converted to k-point grid.",
         )
-        config["kspacing"] = kspacing
-        if "kpts" in config:
-            del config["kpts"]
+        
+        # Store the UI value for persistence (not in actual config)
+        config["kspacing_ui"] = kspacing_value
+        
+        # Convert kspacing to kpts using the structure
+        from xespresso import kpts_from_spacing
+        computed_kpts = kpts_from_spacing(atoms, kspacing_value)
+        
+        # Store the computed kpts in config (not kspacing)
+        config["kpts"] = computed_kpts
+        
+        # Display the computed k-points to the user
+        st.info(f"ℹ️ Computed k-point grid: {computed_kpts[0]} × {computed_kpts[1]} × {computed_kpts[2]}")
+        
+        # Remove kspacing from config as it should not be passed as a parameter
+        if "kspacing" in config:
+            del config["kspacing"]
 
     # Pseudopotentials
     st.subheader("🧪 Pseudopotentials")
