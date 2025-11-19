@@ -105,18 +105,37 @@ config = load_pseudopotentials_config("SSSP_efficiency")
 pseudopotentials = config.get_pseudopotentials_dict()
 # Returns: {'Fe': 'Fe.pbe-spn-kjpaw_psl.0.2.1.UPF', 'O': '...', ...}
 
-# Use in xespresso calculation
+# Use in xespresso calculation - TWO WAYS:
+
+## Method 1: Use config name as pseudo_group (RECOMMENDED)
 from xespresso import Espresso
 from ase.build import bulk
 
 atoms = bulk('Fe', 'bcc', a=2.87)
 
 calc = Espresso(
-    pseudopotentials=pseudopotentials,
-    pseudo_dir=config.base_path,
+    atoms=atoms,
+    pseudo_group="SSSP_efficiency",  # Config name from ~/.xespresso/pseudopotentials/
+    input_data={'ecutwfc': 50.0},
     # ... other calculation parameters
 )
-atoms.calc = calc
+
+# This works for both LOCAL and REMOTE execution!
+# xespresso will:
+# - Find pseudopotentials using the config
+# - Locate files automatically via ESPRESSO_PSEUDO and config paths
+# - For remote: transfer files to ./pseudo and set pseudo_dir="./pseudo"
+
+## Method 2: Manual pseudopotentials dict (traditional way)
+calc = Espresso(
+    atoms=atoms,
+    pseudopotentials=pseudopotentials,
+    # NOTE: Do NOT set pseudo_dir - let xespresso find files automatically
+    input_data={'ecutwfc': 50.0},
+    # ... other calculation parameters
+)
+
+# Both methods respect the xespresso pattern and work with remote execution!
 """)
 
 # ============================================================================
@@ -247,11 +266,22 @@ Best Practices:
    - Explain why you chose this particular set
    - Note any special considerations
 
-6. **Test first**: Before production calculations
+6. **Use pseudo_group parameter**: When possible, use config name as pseudo_group
+   - Works seamlessly with both local and remote execution
+   - No need to manually specify pseudopotentials dict
+   - Example: Espresso(atoms=atoms, pseudo_group="SSSP_efficiency")
+
+7. **Do NOT set pseudo_dir**: Let xespresso handle file finding
+   - Setting pseudo_dir breaks remote execution
+   - xespresso automatically finds files via ESPRESSO_PSEUDO
+   - For remote: xespresso transfers files and sets pseudo_dir="./pseudo"
+
+8. **Test first**: Before production calculations
    - Test with a small calculation
    - Verify elements are correctly detected
    - Check that paths are accessible
 """)
+
 
 print("\n" + "=" * 70)
 print("For more information:")
