@@ -157,20 +157,11 @@ def render_workflow_builder_page():
     )
     config["occupations"] = occupations
 
-    # Pseudopotentials
-    st.subheader("🧪 Pseudopotentials")
+    # Pseudopotentials - using reusable selector component
+    from xespresso.gui.utils.pseudopotentials_selector import render_pseudopotentials_selector
+    
     elements = set(atoms.get_chemical_symbols())
-
-    if "pseudopotentials" not in config:
-        config["pseudopotentials"] = {}
-
-    for elem in sorted(elements):
-        pseudo = st.text_input(
-            f"Pseudopotential for {elem}:",
-            value=config["pseudopotentials"].get(elem, f"{elem}.UPF"),
-            key=f"wf_pseudo_{elem}",
-        )
-        config["pseudopotentials"][elem] = pseudo
+    render_pseudopotentials_selector(elements, config, key_prefix="workflow")
 
     st.markdown("---")
 
