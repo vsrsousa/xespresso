@@ -332,20 +332,60 @@ def render_pseudopotentials_config_page():
                                         })
                                     st.dataframe(pseudo_table_data, use_container_width=True)
                                 
-                                # Option to delete
+                                # Option to set as default or delete
                                 st.markdown("---")
-                                if st.button("🗑️ Delete This Configuration", type="secondary"):
-                                    try:
-                                        PseudopotentialsManager.delete_config(
-                                            selected_config,
-                                            DEFAULT_PSEUDOPOTENTIALS_DIR
-                                        )
-                                        st.success(f"✅ Deleted configuration: {selected_config}")
-                                        if hasattr(st.session_state, 'current_pseudos'):
-                                            del st.session_state.current_pseudos
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Error deleting configuration: {e}")
+                                
+                                # Check if this is already the default
+                                is_default = selected_config == "default"
+                                has_default = PseudopotentialsManager.has_default_config(DEFAULT_PSEUDOPOTENTIALS_DIR)
+                                
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    # Set as default button (only for non-default configs)
+                                    if not is_default:
+                                        if st.button("⭐ Set as Default", help="Set this configuration as the default for calculations"):
+                                            try:
+                                                PseudopotentialsManager.set_default_config(
+                                                    selected_config,
+                                                    DEFAULT_PSEUDOPOTENTIALS_DIR
+                                                )
+                                                st.success(f"✅ Set '{selected_config}' as default configuration")
+                                                st.info("💡 This configuration will be automatically selected in Calculation Setup and Workflow Builder")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Error setting default: {e}")
+                                    else:
+                                        st.info("ℹ️ This is the default configuration")
+                                
+                                with col2:
+                                    # Clear default button (only if a default exists and viewing a non-default)
+                                    if has_default and not is_default:
+                                        if st.button("🚫 Clear Default", help="Remove the current default configuration"):
+                                            try:
+                                                PseudopotentialsManager.clear_default_config(DEFAULT_PSEUDOPOTENTIALS_DIR)
+                                                st.success("✅ Default configuration cleared")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Error clearing default: {e}")
+                                
+                                # Delete button (cannot delete 'default' directly, must clear it first)
+                                st.markdown("---")
+                                if not is_default:
+                                    if st.button("🗑️ Delete This Configuration", type="secondary"):
+                                        try:
+                                            PseudopotentialsManager.delete_config(
+                                                selected_config,
+                                                DEFAULT_PSEUDOPOTENTIALS_DIR
+                                            )
+                                            st.success(f"✅ Deleted configuration: {selected_config}")
+                                            if hasattr(st.session_state, 'current_pseudos'):
+                                                del st.session_state.current_pseudos
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error deleting configuration: {e}")
+                                else:
+                                    st.warning("⚠️ Cannot delete the default configuration. Clear it first using the button above.")
                             else:
                                 st.error(f"Failed to load configuration: {selected_config}")
                         except Exception as e:

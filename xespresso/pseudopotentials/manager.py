@@ -204,6 +204,73 @@ class PseudopotentialsManager:
             raise FileNotFoundError(f"Configuration '{name}' not found")
         
         os.remove(filepath)
+    
+    @staticmethod
+    def set_default_config(config_name: str,
+                          pseudopotentials_dir: str = DEFAULT_PSEUDOPOTENTIALS_DIR) -> str:
+        """
+        Set a configuration as the default by copying it to default.json.
+        
+        Args:
+            config_name: Name of the configuration to set as default
+            pseudopotentials_dir: Directory containing configurations
+        
+        Returns:
+            Path to the default.json file
+        
+        Raises:
+            FileNotFoundError: If the specified configuration doesn't exist
+        """
+        source_filepath = os.path.join(pseudopotentials_dir, f"{config_name}.json")
+        default_filepath = os.path.join(pseudopotentials_dir, "default.json")
+        
+        if not os.path.exists(source_filepath):
+            raise FileNotFoundError(f"Configuration '{config_name}' not found")
+        
+        # Copy the configuration to default.json
+        import shutil
+        shutil.copy2(source_filepath, default_filepath)
+        
+        return default_filepath
+    
+    @staticmethod
+    def get_default_config(pseudopotentials_dir: str = DEFAULT_PSEUDOPOTENTIALS_DIR) -> Optional[PseudopotentialsConfig]:
+        """
+        Load the default pseudopotential configuration.
+        
+        Args:
+            pseudopotentials_dir: Directory containing configurations
+        
+        Returns:
+            PseudopotentialsConfig object or None if no default exists
+        """
+        return PseudopotentialsManager.load_config("default", pseudopotentials_dir)
+    
+    @staticmethod
+    def has_default_config(pseudopotentials_dir: str = DEFAULT_PSEUDOPOTENTIALS_DIR) -> bool:
+        """
+        Check if a default configuration exists.
+        
+        Args:
+            pseudopotentials_dir: Directory containing configurations
+        
+        Returns:
+            True if default.json exists, False otherwise
+        """
+        default_filepath = os.path.join(pseudopotentials_dir, "default.json")
+        return os.path.exists(default_filepath)
+    
+    @staticmethod
+    def clear_default_config(pseudopotentials_dir: str = DEFAULT_PSEUDOPOTENTIALS_DIR):
+        """
+        Remove the default configuration.
+        
+        Args:
+            pseudopotentials_dir: Directory containing configurations
+        """
+        default_filepath = os.path.join(pseudopotentials_dir, "default.json")
+        if os.path.exists(default_filepath):
+            os.remove(default_filepath)
 
 
 def create_pseudopotentials_config(name: str,
