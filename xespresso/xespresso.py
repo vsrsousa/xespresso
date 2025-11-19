@@ -120,9 +120,10 @@ class Espresso(FileIOCalculator):
             self.atoms = atoms
         if pseudo_group is not None:
             kwargs["pseudopotentials"] = self.find_pseudopotentials(pseudo_group)
-            kwargs["pseudo_dir"] = os.path.join(
-                os.environ["ESPRESSO_PSEUDO"], pseudo_group
-            )
+            # Store pseudo_group for internal use but don't set pseudo_dir
+            # This respects the xespresso pattern where pseudo_dir is not set
+            # and pseudopotentials are found using environment variables
+            self.pseudo_group = pseudo_group
         kwargs = self.check_input(kwargs, prefix=self.prefix)
         self.ase_parameters = kwargs
         FileIOCalculator.__init__(
