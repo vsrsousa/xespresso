@@ -51,6 +51,11 @@ def set_queue(calc, package=None, parallel=None, queue=None, command=None):
         command = command.replace("PREFIX", calc.prefix)
     if "PARALLEL" in command:
         command = command.replace("PARALLEL", parallel)
+    
+    # Replace {nprocs} placeholder in the command with actual value
+    if "{nprocs}" in command:
+        nprocs = queue.get("nprocs", 1)
+        command = command.replace("{nprocs}", str(nprocs))
 
     logger.debug(f"Espresso command: {command}")
 
