@@ -13,6 +13,8 @@ def detect_upf_files(directory: str, recursive: bool = True) -> List[str]:
     """
     Detect all UPF (pseudopotential) files in a directory.
     
+    Handles both uppercase and lowercase extensions (.UPF, .upf, .Upf, etc.)
+    
     Args:
         directory: Directory path to search
         recursive: Whether to search recursively in subdirectories
@@ -28,12 +30,14 @@ def detect_upf_files(directory: str, recursive: bool = True) -> List[str]:
     if recursive:
         for root, dirs, files in os.walk(directory):
             for file in files:
-                if file.endswith('.UPF') or file.endswith('.upf'):
+                # Case-insensitive extension check
+                if file.lower().endswith('.upf'):
                     upf_files.append(os.path.join(root, file))
     else:
         for file in os.listdir(directory):
             full_path = os.path.join(directory, file)
-            if os.path.isfile(full_path) and (file.endswith('.UPF') or file.endswith('.upf')):
+            # Case-insensitive extension check
+            if os.path.isfile(full_path) and file.lower().endswith('.upf'):
                 upf_files.append(full_path)
     
     return sorted(upf_files)
@@ -43,31 +47,33 @@ def extract_element_from_filename(filename: str) -> Optional[str]:
     """
     Extract element symbol from pseudopotential filename.
     
-    Common patterns:
+    Handles various case combinations:
     - Fe.pbe-spn-kjpaw_psl.0.2.1.UPF -> Fe
     - si_pbe_v1.4.uspp.F.UPF -> Si
     - C.pbe-n-kjpaw_psl.1.0.0.UPF -> C
+    - FE.pbe-spn.UPF -> Fe
+    - fe.pbe.upf -> Fe
+    - SI_pbe.UPF -> Si
     
     Args:
         filename: Pseudopotential filename
     
     Returns:
-        Element symbol or None if not detected
+        Element symbol in proper case (e.g., 'Fe', 'Si', 'C') or None if not detected
     """
     basename = os.path.basename(filename)
     
-    # Try various patterns
+    # Try various patterns (case-insensitive)
     patterns = [
-        r'^([A-Z][a-z]?)[\._-]',  # Element at start followed by . _ or -
-        r'^([A-Z][a-z]?)_',        # Element_something
-        r'^([a-z]{1,2})[\._-]',    # lowercase element (convert to title case)
+        r'^([A-Za-z]{1,2})[\._-]',  # Element at start followed by . _ or -
+        r'^([A-Za-z]{1,2})_',        # Element_something
     ]
     
     for pattern in patterns:
-        match = re.match(pattern, basename)
+        match = re.match(pattern, basename, re.IGNORECASE)
         if match:
             element = match.group(1)
-            # Capitalize properly (e.g., 'fe' -> 'Fe', 'si' -> 'Si')
+            # Normalize to proper case (e.g., 'fe' -> 'Fe', 'FE' -> 'Fe', 'SI' -> 'Si')
             return element[0].upper() + element[1:].lower() if len(element) > 1 else element.upper()
     
     return None
@@ -127,6 +133,8 @@ def parse_upf_header(filepath: str) -> Dict[str, any]:
     """
     Parse UPF file header to extract metadata.
     
+    Handles case variations in element symbols (Fe, FE, fe -> Fe).
+    
     Args:
         filepath: Path to UPF file
     
@@ -141,12 +149,14 @@ def parse_upf_header(filepath: str) -> Dict[str, any]:
             lines = [f.readline() for _ in range(100)]
             content = ''.join(lines)
             
-            # Extract element symbol
-            element_match = re.search(r'<PP_INFO>.*?Element:\s*([A-Z][a-z]?)', content, re.DOTALL | re.IGNORECASE)
+            # Extract element symbol (case-insensitive)
+            element_match = re.search(r'<PP_INFO>.*?Element:\s*([A-Za-z]{1,2})', content, re.DOTALL | re.IGNORECASE)
             if not element_match:
-                element_match = re.search(r'element\s*=\s*["\']?([A-Z][a-z]?)["\']?', content, re.IGNORECASE)
+                element_match = re.search(r'element\s*=\s*["\']?([A-Za-z]{1,2})["\']?', content, re.IGNORECASE)
             if element_match:
-                info['element'] = element_match.group(1)
+                element = element_match.group(1)
+                # Normalize to proper case (Fe, Si, C, etc.)
+                info['element'] = element[0].upper() + element[1:].lower() if len(element) > 1 else element.upper()
             
             # Extract valence charge
             z_match = re.search(r'z_valence\s*=\s*["\']?([\d.]+)["\']?', content, re.IGNORECASE)
@@ -162,12 +172,13 @@ def parse_upf_header(filepath: str) -> Dict[str, any]:
                 elif 'LDA' in functional:
                     info['functional'] = 'LDA'
             
-            # Extract pseudopotential type
-            if 'Projector Augmented' in content or 'PAW' in content:
+            # Extract pseudopotential type (case-insensitive search)
+            content_upper = content.upper()
+            if 'PROJECTOR AUGMENTED' in content_upper or 'PAW' in content_upper:
                 info['type'] = 'PAW'
-            elif 'Ultrasoft' in content or 'US' in content:
+            elif 'ULTRASOFT' in content_upper or 'US' in content_upper:
                 info['type'] = 'Ultrasoft'
-            elif 'Norm-conserving' in content or 'NC' in content:
+            elif 'NORM-CONSERVING' in content_upper or 'NC' in content_upper:
                 info['type'] = 'Norm-conserving'
     
     except Exception as e:
@@ -243,6 +254,8 @@ def detect_pseudopotentials_remote(directory: str,
     """
     Detect pseudopotentials on a remote machine via SSH.
     
+    Handles case-insensitive file extensions (.UPF, .upf, .Upf, etc.).
+    
     Args:
         directory: Directory path on remote machine
         ssh_connection: SSH connection info with keys: 'host', 'username', 'port'
@@ -258,11 +271,11 @@ def detect_pseudopotentials_remote(directory: str,
     port = ssh_connection.get('port', 22)
     
     try:
-        # Find UPF files remotely
+        # Find UPF files remotely (case-insensitive)
         if recursive:
-            find_cmd = f"find {directory} -name '*.UPF' -o -name '*.upf'"
+            find_cmd = f"find {directory} -iname '*.upf'"
         else:
-            find_cmd = f"find {directory} -maxdepth 1 -name '*.UPF' -o -name '*.upf'"
+            find_cmd = f"find {directory} -maxdepth 1 -iname '*.upf'"
         
         ssh_cmd = f"ssh -p {port} {username}@{host} '{find_cmd}'"
         result = subprocess.run(ssh_cmd, shell=True, capture_output=True, text=True, timeout=30)
