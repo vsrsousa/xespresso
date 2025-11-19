@@ -8,6 +8,15 @@ import streamlit as st
 import os
 from pathlib import Path
 from typing import Optional, List
+import threading
+
+# Try to import tkinter for native file dialog
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+    TKINTER_AVAILABLE = True
+except ImportError:
+    TKINTER_AVAILABLE = False
 
 
 def get_subdirectories(path: str) -> List[str]:
@@ -32,6 +41,42 @@ def get_subdirectories(path: str) -> List[str]:
         return sorted(subdirs)
     except (PermissionError, OSError):
         return []
+
+
+def open_folder_dialog(initial_path: str) -> Optional[str]:
+    """
+    Open a native tkinter folder selection dialog.
+    
+    Args:
+        initial_path: Initial directory to show in the dialog
+        
+    Returns:
+        Selected folder path or None if cancelled/unavailable
+    """
+    if not TKINTER_AVAILABLE:
+        return None
+    
+    try:
+        # Create a hidden root window
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        
+        # Open folder dialog
+        folder_path = filedialog.askdirectory(
+            initialdir=initial_path,
+            title="Select Working Directory"
+        )
+        
+        # Clean up
+        root.destroy()
+        
+        # Return the selected path (empty string if cancelled)
+        return folder_path if folder_path else None
+        
+    except Exception as e:
+        # If tkinter fails for any reason, return None
+        return None
 
 
 def render_directory_browser(
