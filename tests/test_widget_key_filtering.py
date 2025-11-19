@@ -64,6 +64,7 @@ def test_widget_keys_are_filtered(mock_st):
     mock_st.session_state.workdir_browser_up = True
     mock_st.session_state.workdir_browser_subdir_selector = "test"
     mock_st.session_state.workdir_browser_enter_subdir = True
+    mock_st.session_state.workdir_browser_tkinter_browse = True  # tkinter browse button
     mock_st.session_state.session_manager_new = True
     mock_st.session_state.session_manager_save = True
     mock_st.session_state.session_manager_switch_select = "Session 2"
@@ -92,6 +93,7 @@ def test_widget_keys_are_filtered(mock_st):
     assert 'workdir_browser_up' not in state
     assert 'workdir_browser_subdir_selector' not in state
     assert 'workdir_browser_enter_subdir' not in state
+    assert 'workdir_browser_tkinter_browse' not in state  # tkinter browse button
     assert 'session_manager_new' not in state
     assert 'session_manager_save' not in state
     assert 'session_manager_switch_select' not in state
@@ -116,6 +118,7 @@ def test_restore_session_filters_widget_keys(mock_st):
         # Widget keys that should be filtered
         'workdir_browser_quick_0': True,
         'workdir_browser_subdir_selector': "test",
+        'workdir_browser_tkinter_browse': True,  # tkinter browse button
         'session_manager_new': True,
         'session_manager_renaming': False,
         # Button widget keys that should be filtered (the bug fix)
@@ -139,6 +142,7 @@ def test_restore_session_filters_widget_keys(mock_st):
     # Widget keys should NOT be restored
     assert 'workdir_browser_quick_0' not in mock_st.session_state
     assert 'workdir_browser_subdir_selector' not in mock_st.session_state
+    assert 'workdir_browser_tkinter_browse' not in mock_st.session_state  # tkinter browse button
     assert 'session_manager_new' not in mock_st.session_state
     assert 'session_manager_renaming' not in mock_st.session_state
     
@@ -203,6 +207,7 @@ def test_is_widget_key():
     assert _is_widget_key('workdir_custom_path')
     assert _is_widget_key('browser_go_custom')
     assert _is_widget_key('dir_create_dir')
+    assert _is_widget_key('workdir_browser_tkinter_browse')  # tkinter native browse button
     assert _is_widget_key('session_new')
     assert _is_widget_key('session_save')
     assert _is_widget_key('session_rename_ok')

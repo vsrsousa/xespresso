@@ -40,6 +40,7 @@ def _is_widget_key(key: str) -> bool:
         '_custom_path',      # Custom path text input
         '_go_custom',        # Go to custom path button
         '_create_dir',       # Create directory button
+        '_tkinter_browse',   # Native file dialog browse button
         '_new',              # New session button
         '_save',             # Save session button
         '_rename_',          # Rename session buttons/inputs
