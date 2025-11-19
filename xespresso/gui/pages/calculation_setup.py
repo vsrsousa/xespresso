@@ -206,20 +206,11 @@ def render_calculation_setup_page():
         if "kspacing" in config:
             del config["kspacing"]
 
-    # Pseudopotentials
-    st.subheader("🧪 Pseudopotentials")
+    # Pseudopotentials - using reusable selector component
+    from xespresso.gui.utils.pseudopotentials_selector import render_pseudopotentials_selector
+    
     elements = set(atoms.get_chemical_symbols())
-
-    if "pseudopotentials" not in config:
-        config["pseudopotentials"] = {}
-
-    for elem in sorted(elements):
-        pseudo = st.text_input(
-            f"Pseudopotential for {elem}:",
-            value=config["pseudopotentials"].get(elem, f"{elem}.UPF"),
-            key=f"pseudo_{elem}",
-        )
-        config["pseudopotentials"][elem] = pseudo
+    render_pseudopotentials_selector(elements, config, key_prefix="calc")
 
     st.markdown("---")
 
