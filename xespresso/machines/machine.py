@@ -257,6 +257,9 @@ class Machine:
         This format is what the schedulers expect and is backward compatible
         with the existing code.
         
+        The {nprocs} placeholder in the launcher is substituted with the
+        actual nprocs value here.
+        
         Returns:
             Dict: Queue configuration dictionary
         """
@@ -266,6 +269,11 @@ class Machine:
                 return "\n".join(block)
             return block or ""
         
+        # Substitute {nprocs} placeholder in launcher with actual value
+        launcher = self.launcher
+        if "{nprocs}" in launcher:
+            launcher = launcher.replace("{nprocs}", str(self.nprocs))
+        
         queue = {
             "execution": self.execution,
             "scheduler": self.scheduler,
@@ -274,7 +282,7 @@ class Machine:
             "resources": self.resources,
             "prepend": normalize_script_block(self.prepend),
             "postpend": normalize_script_block(self.postpend),
-            "launcher": self.launcher,
+            "launcher": launcher,
             "nprocs": self.nprocs,
         }
         
