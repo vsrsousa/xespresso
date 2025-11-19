@@ -278,6 +278,14 @@ def render_pseudopotentials_selector(
         import os
         os.environ["ESPRESSO_PSEUDO"] = pseudo_config.base_path
         
+        # Also store in session state for tracking and persistence
+        st.session_state["_espresso_pseudo_path"] = pseudo_config.base_path
+        
+        # Show current ESPRESSO_PSEUDO setting
+        with st.expander("ℹ️ Environment Variable Info", expanded=False):
+            st.code(f"ESPRESSO_PSEUDO = {os.environ.get('ESPRESSO_PSEUDO', 'Not set')}", language="bash")
+            st.caption("This environment variable is automatically updated when you change pseudopotential configurations.")
+        
         # Store the selected config name for persistence
         config_dict["_selected_pseudo_config_name"] = selected_config_name
         
