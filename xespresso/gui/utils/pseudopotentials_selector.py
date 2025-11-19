@@ -270,8 +270,10 @@ def render_pseudopotentials_selector(
             
             st.table(pseudo_table)
         
-        # Store pseudo_dir in config for later use
-        config_dict["pseudo_dir"] = pseudo_config.base_path
+        # Note: We do NOT set pseudo_dir here to respect xespresso pattern
+        # Pseudopotentials will be found via ESPRESSO_PSEUDO environment variable
+        # For remote execution, the remote_mixin will handle transferring files
+        # and setting pseudo_dir="./pseudo" automatically
         
         # Store the selected config name for persistence
         config_dict["_selected_pseudo_config_name"] = selected_config_name
