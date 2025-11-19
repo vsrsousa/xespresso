@@ -291,6 +291,11 @@ def restore_session(state: Dict[str, Any], clear_first: bool = True):
         
         # Regular value - restore directly
         st.session_state[key] = value
+    
+    # Restore ESPRESSO_PSEUDO environment variable if it was saved
+    if "_espresso_pseudo_path" in state:
+        import os
+        os.environ["ESPRESSO_PSEUDO"] = state["_espresso_pseudo_path"]
 
 
 def reset_session(keep_keys: Optional[List[str]] = None):
