@@ -63,11 +63,24 @@ def render_pseudopotentials_selector(
         
         # Initialize session state for selected config
         if f"{key_prefix}_selected_pseudo_config" not in st.session_state:
-            st.session_state[f"{key_prefix}_selected_pseudo_config"] = None
+            # Check if there's a default configuration
+            if PseudopotentialsManager.has_default_config(DEFAULT_PSEUDOPOTENTIALS_DIR):
+                default_config = PseudopotentialsManager.get_default_config(DEFAULT_PSEUDOPOTENTIALS_DIR)
+                if default_config:
+                    st.session_state[f"{key_prefix}_selected_pseudo_config"] = "default"
+                    st.info("ℹ️ Using default pseudopotentials configuration")
+                else:
+                    st.session_state[f"{key_prefix}_selected_pseudo_config"] = None
+            else:
+                st.session_state[f"{key_prefix}_selected_pseudo_config"] = None
         
-        # Load all configurations to show metadata
+        # Load all configurations to show metadata (excluding default from list)
         configs_info = []
         for config_name in available_configs:
+            # Skip 'default' in the main list - it will be handled separately
+            if config_name == 'default':
+                continue
+                
             try:
                 pseudo_config = PseudopotentialsManager.load_config(
                     config_name,
@@ -120,35 +133,69 @@ def render_pseudopotentials_selector(
         if selected_functional != "All":
             filtered_configs = [c for c in filtered_configs if c['functional'] == selected_functional]
         
-        if not filtered_configs:
+        # Check if default configuration exists and add it as first option
+        has_default = PseudopotentialsManager.has_default_config(DEFAULT_PSEUDOPOTENTIALS_DIR)
+        default_config_info = None
+        
+        if has_default:
+            try:
+                default_config = PseudopotentialsManager.get_default_config(DEFAULT_PSEUDOPOTENTIALS_DIR)
+                if default_config:
+                    default_config_info = {
+                        'name': 'default',
+                        'config': default_config,
+                        'library': default_config.library or 'Unknown',
+                        'version': default_config.version or '',
+                        'functional': default_config.functional or 'Unknown',
+                        'elements': len(default_config.pseudopotentials),
+                        'location': 'Local' if not default_config.machine_name else default_config.machine_name
+                    }
+            except Exception as e:
+                st.warning(f"Could not load default config: {e}")
+        
+        if not filtered_configs and not default_config_info:
             st.warning("⚠️ No configurations match the selected filters.")
             return
         
-        # Configuration selector
-        config_options = [
+        # Build configuration options list
+        # Add default as first option if it exists
+        all_configs_for_selection = []
+        config_options = []
+        
+        if default_config_info:
+            all_configs_for_selection.append(default_config_info)
+            config_options.append(
+                f"⭐ Default ({default_config_info['library']} {default_config_info['version']}, "
+                f"{default_config_info['functional']}, {default_config_info['elements']} elements)"
+            )
+        
+        # Add filtered configs
+        all_configs_for_selection.extend(filtered_configs)
+        config_options.extend([
             f"{c['name']} ({c['library']} {c['version']}, {c['functional']}, {c['elements']} elements)"
             for c in filtered_configs
-        ]
+        ])
         
         # Find current selection index
         current_selection = st.session_state.get(f"{key_prefix}_selected_pseudo_config")
         default_idx = 0
         if current_selection:
             try:
-                default_idx = [c['name'] for c in filtered_configs].index(current_selection)
+                default_idx = [c['name'] for c in all_configs_for_selection].index(current_selection)
             except ValueError:
-                pass
+                # If previously selected config not in filtered list, default to first
+                default_idx = 0
         
         selected_idx = st.selectbox(
             "Select Pseudopotential Configuration:",
-            range(len(filtered_configs)),
+            range(len(all_configs_for_selection)),
             format_func=lambda i: config_options[i],
             index=default_idx,
             key=f"{key_prefix}_pseudo_selector",
             help="Choose a pseudopotential configuration for this calculation"
         )
         
-        selected_config_info = filtered_configs[selected_idx]
+        selected_config_info = all_configs_for_selection[selected_idx]
         selected_config_name = selected_config_info['name']
         
         # Update session state
