@@ -35,12 +35,7 @@ def set_queue(calc, package=None, parallel=None, queue=None, command=None):
     # Convert Machine object to queue dict if necessary
     from xespresso.machines.machine import Machine
     if isinstance(queue, Machine):
-        queue = queue.to_queue()  # This already substitutes {nprocs} in launcher
-    
-    # For plain dict queues, substitute {nprocs} in launcher if needed
-    if isinstance(queue, dict) and "launcher" in queue and "{nprocs}" in queue.get("launcher", ""):
-        nprocs = queue.get("nprocs", 1)
-        queue["launcher"] = queue["launcher"].replace("{nprocs}", str(nprocs))
+        queue = queue.to_queue()
     
     calc.queue = queue
     package = package or calc.package
