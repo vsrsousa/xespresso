@@ -666,9 +666,24 @@ def render_calculation_setup_page():
             )
 
             # Apply custom resources if enabled
-            if config.get("adjust_resources") and config.get("resources"):
-                config["queue"]["resources"] = config["resources"]
-                st.info(f"   Using custom resources: {config['resources']}")
+            if config.get("adjust_resources"):
+                if config.get("resources"):
+                    config["queue"]["resources"] = config["resources"]
+                    st.info(f"   Using custom resources: {config['resources']}")
+                
+                # Apply custom nprocs if adjusted (for direct execution)
+                if "nprocs" in config:
+                    config["queue"]["nprocs"] = config["nprocs"]
+                    st.info(f"   Using custom nprocs: {config['nprocs']}")
+                
+                # Apply custom launcher if adjusted
+                if "launcher" in config:
+                    # If launcher still has {nprocs} placeholder, substitute it
+                    launcher = config["launcher"]
+                    if "{nprocs}" in launcher and "nprocs" in config:
+                        launcher = launcher.replace("{nprocs}", str(config["nprocs"]))
+                    config["queue"]["launcher"] = launcher
+                    st.info(f"   Using custom launcher: {launcher}")
 
             # If use_modules is True and a version-specific module is configured, add it to queue
             if config["queue"].get("use_modules") and st.session_state.get(
