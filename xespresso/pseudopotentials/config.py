@@ -98,6 +98,33 @@ class PseudopotentialsConfig:
         """
         return sorted(self.pseudopotentials.keys())
     
+    def get_pseudo_group_dict(self) -> Dict[str, str]:
+        """
+        Get pseudopotentials in xespresso pseudo_group format.
+        
+        Returns a dictionary mapping UPPERCASE element symbols to filenames,
+        compatible with xespresso's pseudo_gropus dictionary format.
+        This allows the configuration to be used with xespresso's pseudo_group parameter.
+        
+        Returns:
+            Dictionary mapping element symbols (uppercase) to pseudopotential filenames
+            
+        Example:
+            >>> config = load_pseudopotentials_config("SSSP_efficiency")
+            >>> pseudo_dict = config.get_pseudo_group_dict()
+            >>> # Returns: {'FE': 'Fe.pbe-spn-kjpaw_psl.0.2.1.UPF', 'O': 'O.pbe-n-kjpaw_psl.0.1.UPF', ...}
+        """
+        result = {}
+        for element, pseudo in self.pseudopotentials.items():
+            if isinstance(pseudo, Pseudopotential):
+                # Use uppercase for consistency with xespresso's pseudo_gropus format
+                result[element.upper()] = pseudo.filename
+            else:
+                # Handle case where pseudo might be a dict (from deserialization)
+                filename = pseudo.get('filename') if isinstance(pseudo, dict) else str(pseudo)
+                result[element.upper()] = filename
+        return result
+    
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
         result = {
