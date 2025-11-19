@@ -77,6 +77,17 @@ class RemoteExecutionMixin:
             search_dirs.append(control["pseudo_dir"])
         if "ESPRESSO_PSEUDO" in os.environ:
             search_dirs.append(os.path.join(os.environ["ESPRESSO_PSEUDO"]))
+            # Also check for known pseudo_group subdirectories
+            # This enables finding pseudopotentials organized in subdirectories
+            # following the xespresso pattern
+            try:
+                from xespresso.data.pseudo import pseudo_gropus
+                for group_name in pseudo_gropus.keys():
+                    subdir = os.path.join(os.environ["ESPRESSO_PSEUDO"], group_name)
+                    if os.path.isdir(subdir):
+                        search_dirs.append(subdir)
+            except ImportError:
+                pass  # If pseudo module not available, skip subdirectory search
         search_dirs.append(os.path.expanduser("~/espresso/pseudo/"))
 
         missing_pseudos = []
