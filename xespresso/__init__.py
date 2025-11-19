@@ -13,6 +13,11 @@ from xespresso.workflow import (
     quick_relax,
     PRESETS,
 )
+from xespresso.pseudopotentials import (
+    PseudopotentialsManager,
+    create_pseudopotentials_config,
+    load_pseudopotentials_config,
+)
 
 __all__ = [
     'Espresso', 
@@ -28,4 +33,7 @@ __all__ = [
     'quick_scf',
     'quick_relax',
     'PRESETS',
+    'PseudopotentialsManager',
+    'create_pseudopotentials_config',
+    'load_pseudopotentials_config',
 ]

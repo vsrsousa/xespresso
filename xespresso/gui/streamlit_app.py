@@ -52,6 +52,7 @@ try:
     from xespresso.gui.pages import (
         render_machine_config_page,
         render_codes_config_page,
+        render_pseudopotentials_config_page,
         render_structure_viewer_page,
         render_calculation_setup_page,
         render_workflow_builder_page,
@@ -231,6 +232,7 @@ if show_config:
         [
             "🖥️ Machine Configuration",
             "⚙️ Codes Configuration",
+            "🧪 Pseudopotentials Configuration",
             "🔬 Structure Viewer",
             "📊 Calculation Setup",
             "🔄 Workflow Builder",
@@ -251,7 +253,7 @@ else:
     )
 
 # Determine if this is a calculation page (for any page-specific logic later)
-is_calculation_page = page not in ["🖥️ Machine Configuration", "⚙️ Codes Configuration"]
+is_calculation_page = page not in ["🖥️ Machine Configuration", "⚙️ Codes Configuration", "🧪 Pseudopotentials Configuration"]
 
 # Page routing
 if page == "🖥️ Machine Configuration":
@@ -263,6 +265,12 @@ if page == "🖥️ Machine Configuration":
 elif page == "⚙️ Codes Configuration":
     if PAGES_AVAILABLE:
         render_codes_config_page()
+    else:
+        st.error("Page modules not available. Please check installation.")
+
+elif page == "🧪 Pseudopotentials Configuration":
+    if PAGES_AVAILABLE:
+        render_pseudopotentials_config_page()
     else:
         st.error("Page modules not available. Please check installation.")
 
