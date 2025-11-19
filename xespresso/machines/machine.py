@@ -192,6 +192,10 @@ class Machine:
         with open(filepath, 'r') as f:
             config = json.load(f)
         
+        # Sanitize configuration to remove unwanted quotes
+        from xespresso.machines.config.loader import sanitize_machine_config
+        config = sanitize_machine_config(config)
+        
         # Extract name from filename if not in config
         name = config.get("name", os.path.splitext(os.path.basename(filepath))[0])
         

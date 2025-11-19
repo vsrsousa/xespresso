@@ -104,6 +104,20 @@ def render_directory_browser(
     
     current_path = st.session_state[f'{key}_current_path']
     
+    # Add "Browse System Folders" button if tkinter is available
+    if TKINTER_AVAILABLE:
+        st.sidebar.markdown("**System Folder Browser:**")
+        if st.sidebar.button("📂 Browse System Folders", key=f"{key}_tkinter_browse", 
+                            help="Open native file dialog to browse anywhere on your system",
+                            use_container_width=True):
+            selected_folder = open_folder_dialog(current_path)
+            if selected_folder:
+                st.session_state[f'{key}_current_path'] = selected_folder
+                st.rerun()
+            else:
+                st.sidebar.info("No folder selected")
+        st.sidebar.markdown("---")
+    
     # Common directories as quick shortcuts
     st.sidebar.markdown("**Quick Access:**")
     common_dirs = {
