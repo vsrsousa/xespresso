@@ -77,35 +77,6 @@ class RemoteExecutionMixin:
             search_dirs.append(control["pseudo_dir"])
         if "ESPRESSO_PSEUDO" in os.environ:
             search_dirs.append(os.path.join(os.environ["ESPRESSO_PSEUDO"]))
-            
-            # Also check for known pseudo_group subdirectories
-            try:
-                from xespresso.data.pseudo import pseudo_gropus
-                for group_name in pseudo_gropus.keys():
-                    subdir = os.path.join(os.environ["ESPRESSO_PSEUDO"], group_name)
-                    if os.path.isdir(subdir):
-                        search_dirs.append(subdir)
-            except ImportError:
-                pass
-            
-            # Check for pseudopotentials module configurations
-            try:
-                from xespresso.pseudopotentials import (
-                    PseudopotentialsManager,
-                    load_pseudopotentials_config,
-                    DEFAULT_PSEUDOPOTENTIALS_DIR
-                )
-                configs = PseudopotentialsManager.list_configs(DEFAULT_PSEUDOPOTENTIALS_DIR)
-                for config_name in configs:
-                    try:
-                        config = load_pseudopotentials_config(config_name, DEFAULT_PSEUDOPOTENTIALS_DIR)
-                        if config and config.base_path and os.path.isdir(config.base_path):
-                            search_dirs.append(config.base_path)
-                    except:
-                        pass  # Skip configs that can't be loaded
-            except ImportError:
-                pass  # Pseudopotentials module not available
-                
         search_dirs.append(os.path.expanduser("~/espresso/pseudo/"))
 
         missing_pseudos = []
