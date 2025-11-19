@@ -120,10 +120,9 @@ class Espresso(FileIOCalculator):
             self.atoms = atoms
         if pseudo_group is not None:
             kwargs["pseudopotentials"] = self.find_pseudopotentials(pseudo_group)
-            # Store pseudo_group for internal use but don't set pseudo_dir
-            # This respects the xespresso pattern where pseudo_dir is not set
-            # and pseudopotentials are found using environment variables
-            self.pseudo_group = pseudo_group
+            kwargs["pseudo_dir"] = os.path.join(
+                os.environ["ESPRESSO_PSEUDO"], pseudo_group
+            )
         kwargs = self.check_input(kwargs, prefix=self.prefix)
         self.ase_parameters = kwargs
         FileIOCalculator.__init__(
@@ -156,57 +155,13 @@ class Espresso(FileIOCalculator):
         """Get pseudo potential by family name.
 
         Args:
-            pseudo_group (str): name of the pseudo family. Can be either:
-                - A hardcoded group name from xespresso.data.pseudo.pseudo_gropus
-                - A configuration name from the pseudopotentials module (~/.xespresso/pseudopotentials/)
-                
-        Returns:
-            dict: Dictionary mapping element symbols to pseudopotential filenames
+            pseudo_group (str): name of the pseudo family.
         """
         elements = set(self.atoms.get_chemical_symbols())
         pseudopotentials = {}
-        
-        # First, try hardcoded pseudo_gropus
-        if pseudo_group in pseudo_gropus:
-            for ele in elements:
-                pseudopotentials[ele] = pseudo_gropus[pseudo_group][ele.upper()]
-            return pseudopotentials
-        
-        # If not in hardcoded groups, try loading from pseudopotentials module
-        try:
-            from xespresso.pseudopotentials import (
-                load_pseudopotentials_config,
-                DEFAULT_PSEUDOPOTENTIALS_DIR
-            )
-            
-            config = load_pseudopotentials_config(pseudo_group, DEFAULT_PSEUDOPOTENTIALS_DIR)
-            if config:
-                # Get pseudopotentials in the format expected
-                pseudo_dict = config.get_pseudopotentials_dict()
-                for ele in elements:
-                    if ele in pseudo_dict:
-                        pseudopotentials[ele] = pseudo_dict[ele]
-                    elif ele.upper() in pseudo_dict:
-                        pseudopotentials[ele] = pseudo_dict[ele.upper()]
-                    elif ele.lower() in pseudo_dict:
-                        pseudopotentials[ele] = pseudo_dict[ele.lower()]
-                    else:
-                        raise KeyError(f"Element {ele} not found in pseudopotentials config '{pseudo_group}'")
-                return pseudopotentials
-        except ImportError:
-            # Pseudopotentials module not available, fall back to error
-            pass
-        except FileNotFoundError:
-            # Config not found in pseudopotentials module
-            pass
-        
-        # If we get here, pseudo_group was not found anywhere
-        raise ValueError(
-            f"Pseudopotential group '{pseudo_group}' not found. "
-            f"Check that it exists in either:\n"
-            f"  1. xespresso.data.pseudo.pseudo_gropus (hardcoded groups)\n"
-            f"  2. ~/.xespresso/pseudopotentials/ (user configurations)"
-        )
+        for ele in elements:
+            pseudopotentials[ele] = pseudo_gropus[pseudo_group][ele.upper()]
+        return pseudopotentials
 
     def set_label(self, label, prefix):
         """Set directory and prefix from label"""

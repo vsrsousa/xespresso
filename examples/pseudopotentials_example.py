@@ -105,37 +105,29 @@ config = load_pseudopotentials_config("SSSP_efficiency")
 pseudopotentials = config.get_pseudopotentials_dict()
 # Returns: {'Fe': 'Fe.pbe-spn-kjpaw_psl.0.2.1.UPF', 'O': '...', ...}
 
-# Use in xespresso calculation - TWO WAYS:
-
-## Method 1: Use config name as pseudo_group (RECOMMENDED)
+# Use in xespresso calculation
 from xespresso import Espresso
 from ase.build import bulk
+import os
 
 atoms = bulk('Fe', 'bcc', a=2.87)
 
-calc = Espresso(
-    atoms=atoms,
-    pseudo_group="SSSP_efficiency",  # Config name from ~/.xespresso/pseudopotentials/
-    input_data={'ecutwfc': 50.0},
-    # ... other calculation parameters
-)
+# Set ESPRESSO_PSEUDO environment variable to config's base_path
+# This allows xespresso to find files without explicitly setting pseudo_dir
+os.environ['ESPRESSO_PSEUDO'] = config.base_path
 
-# This works for both LOCAL and REMOTE execution!
-# xespresso will:
-# - Find pseudopotentials using the config
-# - Locate files automatically via ESPRESSO_PSEUDO and config paths
-# - For remote: transfer files to ./pseudo and set pseudo_dir="./pseudo"
-
-## Method 2: Manual pseudopotentials dict (traditional way)
 calc = Espresso(
     atoms=atoms,
     pseudopotentials=pseudopotentials,
-    # NOTE: Do NOT set pseudo_dir - let xespresso find files automatically
+    # No need to set pseudo_dir - xespresso uses ESPRESSO_PSEUDO
     input_data={'ecutwfc': 50.0},
     # ... other calculation parameters
 )
 
-# Both methods respect the xespresso pattern and work with remote execution!
+# This approach:
+# - Works for both LOCAL and REMOTE execution
+# - Respects xespresso's original implementation
+# - For remote: xespresso transfers files to ./pseudo automatically
 """)
 
 # ============================================================================
@@ -266,15 +258,14 @@ Best Practices:
    - Explain why you chose this particular set
    - Note any special considerations
 
-6. **Use pseudo_group parameter**: When possible, use config name as pseudo_group
-   - Works seamlessly with both local and remote execution
-   - No need to manually specify pseudopotentials dict
-   - Example: Espresso(atoms=atoms, pseudo_group="SSSP_efficiency")
+6. **Set ESPRESSO_PSEUDO**: When using configs programmatically
+   - os.environ['ESPRESSO_PSEUDO'] = config.base_path
+   - Allows xespresso to find files without setting pseudo_dir
+   - Works with xespresso's original implementation
 
-7. **Do NOT set pseudo_dir**: Let xespresso handle file finding
-   - Setting pseudo_dir breaks remote execution
-   - xespresso automatically finds files via ESPRESSO_PSEUDO
-   - For remote: xespresso transfers files and sets pseudo_dir="./pseudo"
+7. **Use GUI**: For interactive work, the GUI automatically sets ESPRESSO_PSEUDO
+   - Simplifies pseudopotential selection
+   - Handles environment variable management
 
 8. **Test first**: Before production calculations
    - Test with a small calculation

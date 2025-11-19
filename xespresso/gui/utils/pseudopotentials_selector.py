@@ -270,10 +270,13 @@ def render_pseudopotentials_selector(
             
             st.table(pseudo_table)
         
-        # Note: We do NOT set pseudo_dir here to respect xespresso pattern
-        # Pseudopotentials will be found via ESPRESSO_PSEUDO environment variable
-        # For remote execution, the remote_mixin will handle transferring files
-        # and setting pseudo_dir="./pseudo" automatically
+        # Set ESPRESSO_PSEUDO environment variable to the config's base_path
+        # This allows xespresso to find the pseudopotential files without
+        # explicitly setting pseudo_dir in the calculator parameters
+        # This respects xespresso's original implementation for local execution
+        # and works correctly with remote execution (remote_mixin handles the transfer)
+        import os
+        os.environ["ESPRESSO_PSEUDO"] = pseudo_config.base_path
         
         # Store the selected config name for persistence
         config_dict["_selected_pseudo_config_name"] = selected_config_name

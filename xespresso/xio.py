@@ -192,14 +192,6 @@ def build_atomic_species_str(atoms, input_parameters, pseudopotentials):
         pseudo_dirs.append(input_parameters["control"]["pseudo_dir"])
     if "ESPRESSO_PSEUDO" in os.environ:
         pseudo_dirs.append(os.environ["ESPRESSO_PSEUDO"])
-        # Also check for known pseudo_group subdirectories
-        # This enables finding pseudopotentials organized in subdirectories
-        # without explicitly setting pseudo_dir (the xespresso way)
-        from xespresso.data.pseudo import pseudo_gropus
-        for group_name in pseudo_gropus.keys():
-            subdir = path.join(os.environ["ESPRESSO_PSEUDO"], group_name)
-            if path.isdir(subdir):
-                pseudo_dirs.append(subdir)
     pseudo_dirs.append(path.expanduser("~/espresso/pseudo/"))
 
     # Species info holds the information on the pseudopotential and
