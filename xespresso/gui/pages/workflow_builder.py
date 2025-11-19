@@ -266,14 +266,25 @@ def render_workflow_builder_page():
             available_machines = list_machines()
 
             if available_machines:
+                # Determine default index for machine selector
+                default_machine_idx = 0
+                if (
+                    st.session_state.get("selected_machine")
+                    and st.session_state.selected_machine in available_machines
+                ):
+                    default_machine_idx = available_machines.index(
+                        st.session_state.selected_machine
+                    )
+
                 selected_machine_name = st.selectbox(
                     "Select Machine:",
                     options=available_machines,
+                    index=default_machine_idx,
                     help="Machine where the workflow will run",
                     key="workflow_machine_selector",
                 )
-                # Store selection in separate state variable for compatibility
-                st.session_state.selected_machine_for_workflow = selected_machine_name
+                # Store selection in shared state variable for cross-page persistence
+                st.session_state.selected_machine = selected_machine_name
                 config["machine_name"] = selected_machine_name
 
                 # Load the machine object
@@ -296,22 +307,22 @@ def render_workflow_builder_page():
                 st.warning(
                     "⚠️ No machines configured. Please configure a machine first in the Machine Configuration page."
                 )
-                st.session_state.selected_machine_for_workflow = None
+                st.session_state.selected_machine = None
                 config["machine_name"] = None
         except ImportError:
             st.error("❌ Machine configuration modules not available")
-            st.session_state.selected_machine_for_workflow = None
+            st.session_state.selected_machine = None
             config["machine_name"] = None
 
     with col2:
         # Code/Version Selection using the proper selector
         st.write("**Code Version:**")
-        if st.session_state.get("selected_machine_for_workflow"):
+        if st.session_state.get("selected_machine"):
             try:
                 from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
 
                 codes = load_codes_config(
-                    st.session_state.selected_machine_for_workflow, DEFAULT_CODES_DIR
+                    st.session_state.selected_machine, DEFAULT_CODES_DIR
                 )
 
                 if codes and codes.has_any_codes():
@@ -328,12 +339,12 @@ def render_workflow_builder_page():
                         # Version selector
                         default_idx = 0
                         if (
-                            st.session_state.get("workflow_selected_version")
-                            and st.session_state.workflow_selected_version
+                            st.session_state.get("selected_version")
+                            and st.session_state.selected_version
                             in available_versions
                         ):
                             default_idx = available_versions.index(
-                                st.session_state.workflow_selected_version
+                                st.session_state.selected_version
                             )
 
                         selected_version = st.selectbox(
@@ -344,8 +355,8 @@ def render_workflow_builder_page():
                             help="Choose which Quantum ESPRESSO version to use for this workflow",
                         )
 
-                        # Store selected version
-                        st.session_state.workflow_selected_version = selected_version
+                        # Store selected version in shared state for cross-page persistence
+                        st.session_state.selected_version = selected_version
                         config["qe_version"] = selected_version
 
                         # Get codes for selected version
@@ -393,11 +404,11 @@ def render_workflow_builder_page():
                         if "pw" in code_names:
                             default_code_idx = code_names.index("pw")
                         elif (
-                            st.session_state.get("workflow_selected_code")
-                            and st.session_state.workflow_selected_code in code_names
+                            st.session_state.get("selected_code")
+                            and st.session_state.selected_code in code_names
                         ):
                             default_code_idx = code_names.index(
-                                st.session_state.workflow_selected_code
+                                st.session_state.selected_code
                             )
 
                         selected_code = st.selectbox(
@@ -408,8 +419,8 @@ def render_workflow_builder_page():
                             help="Select which Quantum ESPRESSO executable to use (e.g., pw for scf/relax, ph for phonons, bands for band structure)",
                         )
 
-                        # Store selected code
-                        st.session_state.workflow_selected_code = selected_code
+                        # Store selected code in shared state for cross-page persistence
+                        st.session_state.selected_code = selected_code
                         config["selected_code"] = selected_code
 
                         # Show code details
@@ -423,7 +434,7 @@ def render_workflow_builder_page():
 
                 else:
                     st.warning(
-                        f"⚠️ No codes configured for machine '{st.session_state.selected_machine_for_workflow}'. Please configure codes in the Codes Configuration page."
+                        f"⚠️ No codes configured for machine '{st.session_state.selected_machine}'. Please configure codes in the Codes Configuration page."
                     )
                     config["qe_version"] = None
                     config["selected_code"] = None
@@ -684,9 +695,9 @@ def render_workflow_builder_page():
 
             # Create workflow using workflow module
             st.info("📦 Creating workflow using workflow module...")
-            st.info(f"   Machine: {st.session_state.selected_machine_for_workflow}")
-            if st.session_state.get("selected_code_for_workflow"):
-                st.info(f"   Code: {st.session_state.selected_code_for_workflow}")
+            st.info(f"   Machine: {st.session_state.selected_machine}")
+            if st.session_state.get("selected_code"):
+                st.info(f"   Code: {st.session_state.selected_code}")
 
             base_label = "workflow"
             workflow = GUIWorkflow(atoms, config, base_label=base_label)

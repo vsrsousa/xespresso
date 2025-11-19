@@ -248,14 +248,25 @@ def render_calculation_setup_page():
             available_machines = list_machines()
 
             if available_machines:
+                # Determine default index for machine selector
+                default_machine_idx = 0
+                if (
+                    st.session_state.get("selected_machine")
+                    and st.session_state.selected_machine in available_machines
+                ):
+                    default_machine_idx = available_machines.index(
+                        st.session_state.selected_machine
+                    )
+
                 selected_machine_name = st.selectbox(
                     "Select Machine:",
                     options=available_machines,
+                    index=default_machine_idx,
                     help="Machine where the calculation will run",
                     key="calc_machine_selector",
                 )
-                # Store selection in separate state variable for compatibility
-                st.session_state.selected_machine_for_calc = selected_machine_name
+                # Store selection in shared state variable for cross-page persistence
+                st.session_state.selected_machine = selected_machine_name
                 config["machine_name"] = selected_machine_name
 
                 # Load the machine object
@@ -278,22 +289,22 @@ def render_calculation_setup_page():
                 st.warning(
                     "⚠️ No machines configured. Please configure a machine first in the Machine Configuration page."
                 )
-                st.session_state.selected_machine_for_calc = None
+                st.session_state.selected_machine = None
                 config["machine_name"] = None
         except ImportError:
             st.error("❌ Machine configuration modules not available")
-            st.session_state.selected_machine_for_calc = None
+            st.session_state.selected_machine = None
             config["machine_name"] = None
 
     with col2:
         # Code/Version Selection using the proper selector
         st.write("**Code Version:**")
-        if st.session_state.get("selected_machine_for_calc"):
+        if st.session_state.get("selected_machine"):
             try:
                 from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
 
                 codes = load_codes_config(
-                    st.session_state.selected_machine_for_calc, DEFAULT_CODES_DIR
+                    st.session_state.selected_machine, DEFAULT_CODES_DIR
                 )
 
                 if codes and codes.has_any_codes():
@@ -310,12 +321,12 @@ def render_calculation_setup_page():
                         # Version selector
                         default_idx = 0
                         if (
-                            st.session_state.get("calc_selected_version")
-                            and st.session_state.calc_selected_version
+                            st.session_state.get("selected_version")
+                            and st.session_state.selected_version
                             in available_versions
                         ):
                             default_idx = available_versions.index(
-                                st.session_state.calc_selected_version
+                                st.session_state.selected_version
                             )
 
                         selected_version = st.selectbox(
@@ -326,8 +337,8 @@ def render_calculation_setup_page():
                             help="Choose which Quantum ESPRESSO version to use for this calculation",
                         )
 
-                        # Store selected version
-                        st.session_state.calc_selected_version = selected_version
+                        # Store selected version in shared state for cross-page persistence
+                        st.session_state.selected_version = selected_version
                         config["qe_version"] = selected_version
 
                         # Get codes for selected version
@@ -375,11 +386,11 @@ def render_calculation_setup_page():
                         if "pw" in code_names:
                             default_code_idx = code_names.index("pw")
                         elif (
-                            st.session_state.get("calc_selected_code")
-                            and st.session_state.calc_selected_code in code_names
+                            st.session_state.get("selected_code")
+                            and st.session_state.selected_code in code_names
                         ):
                             default_code_idx = code_names.index(
-                                st.session_state.calc_selected_code
+                                st.session_state.selected_code
                             )
 
                         selected_code = st.selectbox(
@@ -390,8 +401,8 @@ def render_calculation_setup_page():
                             help="Select which Quantum ESPRESSO executable to use (e.g., pw for scf/relax, ph for phonons, bands for band structure)",
                         )
 
-                        # Store selected code
-                        st.session_state.calc_selected_code = selected_code
+                        # Store selected code in shared state for cross-page persistence
+                        st.session_state.selected_code = selected_code
                         config["selected_code"] = selected_code
 
                         # Show code details
@@ -405,7 +416,7 @@ def render_calculation_setup_page():
 
                 else:
                     st.warning(
-                        f"⚠️ No codes configured for machine '{st.session_state.selected_machine_for_calc}'. Please configure codes in the Codes Configuration page."
+                        f"⚠️ No codes configured for machine '{st.session_state.selected_machine}'. Please configure codes in the Codes Configuration page."
                     )
                     config["qe_version"] = None
                     config["selected_code"] = None
@@ -444,88 +455,165 @@ def render_calculation_setup_page():
     if adjust_resources:
         st.markdown("**Custom Resources:**")
 
-        # Get default resources from machine if available
+        # Get scheduler type and default resources from machine if available
+        scheduler_type = "direct"
         default_resources = {}
+        default_nprocs = 1
+        default_launcher = "mpirun -np {nprocs}"
+
         if st.session_state.get("calc_machine"):
             machine = st.session_state.calc_machine
+            scheduler_type = getattr(machine, "scheduler", "direct")
+            default_nprocs = getattr(machine, "nprocs", 1)
+            default_launcher = getattr(machine, "launcher", "mpirun -np {nprocs}")
             if hasattr(machine, "resources"):
                 default_resources = machine.resources or {}
 
-        # Resource inputs in columns
-        col1, col2 = st.columns(2)
-
-        with col1:
-            nodes = st.number_input(
-                "Nodes:",
-                value=int(
-                    config["resources"].get("nodes", default_resources.get("nodes", 1))
-                ),
-                min_value=1,
-                max_value=1000,
-                help="Number of compute nodes to use",
+        # For direct execution, only show nprocs
+        if scheduler_type == "direct":
+            st.info(
+                "ℹ️ **Direct Execution Mode**: Only processor count is configurable. Scheduler resources (nodes, memory, time, etc.) are not applicable for direct execution."
             )
-            config["resources"]["nodes"] = nodes
 
-            ntasks_per_node = st.number_input(
-                "Tasks per Node:",
-                value=int(
-                    config["resources"].get(
-                        "ntasks-per-node", default_resources.get("ntasks-per-node", 16)
-                    )
-                ),
+            # Number of processors for direct execution
+            nprocs = st.number_input(
+                "Number of Processors (nprocs):",
+                value=int(config.get("nprocs", default_nprocs)),
                 min_value=1,
                 max_value=256,
-                help="Number of MPI tasks per node",
+                help="Number of processor cores to use for the calculation",
             )
-            config["resources"]["ntasks-per-node"] = ntasks_per_node
+            config["nprocs"] = nprocs
 
-            mem = st.text_input(
-                "Memory:",
-                value=config["resources"].get(
-                    "mem", default_resources.get("mem", "32G")
-                ),
-                help="Memory per node (e.g., 32G, 64GB)",
+            # Update launcher to use the adjusted nprocs value
+            # Handles both template placeholders {nprocs} and hardcoded values
+            import re
+
+            if "{nprocs}" in default_launcher:
+                # Template placeholder - replace it
+                resolved_launcher = default_launcher.replace("{nprocs}", str(nprocs))
+                config[
+                    "launcher"
+                ] = default_launcher  # Store template for future adjustments
+                st.caption(f"💡 Launcher will be: `{resolved_launcher}`")
+            else:
+                # Check for hardcoded nprocs values and replace them
+                # Pattern matches: -np <number>, -n <number>, --np <number>
+                patterns = [
+                    (r"(-np\s+)\d+", r"\g<1>" + str(nprocs)),  # -np 16 -> -np 8
+                    (r"(-n\s+)\d+", r"\g<1>" + str(nprocs)),  # -n 16 -> -n 8
+                    (r"(--np\s+)\d+", r"\g<1>" + str(nprocs)),  # --np 16 -> --np 8
+                ]
+
+                resolved_launcher = default_launcher
+                for pattern, replacement in patterns:
+                    resolved_launcher = re.sub(pattern, replacement, resolved_launcher)
+
+                # Store the updated launcher
+                config["launcher"] = resolved_launcher
+
+                if resolved_launcher != default_launcher:
+                    st.caption(
+                        f"💡 Launcher will be: `{resolved_launcher}` (updated from machine default)"
+                    )
+                else:
+                    st.caption(f"💡 Launcher: `{resolved_launcher}`")
+        else:
+            # For schedulers (slurm, pbs, sge), show full resource configuration
+            st.info(
+                f"ℹ️ **Scheduler Mode ({scheduler_type.upper()})**: Configure resources for job scheduler submission."
             )
-            config["resources"]["mem"] = mem
 
-        with col2:
-            time = st.text_input(
-                "Time Limit:",
-                value=config["resources"].get(
-                    "time", default_resources.get("time", "02:00:00")
-                ),
-                help="Wall time limit (format: HH:MM:SS)",
+            # Resource inputs in columns
+            col1, col2 = st.columns(2)
+
+            with col1:
+                nodes = st.number_input(
+                    "Nodes:",
+                    value=int(
+                        config["resources"].get(
+                            "nodes", default_resources.get("nodes", 1)
+                        )
+                    ),
+                    min_value=1,
+                    max_value=1000,
+                    help="Number of compute nodes to use",
+                )
+                config["resources"]["nodes"] = nodes
+
+                ntasks_per_node = st.number_input(
+                    "Tasks per Node:",
+                    value=int(
+                        config["resources"].get(
+                            "ntasks-per-node",
+                            default_resources.get("ntasks-per-node", 16),
+                        )
+                    ),
+                    min_value=1,
+                    max_value=256,
+                    help="Number of MPI tasks per node",
+                )
+                config["resources"]["ntasks-per-node"] = ntasks_per_node
+
+                mem = st.text_input(
+                    "Memory:",
+                    value=config["resources"].get(
+                        "mem", default_resources.get("mem", "32G")
+                    ),
+                    help="Memory per node (e.g., 32G, 64GB)",
+                )
+                config["resources"]["mem"] = mem
+
+            with col2:
+                time = st.text_input(
+                    "Time Limit:",
+                    value=config["resources"].get(
+                        "time", default_resources.get("time", "02:00:00")
+                    ),
+                    help="Wall time limit (format: HH:MM:SS)",
+                )
+                config["resources"]["time"] = time
+
+                partition = st.text_input(
+                    "Partition/Queue:",
+                    value=config["resources"].get(
+                        "partition", default_resources.get("partition", "compute")
+                    ),
+                    help="Scheduler partition or queue name",
+                )
+                config["resources"]["partition"] = partition
+
+                # Additional resource options
+                account = st.text_input(
+                    "Account (optional):",
+                    value=config["resources"].get(
+                        "account", default_resources.get("account", "")
+                    ),
+                    help="Account or project code for billing",
+                )
+                if account:
+                    config["resources"]["account"] = account
+
+            st.caption(
+                "💡 These custom resources will override the machine defaults for this calculation."
             )
-            config["resources"]["time"] = time
-
-            partition = st.text_input(
-                "Partition/Queue:",
-                value=config["resources"].get(
-                    "partition", default_resources.get("partition", "compute")
-                ),
-                help="Scheduler partition or queue name",
-            )
-            config["resources"]["partition"] = partition
-
-            # Additional resource options
-            account = st.text_input(
-                "Account (optional):",
-                value=config["resources"].get(
-                    "account", default_resources.get("account", "")
-                ),
-                help="Account or project code for billing",
-            )
-            if account:
-                config["resources"]["account"] = account
-
-        st.caption(
-            "💡 These custom resources will override the machine defaults for this calculation."
-        )
     else:
         # Show default resources from machine
         if st.session_state.get("calc_machine"):
             machine = st.session_state.calc_machine
-            if hasattr(machine, "resources") and machine.resources:
+            scheduler_type = getattr(machine, "scheduler", "direct")
+
+            if scheduler_type == "direct":
+                # For direct execution, only show nprocs
+                st.info("**Using default configuration from machine:**")
+                nprocs = getattr(machine, "nprocs", 1)
+                launcher = getattr(machine, "launcher", "mpirun -np {nprocs}")
+                st.caption(f"Number of Processors: {nprocs}")
+                st.caption(
+                    f"Launcher: {launcher.replace('{nprocs}', str(nprocs)) if '{nprocs}' in launcher else launcher}"
+                )
+            elif hasattr(machine, "resources") and machine.resources:
+                # For schedulers, show full resource configuration
                 st.info("**Using default resources from machine configuration:**")
                 col1, col2 = st.columns(2)
                 with col1:
@@ -584,7 +672,7 @@ def render_calculation_setup_page():
 
             # If use_modules is True and a version-specific module is configured, add it to queue
             if config["queue"].get("use_modules") and st.session_state.get(
-                "calc_selected_version"
+                "selected_version"
             ):
                 try:
                     from xespresso.codes.manager import (
@@ -593,11 +681,11 @@ def render_calculation_setup_page():
                     )
 
                     codes = load_codes_config(
-                        st.session_state.selected_machine_for_calc, DEFAULT_CODES_DIR
+                        st.session_state.selected_machine, DEFAULT_CODES_DIR
                     )
 
                     if codes and codes.versions:
-                        selected_version = st.session_state.calc_selected_version
+                        selected_version = st.session_state.selected_version
                         if selected_version in codes.versions:
                             version_config = codes.versions[selected_version]
                             version_modules = version_config.get("modules")
@@ -623,9 +711,9 @@ def render_calculation_setup_page():
             st.info(
                 "📦 Using calculation module to prepare atoms and Espresso calculator..."
             )
-            st.info(f"   Machine: {st.session_state.selected_machine_for_calc}")
-            if st.session_state.get("calc_selected_code"):
-                st.info(f"   Code: {st.session_state.calc_selected_code}")
+            st.info(f"   Machine: {st.session_state.selected_machine}")
+            if st.session_state.get("selected_code"):
+                st.info(f"   Code: {st.session_state.selected_code}")
 
             # Temporary label for preparation - uses structure name as prefix
             # The actual output path will be set in job submission based on workflow_config['label']
