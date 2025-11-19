@@ -56,6 +56,52 @@ def normalize_script_block(block):
     return block or ""
 
 
+def sanitize_string_value(value):
+    """
+    Remove leading and trailing quotes from string values that may have been
+    inadvertently added during manual JSON editing or serialization.
+    
+    This fixes issues where commands like 'export OMP_NUM_THREADS=1' were
+    stored as '"export OMP_NUM_THREADS=1"' in JSON, causing quotes to appear
+    in the generated job scripts.
+    
+    Parameters:
+        value: String value to sanitize, or None
+        
+    Returns:
+        Sanitized string with outer quotes removed, or original value if not a string
+    """
+    if not isinstance(value, str):
+        return value
+    
+    # Strip leading and trailing whitespace first
+    value = value.strip()
+    
+    # Remove outer quotes if present (both single and double)
+    if (value.startswith('"') and value.endswith('"')) or \
+       (value.startswith("'") and value.endswith("'")):
+        value = value[1:-1]
+    
+    return value
+
+
+def sanitize_list_values(items):
+    """
+    Sanitize all string values in a list by removing quotes.
+    
+    Parameters:
+        items: List of items to sanitize
+        
+    Returns:
+        List with sanitized string values
+    """
+    if not isinstance(items, list):
+        return items
+    
+    return [sanitize_string_value(item) if isinstance(item, str) else item 
+            for item in items]
+
+
 def _load_from_individual_file(machine_name: str, machines_dir: str = DEFAULT_MACHINES_DIR) -> Optional[Machine]:
     """
     Load a machine from an individual JSON file in the machines directory.
@@ -79,6 +125,42 @@ def _load_from_individual_file(machine_name: str, machines_dir: str = DEFAULT_MA
     return None
 
 
+def sanitize_machine_config(config):
+    """
+    Sanitize a machine configuration dictionary by removing unwanted quotes
+    from string values and list items.
+    
+    This fixes issues where JSON values like '"export VAR=1"' contain embedded
+    quotes that end up in generated job scripts.
+    
+    Parameters:
+        config (dict): Machine configuration dictionary
+        
+    Returns:
+        dict: Sanitized configuration dictionary
+    """
+    if not isinstance(config, dict):
+        return config
+    
+    # Fields that should be sanitized
+    string_fields = ['launcher', 'workdir', 'host', 'username', 'env_setup']
+    list_fields = ['prepend', 'postpend', 'modules']
+    
+    sanitized = config.copy()
+    
+    # Sanitize string fields
+    for field in string_fields:
+        if field in sanitized:
+            sanitized[field] = sanitize_string_value(sanitized[field])
+    
+    # Sanitize list fields
+    for field in list_fields:
+        if field in sanitized:
+            sanitized[field] = sanitize_list_values(sanitized[field])
+    
+    return sanitized
+
+
 def _load_from_machines_json(machine_name: str, config_path: str = DEFAULT_CONFIG_PATH) -> Optional[Machine]:
     """
     Load a machine from the traditional machines.json file.
@@ -100,6 +182,8 @@ def _load_from_machines_json(machine_name: str, config_path: str = DEFAULT_CONFI
         machines = config.get("machines", {})
         if machine_name in machines:
             machine_config = machines[machine_name]
+            # Sanitize the configuration to remove unwanted quotes
+            machine_config = sanitize_machine_config(machine_config)
             machine = Machine.from_dict(machine_name, machine_config)
             logger.info(f"Loaded machine '{machine_name}' from {config_path}")
             return machine
