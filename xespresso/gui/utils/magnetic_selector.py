@@ -54,7 +54,16 @@ def render_magnetic_selector(
 
         # Configure each element
         for element in sorted(elements):
-            with st.expander(f"**{element}** Magnetization", expanded=False):
+            # Auto-expand if magnetism is already configured for this element
+            # A configured element has non-zero moments or multiple values
+            current_mag = config_dict["magnetic_config"].get(element, [0])
+            is_configured = bool(
+                current_mag 
+                and current_mag != [0] 
+                and (len(current_mag) > 1 or (len(current_mag) == 1 and current_mag[0] != 0))
+            )
+            
+            with st.expander(f"**{element}** Magnetization", expanded=is_configured):
                 # Get current config for this element
                 current_config = config_dict["magnetic_config"].get(element, [0])
 

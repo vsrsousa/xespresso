@@ -173,7 +173,10 @@ def render_hubbard_selector(
 
         # Configure U for each element
         for element in sorted(elements):
-            with st.expander(f"**{element}** Hubbard U", expanded=False):
+            # Auto-expand if Hubbard U is already configured for this element
+            is_configured = element in config_dict["hubbard_u"] and config_dict["hubbard_u"][element] != 0.0
+            
+            with st.expander(f"**{element}** Hubbard U", expanded=is_configured):
                 # Current U value
                 current_u = config_dict["hubbard_u"].get(element, 0.0)
 
