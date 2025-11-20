@@ -57,15 +57,31 @@ def open_folder_dialog(initial_path: str) -> Optional[str]:
         return None
     
     try:
+        # On macOS, we need to handle tkinter differently
+        import sys
+        import platform
+        
         # Create a hidden root window
         root = tk.Tk()
         root.withdraw()
-        root.attributes('-topmost', True)
+        
+        # On macOS, we need to bring the dialog to front
+        if platform.system() == 'Darwin':
+            # macOS specific: lift the window and make it topmost
+            root.lift()
+            root.attributes('-topmost', True)
+            root.focus_force()
+            
+            # Call update to process the window management commands
+            root.update()
+        else:
+            root.attributes('-topmost', True)
         
         # Open folder dialog
         folder_path = filedialog.askdirectory(
             initialdir=initial_path,
-            title="Select Working Directory"
+            title="Select Working Directory",
+            parent=root
         )
         
         # Clean up
@@ -76,6 +92,8 @@ def open_folder_dialog(initial_path: str) -> Optional[str]:
         
     except Exception as e:
         # If tkinter fails for any reason, return None
+        # On some systems, especially macOS with certain Python installations,
+        # tkinter may not be properly configured
         return None
 
 
@@ -115,8 +133,23 @@ def render_directory_browser(
                 st.session_state[f'{key}_current_path'] = selected_folder
                 st.rerun()
             else:
-                st.sidebar.info("No folder selected")
+                # Check if we're on macOS and provide helpful message
+                import platform
+                if platform.system() == 'Darwin':
+                    st.sidebar.warning(
+                        "⚠️ Could not open file dialog. On macOS, this feature may not work "
+                        "with certain Python installations. Please use the alternative navigation "
+                        "methods below (Quick Access, Custom Path, or subfolder navigation)."
+                    )
+                else:
+                    st.sidebar.info("No folder selected")
         st.sidebar.markdown("---")
+    else:
+        # If tkinter is not available, show a note about alternatives
+        st.sidebar.info(
+            "💡 **Note**: System file browser not available. "
+            "Use Quick Access buttons or Custom Path entry below."
+        )
     
     # Common directories as quick shortcuts
     st.sidebar.markdown("**Quick Access:**")
