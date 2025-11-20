@@ -734,13 +734,13 @@ def render_calculation_setup_page():
             if st.session_state.get("selected_code"):
                 st.info(f"   Code: {st.session_state.selected_code}")
 
-            # Temporary label for preparation - uses structure name as prefix
-            # The actual output path will be set in job submission based on workflow_config['label']
-            temp_label = f"temp_{atoms.get_chemical_formula()}"
+            # Use the actual label from workflow_config for preparation
+            # This ensures consistent file naming throughout the workflow
+            preparation_label = config.get("label", f"{config.get('calc_type', 'scf')}/{atoms.get_chemical_formula()}")
 
             with st.spinner("Preparing calculation objects..."):
                 prepared_atoms, calc = prepare_calculation_from_gui(
-                    atoms, config, label=temp_label
+                    atoms, config, label=preparation_label
                 )
 
             # Store prepared objects in session state
