@@ -3,7 +3,6 @@ import hashlib
 import time
 from xespresso.utils.auth import RemoteAuth
 from xespresso.utils import warnings as warnings  # Custom warning system
-from xespresso.xio import write_espresso_in
 
 # Apply custom formatting globally (if your module supports it)
 warnings.formatwarning = lambda msg, cat, fname, lineno, *_: (
@@ -82,31 +81,13 @@ class RemoteExecutionMixin:
 
     def _transfer_pseudopotentials(self, max_retries=1):
         pseudopotentials = self.calc.parameters.get("pseudopotentials", {})
-        control = self.calc.parameters.get("input_data", {}).get("CONTROL", {})
-        
-        # Check if user has already specified a pseudo_dir
-        # If so, respect it; otherwise default to "./pseudo"
-        user_pseudo_dir = control.get("pseudo_dir")
-        if user_pseudo_dir:
-            # User specified a pseudo_dir - extract just the directory name for remote path
-            # Handle both relative paths like "./pseudos" and absolute paths
-            if user_pseudo_dir.startswith("./"):
-                pseudo_dir_name = user_pseudo_dir[2:]  # Remove "./"
-            elif user_pseudo_dir.startswith("/"):
-                # For absolute paths, use the basename
-                pseudo_dir_name = os.path.basename(user_pseudo_dir)
-            else:
-                pseudo_dir_name = user_pseudo_dir
-        else:
-            # No user-specified pseudo_dir, use default
-            pseudo_dir_name = "pseudo"
-        
-        remote_pseudo_dir = os.path.join(self.remote_path, pseudo_dir_name)
+        remote_pseudo_dir = os.path.join(self.remote_path, "pseudo")
         self.remote.run_command(f"mkdir -p {remote_pseudo_dir}")
 
         search_dirs = []
-        if user_pseudo_dir:
-            search_dirs.append(user_pseudo_dir)
+        control = self.calc.parameters.get("input_data", {}).get("CONTROL", {})
+        if "pseudo_dir" in control:
+            search_dirs.append(control["pseudo_dir"])
         if "ESPRESSO_PSEUDO" in os.environ:
             search_dirs.append(os.path.join(os.environ["ESPRESSO_PSEUDO"]))
         search_dirs.append(os.path.expanduser("~/espresso/pseudo/"))
@@ -159,16 +140,8 @@ class RemoteExecutionMixin:
                 self.logger.error(error_msg)
             raise FileNotFoundError(error_msg)
 
-        # Only set pseudo_dir if user hasn't already specified one
-        if not user_pseudo_dir:
-            self.calc.parameters["input_data"]["CONTROL"]["pseudo_dir"] = f"./{pseudo_dir_name}"
-        else:
-            # User has specified pseudo_dir - update it to the relative remote path
-            self.calc.parameters["input_data"]["CONTROL"]["pseudo_dir"] = f"./{pseudo_dir_name}"
-        
-        # Write the input file directly without calling write_input to avoid recursive set_queue call
-        input_file = os.path.join(self.calc.directory, f"{self.calc.prefix}.{self.calc.package}i")
-        write_espresso_in(input_file, self.calc.atoms, **self.calc.parameters)
+        self.calc.parameters["input_data"]["CONTROL"]["pseudo_dir"] = "./pseudo"
+        self.calc.write_input(self.calc.atoms)
 
     def run(self):
         """
