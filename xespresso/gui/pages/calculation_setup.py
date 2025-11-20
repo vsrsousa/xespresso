@@ -52,186 +52,12 @@ def render_calculation_setup_page():
 
     config = st.session_state.workflow_config
 
-    # Calculation Type
-    st.subheader("⚙️ Calculation Type")
-    calc_type = st.selectbox(
-        "Calculation:",
-        ["scf", "relax", "vc-relax"],
-        index=["scf", "relax", "vc-relax"].index(config.get("calc_type", "scf")),
-        help="Type of calculation to perform",
-    )
-    config["calc_type"] = calc_type
-
-    # Calculation Label
-    st.subheader("🏷️ Calculation Label")
-
-    # Default label: calc_type/structure_formula (e.g., "scf/Al", "relax/H2O")
-    structure_name = atoms.get_chemical_formula()
-    default_label = config.get("label", f"{calc_type}/{structure_name}")
-
-    label = st.text_input(
-        "Label (subfolder name):",
-        value=default_label,
-        help="Label for this calculation - creates subfolder under working directory. Format: calc_type/structure_name",
-        key="calc_label_input",
-    )
-    config["label"] = label
-
-    st.caption(f"📁 Files will be saved in: working_directory/{label}/")
-    st.info("💡 Label format: `calc_type/structure_name` (e.g., `scf/Al`, `relax/H2O`)")
-
-    # Basic Parameters
-    st.subheader("🔧 Basic Parameters")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        ecutwfc = st.number_input(
-            "Energy Cutoff (Ry):",
-            value=float(config.get("ecutwfc", 50.0)),
-            min_value=10.0,
-            max_value=200.0,
-            step=5.0,
-            help="Plane-wave energy cutoff in Rydberg",
-        )
-        config["ecutwfc"] = ecutwfc
-
-        occupations = st.selectbox(
-            "Occupations:",
-            ["smearing", "fixed", "tetrahedra"],
-            index=["smearing", "fixed", "tetrahedra"].index(
-                config.get("occupations", "smearing")
-            ),
-        )
-        config["occupations"] = occupations
-
-    with col2:
-        ecutrho = st.number_input(
-            "Charge Density Cutoff (Ry):",
-            value=float(config.get("ecutrho", ecutwfc * 8)),
-            min_value=40.0,
-            max_value=1600.0,
-            step=20.0,
-            help="Charge density cutoff (typically 8-12 times ecutwfc)",
-        )
-        config["ecutrho"] = ecutrho
-
-        conv_thr = st.number_input(
-            "Convergence Threshold:",
-            value=float(config.get("conv_thr", 1.0e-8)),
-            format="%.2e",
-            help="SCF convergence threshold",
-        )
-        config["conv_thr"] = conv_thr
-
-    # Smearing parameters
-    if occupations == "smearing":
-        st.subheader("📊 Smearing Parameters")
-        col1, col2 = st.columns(2)
-        with col1:
-            smearing = st.selectbox(
-                "Smearing Type:",
-                ["gaussian", "methfessel-paxton", "marzari-vanderbilt", "fermi-dirac"],
-                index=[
-                    "gaussian",
-                    "methfessel-paxton",
-                    "marzari-vanderbilt",
-                    "fermi-dirac",
-                ].index(config.get("smearing", "gaussian")),
-            )
-            config["smearing"] = smearing
-        with col2:
-            degauss = st.number_input(
-                "Degauss (Ry):",
-                value=float(config.get("degauss", 0.02)),
-                min_value=0.001,
-                max_value=0.1,
-                step=0.005,
-                format="%.4f",
-            )
-            config["degauss"] = degauss
-
-    # K-points
-    st.subheader("🔷 K-points")
-    kpts_mode = st.radio(
-        "K-points Mode:", ["K-spacing", "Explicit Grid"], horizontal=True
-    )
-
-    if kpts_mode == "K-spacing":
-        # K-spacing mode: use slider to adjust density, then convert to kpts
-        kspacing_value = st.slider(
-            "K-spacing (Å⁻¹):",
-            min_value=0.1,
-            max_value=1.0,
-            value=float(config.get("kspacing_ui", 0.3)),
-            step=0.05,
-            help="K-point density in reciprocal space. This will be converted to k-point grid.",
-        )
-
-        # Store the UI value for persistence (not in actual config)
-        config["kspacing_ui"] = kspacing_value
-
-        # Convert kspacing to kpts using the structure
-        from xespresso import kpts_from_spacing
-
-        computed_kpts = kpts_from_spacing(atoms, kspacing_value)
-
-        # Store the computed kpts in config (not kspacing)
-        config["kpts"] = computed_kpts
-
-        # Display the computed k-points to the user
-        st.info(
-            f"ℹ️ Computed k-point grid: {computed_kpts[0]} × {computed_kpts[1]} × {computed_kpts[2]}"
-        )
-
-        # Remove kspacing from config as it should not be passed as a parameter
-        if "kspacing" in config:
-            del config["kspacing"]
-    else:
-        # Explicit Grid mode
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            k1 = st.number_input(
-                "k₁:", value=config.get("kpts", (4, 4, 4))[0], min_value=1, max_value=20
-            )
-        with col2:
-            k2 = st.number_input(
-                "k₂:", value=config.get("kpts", (4, 4, 4))[1], min_value=1, max_value=20
-            )
-        with col3:
-            k3 = st.number_input(
-                "k₃:", value=config.get("kpts", (4, 4, 4))[2], min_value=1, max_value=20
-            )
-        config["kpts"] = (int(k1), int(k2), int(k3))
-        # Remove kspacing from config as we're using explicit grid
-        if "kspacing" in config:
-            del config["kspacing"]
-
-    # Pseudopotentials - using reusable selector component
-    from xespresso.gui.utils.pseudopotentials_selector import render_pseudopotentials_selector
-    
-    elements = set(atoms.get_chemical_symbols())
-    render_pseudopotentials_selector(elements, config, key_prefix="calc")
-
-    st.markdown("---")
-
-    # Magnetic Configuration - optional expandable section
-    from xespresso.gui.utils.magnetic_selector import render_magnetic_selector
-    render_magnetic_selector(elements, config, key_prefix="calc")
-
-    st.markdown("---")
-
-    # Hubbard Configuration - optional expandable section  
-    from xespresso.gui.utils.hubbard_selector import render_hubbard_selector
-    render_hubbard_selector(elements, config, key_prefix="calc")
-
-    st.markdown("---")
-
-    # Machine and Code Selection
+    # ===== MOVED TO TOP: Machine and Code Selection =====
     st.subheader("🖥️ Execution Environment")
     st.info(
         """
-    Select the machine and code version to run this calculation.
-    The machine will be passed to Espresso via the `queue` parameter for backwards compatibility.
+    **First, select the machine and code version** for this calculation.
+    The machine configuration determines where the calculation will run.
     """
     )
 
@@ -432,6 +258,181 @@ def render_calculation_setup_page():
             config["selected_code"] = None
 
     st.markdown("---")
+
+    # Calculation Type
+    st.subheader("⚙️ Calculation Type")
+    calc_type = st.selectbox(
+        "Calculation:",
+        ["scf", "relax", "vc-relax"],
+        index=["scf", "relax", "vc-relax"].index(config.get("calc_type", "scf")),
+        help="Type of calculation to perform",
+    )
+    config["calc_type"] = calc_type
+
+    # Calculation Label
+    st.subheader("🏷️ Calculation Label")
+
+    # Default label: calc_type/structure_formula (e.g., "scf/Al", "relax/H2O")
+    structure_name = atoms.get_chemical_formula()
+    default_label = config.get("label", f"{calc_type}/{structure_name}")
+
+    label = st.text_input(
+        "Label (subfolder name):",
+        value=default_label,
+        help="Label for this calculation - creates subfolder under working directory. Format: calc_type/structure_name",
+        key="calc_label_input",
+    )
+    config["label"] = label
+
+    st.caption(f"📁 Files will be saved in: working_directory/{label}/")
+    st.info("💡 Label format: `calc_type/structure_name` (e.g., `scf/Al`, `relax/H2O`)")
+
+    # Basic Parameters
+    st.subheader("🔧 Basic Parameters")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        ecutwfc = st.number_input(
+            "Energy Cutoff (Ry):",
+            value=float(config.get("ecutwfc", 50.0)),
+            min_value=10.0,
+            max_value=200.0,
+            step=5.0,
+            help="Plane-wave energy cutoff in Rydberg",
+        )
+        config["ecutwfc"] = ecutwfc
+
+        occupations = st.selectbox(
+            "Occupations:",
+            ["smearing", "fixed", "tetrahedra"],
+            index=["smearing", "fixed", "tetrahedra"].index(
+                config.get("occupations", "smearing")
+            ),
+        )
+        config["occupations"] = occupations
+
+    with col2:
+        ecutrho = st.number_input(
+            "Charge Density Cutoff (Ry):",
+            value=float(config.get("ecutrho", ecutwfc * 8)),
+            min_value=40.0,
+            max_value=1600.0,
+            step=20.0,
+            help="Charge density cutoff (typically 8-12 times ecutwfc)",
+        )
+        config["ecutrho"] = ecutrho
+
+        conv_thr = st.number_input(
+            "Convergence Threshold:",
+            value=float(config.get("conv_thr", 1.0e-8)),
+            format="%.2e",
+            help="SCF convergence threshold",
+        )
+        config["conv_thr"] = conv_thr
+
+    # Smearing parameters
+    if occupations == "smearing":
+        st.subheader("📊 Smearing Parameters")
+        col1, col2 = st.columns(2)
+        with col1:
+            smearing = st.selectbox(
+                "Smearing Type:",
+                ["gaussian", "methfessel-paxton", "marzari-vanderbilt", "fermi-dirac"],
+                index=[
+                    "gaussian",
+                    "methfessel-paxton",
+                    "marzari-vanderbilt",
+                    "fermi-dirac",
+                ].index(config.get("smearing", "gaussian")),
+            )
+            config["smearing"] = smearing
+        with col2:
+            degauss = st.number_input(
+                "Degauss (Ry):",
+                value=float(config.get("degauss", 0.02)),
+                min_value=0.001,
+                max_value=0.1,
+                step=0.005,
+                format="%.4f",
+            )
+            config["degauss"] = degauss
+
+    # K-points
+    st.subheader("🔷 K-points")
+    kpts_mode = st.radio(
+        "K-points Mode:", ["K-spacing", "Explicit Grid"], horizontal=True
+    )
+
+    if kpts_mode == "K-spacing":
+        # K-spacing mode: use slider to adjust density, then convert to kpts
+        kspacing_value = st.slider(
+            "K-spacing (Å⁻¹):",
+            min_value=0.1,
+            max_value=1.0,
+            value=float(config.get("kspacing_ui", 0.3)),
+            step=0.05,
+            help="K-point density in reciprocal space. This will be converted to k-point grid.",
+        )
+
+        # Store the UI value for persistence (not in actual config)
+        config["kspacing_ui"] = kspacing_value
+
+        # Convert kspacing to kpts using the structure
+        from xespresso import kpts_from_spacing
+
+        computed_kpts = kpts_from_spacing(atoms, kspacing_value)
+
+        # Store the computed kpts in config (not kspacing)
+        config["kpts"] = computed_kpts
+
+        # Display the computed k-points to the user
+        st.info(
+            f"ℹ️ Computed k-point grid: {computed_kpts[0]} × {computed_kpts[1]} × {computed_kpts[2]}"
+        )
+
+        # Remove kspacing from config as it should not be passed as a parameter
+        if "kspacing" in config:
+            del config["kspacing"]
+    else:
+        # Explicit Grid mode
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            k1 = st.number_input(
+                "k₁:", value=config.get("kpts", (4, 4, 4))[0], min_value=1, max_value=20
+            )
+        with col2:
+            k2 = st.number_input(
+                "k₂:", value=config.get("kpts", (4, 4, 4))[1], min_value=1, max_value=20
+            )
+        with col3:
+            k3 = st.number_input(
+                "k₃:", value=config.get("kpts", (4, 4, 4))[2], min_value=1, max_value=20
+            )
+        config["kpts"] = (int(k1), int(k2), int(k3))
+        # Remove kspacing from config as we're using explicit grid
+        if "kspacing" in config:
+            del config["kspacing"]
+
+    # Pseudopotentials - using reusable selector component
+    from xespresso.gui.utils.pseudopotentials_selector import render_pseudopotentials_selector
+    
+    elements = set(atoms.get_chemical_symbols())
+    render_pseudopotentials_selector(elements, config, key_prefix="calc")
+
+    st.markdown("---")
+
+    # Magnetic Configuration - optional expandable section
+    from xespresso.gui.utils.magnetic_selector import render_magnetic_selector
+    render_magnetic_selector(elements, config, key_prefix="calc")
+
+    st.markdown("---")
+
+    # Hubbard Configuration - optional expandable section  
+    from xespresso.gui.utils.hubbard_selector import render_hubbard_selector
+    render_hubbard_selector(elements, config, key_prefix="calc")
+
+    st.markdown("---")
+
 
     # Resources Configuration
     st.subheader("⚙️ Resources Configuration")
