@@ -877,6 +877,16 @@ def render_job_submission_tab():
 
                     # Update the label - Espresso will handle the path resolution
                     calc.set_label(label, calc.prefix)
+                    
+                    # Check if previous calculation failed and force recalculation if needed
+                    # This allows users to rerun failed calculations from the GUI
+                    if hasattr(calc, 'results') and 'convergence' in calc.results:
+                        convergence_status = calc.results['convergence']
+                        if convergence_status > 0:
+                            st.warning(f"⚠️ Previous calculation failed (status: {convergence_status}). Forcing recalculation...")
+                            # Clear cached results to force a fresh calculation
+                            calc.reset()
+                            st.info("✓ Calculator reset - ready for fresh calculation")
                 else:
                     # Use calculation module to prepare atoms and Espresso calculator
                     # Following the principle: calculation modules create objects, job submission executes
@@ -889,6 +899,16 @@ def render_job_submission_tab():
                     )
 
                     st.info("✅ Calculation module prepared objects from configuration!")
+                    
+                    # Check if this calculator loaded a failed previous calculation
+                    # If so, reset it to allow rerun
+                    if hasattr(calc, 'results') and 'convergence' in calc.results:
+                        convergence_status = calc.results['convergence']
+                        if convergence_status > 0:
+                            st.warning(f"⚠️ Found previous failed calculation (status: {convergence_status}). Forcing recalculation...")
+                            # Clear cached results to force a fresh calculation
+                            calc.reset()
+                            st.info("✓ Calculator reset - ready for fresh calculation")
 
                 # Attach calculator to prepared atoms (relationship maintained by calculation module)
                 st.info("🔗 Attaching calculator to atoms object...")

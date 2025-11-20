@@ -17,7 +17,8 @@ class RemoteExecutionMixin:
     Features:
     - Reuses SSH connection across multiple calculations on the same server
     - Automatically opens a new connection if the server or user changes
-    - Dynamically computes remote working directory based on calc.directory
+    - Dynamically computes unique remote working directory based on calc.directory
+    - Uses hash of local path to ensure uniqueness across different local directories
     - Avoids redundant remote_path setup if calc.directory hasn't changed
     - Transfers required pseudopotentials to remote ./pseudo directory
     - Logs file transfers and warnings
@@ -55,10 +56,17 @@ class RemoteExecutionMixin:
             self._remote_sessions[key] = remote
         self.remote = self._remote_sessions[key]
 
-        # Use only the basename of calc.directory to avoid issues with absolute paths
-        # This ensures the remote path is always under remote_dir, not using local absolute paths
+        # Generate unique remote directory name to avoid collisions
+        # when multiple jobs with the same label run from different local directories
+        # Format: {basename}_{hash} where hash is derived from full local path
         dir_basename = os.path.basename(self.calc.directory.rstrip(os.sep))
-        current_path = os.path.join(self.queue["remote_dir"], dir_basename)
+        
+        # Create a hash of the full local directory path for uniqueness
+        # Use first 8 characters of MD5 hash for brevity while maintaining uniqueness
+        local_dir_hash = hashlib.md5(self.calc.directory.encode()).hexdigest()[:8]
+        unique_dirname = f"{dir_basename}_{local_dir_hash}"
+        
+        current_path = os.path.join(self.queue["remote_dir"], unique_dirname)
         if current_path != self._last_remote_path:
             self.remote_path = current_path
             self._last_remote_path = current_path
