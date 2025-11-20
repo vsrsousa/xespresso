@@ -239,9 +239,8 @@ def render_dry_run_tab():
                 ase_io.write(structure_path, atoms)
                 st.info(f"💾 Saved structure: {structure_filename}")
 
-                # Check if calculator already exists in session_state (from Calculation Setup)
-                label = os.path.join(full_path, "espresso")
-
+                # Pass the label directly to Espresso calculator
+                # Espresso expects just a label like "scf/Gd2" and will handle local/remote paths correctly
                 if (
                     "espresso_calculator" in st.session_state
                     and st.session_state.espresso_calculator is not None
@@ -252,8 +251,8 @@ def render_dry_run_tab():
                     calc = st.session_state.espresso_calculator
                     prepared_atoms = st.session_state.get("prepared_atoms", atoms)
 
-                    # Update the label to use the current output path
-                    calc.label = label
+                    # Update the label - Espresso will handle the path resolution
+                    calc.set_label(label, calc.prefix)
 
                     # Write input files using xespresso's method
                     calc.write_input(prepared_atoms)
@@ -862,6 +861,8 @@ def render_job_submission_tab():
                 # Create output directory if it doesn't exist
                 os.makedirs(full_path, exist_ok=True)
 
+                # Pass the label directly to Espresso calculator
+                # Espresso expects just a label like "scf/Gd2" and will handle local/remote paths correctly
                 # Check if calculator already exists in session_state
                 # (created by Calculation Setup or Workflow Builder using calculation modules)
                 if (
@@ -874,8 +875,8 @@ def render_job_submission_tab():
                     calc = st.session_state.espresso_calculator
                     prepared_atoms = st.session_state.get("prepared_atoms", atoms)
 
-                    # Update the label to use the current output path
-                    calc.label = os.path.join(full_path, "espresso")
+                    # Update the label - Espresso will handle the path resolution
+                    calc.set_label(label, calc.prefix)
                 else:
                     # Use calculation module to prepare atoms and Espresso calculator
                     # Following the principle: calculation modules create objects, job submission executes
@@ -883,7 +884,6 @@ def render_job_submission_tab():
                         "🔧 Using calculation module to prepare atoms and Espresso calculator..."
                     )
 
-                    label = os.path.join(full_path, "espresso")
                     prepared_atoms, calc = prepare_calculation_from_gui(
                         atoms, config, label=label
                     )
