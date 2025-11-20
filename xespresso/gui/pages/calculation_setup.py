@@ -214,6 +214,18 @@ def render_calculation_setup_page():
 
     st.markdown("---")
 
+    # Magnetic Configuration - optional expandable section
+    from xespresso.gui.utils.magnetic_selector import render_magnetic_selector
+    render_magnetic_selector(elements, config, key_prefix="calc")
+
+    st.markdown("---")
+
+    # Hubbard Configuration - optional expandable section  
+    from xespresso.gui.utils.hubbard_selector import render_hubbard_selector
+    render_hubbard_selector(elements, config, key_prefix="calc")
+
+    st.markdown("---")
+
     # Machine and Code Selection
     st.subheader("🖥️ Execution Environment")
     st.info(
