@@ -44,6 +44,219 @@ def render_workflow_builder_page():
 
     st.markdown("---")
 
+    # Initialize workflow_config if needed
+    if "workflow_config" not in st.session_state:
+        st.session_state.workflow_config = {}
+
+    config = st.session_state.workflow_config
+
+    # ===== MOVED TO TOP: Machine and Code Selection =====
+    st.subheader("🖥️ Execution Environment")
+    st.info(
+        """
+    **First, select the machine and code version** for this workflow.
+    These settings will be used for all steps in the workflow.
+    """
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Machine Selection
+        st.write("**Machine:**")
+        try:
+            from xespresso.machines.config.loader import (
+                list_machines,
+                load_machine,
+                DEFAULT_CONFIG_PATH,
+                DEFAULT_MACHINES_DIR,
+            )
+
+            available_machines = list_machines()
+
+            if available_machines:
+                # Determine default index for machine selector
+                default_machine_idx = 0
+                if (
+                    st.session_state.get("selected_machine")
+                    and st.session_state.selected_machine in available_machines
+                ):
+                    default_machine_idx = available_machines.index(
+                        st.session_state.selected_machine
+                    )
+
+                selected_machine_name = st.selectbox(
+                    "Select Machine:",
+                    options=available_machines,
+                    index=default_machine_idx,
+                    help="Machine where the workflow will run",
+                    key="workflow_machine_selector",
+                )
+                # Store selection in shared state variable for cross-page persistence
+                st.session_state.selected_machine = selected_machine_name
+                config["machine_name"] = selected_machine_name
+
+                # Load the machine object
+                try:
+                    machine = load_machine(
+                        DEFAULT_CONFIG_PATH,
+                        selected_machine_name,
+                        DEFAULT_MACHINES_DIR,
+                        return_object=True,
+                    )
+                    st.session_state.workflow_machine = machine
+
+                    # Show machine info
+                    st.caption(f"Type: {machine.execution}")
+                    if machine.scheduler:
+                        st.caption(f"Scheduler: {machine.scheduler}")
+                except Exception as e:
+                    st.warning(f"Could not load machine: {e}")
+            else:
+                st.warning(
+                    "⚠️ No machines configured. Please configure a machine first in the Machine Configuration page."
+                )
+                st.session_state.selected_machine = None
+                config["machine_name"] = None
+        except ImportError:
+            st.error("❌ Machine configuration modules not available")
+            st.session_state.selected_machine = None
+            config["machine_name"] = None
+
+    with col2:
+        # Code/Version Selection using the proper selector
+        st.write("**Code Version:**")
+        if st.session_state.get("selected_machine"):
+            try:
+                from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
+
+                codes = load_codes_config(
+                    st.session_state.selected_machine, DEFAULT_CODES_DIR
+                )
+
+                if codes and codes.has_any_codes():
+                    # Check if versions are available
+                    available_versions = codes.list_versions()
+
+                    if codes.versions and available_versions:
+                        # Show version selector (whether single or multiple versions)
+                        if len(available_versions) > 1:
+                            st.info(
+                                f"📦 Multiple QE versions available: {', '.join(available_versions)}"
+                            )
+
+                        # Version selector
+                        default_idx = 0
+                        if (
+                            st.session_state.get("selected_version")
+                            and st.session_state.selected_version
+                            in available_versions
+                        ):
+                            default_idx = available_versions.index(
+                                st.session_state.selected_version
+                            )
+
+                        selected_version = st.selectbox(
+                            "Select QE Version:",
+                            available_versions,
+                            index=default_idx,
+                            key="workflow_version_selector",
+                            help="Choose which Quantum ESPRESSO version to use for this workflow",
+                        )
+
+                        # Store selected version in shared state for cross-page persistence
+                        st.session_state.selected_version = selected_version
+                        config["qe_version"] = selected_version
+
+                        # Get codes for selected version
+                        version_codes = codes.get_all_codes(version=selected_version)
+
+                        # Show version details and ALWAYS retrieve modules if defined
+                        with st.expander("⚙️ Version Details", expanded=False):
+                            st.write(f"**Version:** {selected_version}")
+                            if codes.versions and selected_version in codes.versions:
+                                version_config = codes.versions[selected_version]
+                                if version_config.get("label"):
+                                    st.write(f"**Label:** {version_config['label']}")
+                                if version_config.get("qe_prefix"):
+                                    st.write(
+                                        f"**Prefix:** {version_config['qe_prefix']}"
+                                    )
+                                # ALWAYS show and store modules if they exist in codes JSON
+                                if version_config.get("modules"):
+                                    modules = version_config["modules"]
+                                    st.write(f"**Modules:** {', '.join(modules)}")
+                                    config["modules"] = modules
+                            st.write(
+                                f"**Available codes:** {', '.join(version_codes.keys())}"
+                            )
+
+                    else:
+                        # Single version or no version structure
+                        version_codes = codes.get_all_codes()
+                        selected_version = codes.qe_version
+                        if selected_version:
+                            st.caption(f"QE Version: {selected_version}")
+                            config["qe_version"] = selected_version
+
+                    # Show available codes and allow selection
+                    code_names = list(version_codes.keys())
+                    if code_names:
+                        st.caption(
+                            f"✓ {len(code_names)} codes configured: {', '.join(code_names[:3])}{' ...' if len(code_names) > 3 else ''}"
+                        )
+
+                        # Individual code selection
+                        st.markdown("**Select Code:**")
+                        default_code_idx = 0
+                        # Try to select 'pw' by default if available
+                        if "pw" in code_names:
+                            default_code_idx = code_names.index("pw")
+                        elif (
+                            st.session_state.get("selected_code")
+                            and st.session_state.selected_code in code_names
+                        ):
+                            default_code_idx = code_names.index(
+                                st.session_state.selected_code
+                            )
+
+                        selected_code = st.selectbox(
+                            "Choose code executable:",
+                            code_names,
+                            index=default_code_idx,
+                            key="workflow_code_selector",
+                            help="Select which Quantum ESPRESSO executable to use (typically pw for workflows)",
+                        )
+
+                        # Store selected code in shared state for cross-page persistence
+                        st.session_state.selected_code = selected_code
+                        config["selected_code"] = selected_code
+
+                        # Show code details
+                        selected_code_obj = version_codes[selected_code]
+                        st.caption(f"📍 Path: {selected_code_obj.path}")
+                        if (
+                            hasattr(selected_code_obj, "version")
+                            and selected_code_obj.version
+                        ):
+                            st.caption(f"📦 Version: {selected_code_obj.version}")
+
+                else:
+                    st.warning(
+                        f"⚠️ No codes configured for machine '{st.session_state.selected_machine}'. Please configure codes in the Codes Configuration page."
+                    )
+                    config["qe_version"] = None
+                    config["selected_code"] = None
+            except Exception as e:
+                st.warning(f"Could not load codes: {e}")
+                config["qe_version"] = None
+        else:
+            st.info("Select a machine first")
+            config["qe_version"] = None
+            config["selected_code"] = None
+
+    st.markdown("---")
+
     # Workflow Type Selection
     st.subheader("🔧 Workflow Type")
     workflow_type = st.selectbox(
@@ -243,212 +456,6 @@ def render_workflow_builder_page():
                 st.session_state.custom_steps.append({"type": step_type, "index": i})
 
     st.markdown("---")
-
-    # Machine and Code Selection
-    st.subheader("🖥️ Execution Environment")
-    st.info(
-        """
-    Select the machine and code version for this workflow.
-    These will be used for all steps in the workflow.
-    """
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        # Machine Selection
-        st.write("**Machine:**")
-        try:
-            from xespresso.machines.config.loader import (
-                list_machines,
-                load_machine,
-                DEFAULT_CONFIG_PATH,
-                DEFAULT_MACHINES_DIR,
-            )
-
-            available_machines = list_machines()
-
-            if available_machines:
-                # Determine default index for machine selector
-                default_machine_idx = 0
-                if (
-                    st.session_state.get("selected_machine")
-                    and st.session_state.selected_machine in available_machines
-                ):
-                    default_machine_idx = available_machines.index(
-                        st.session_state.selected_machine
-                    )
-
-                selected_machine_name = st.selectbox(
-                    "Select Machine:",
-                    options=available_machines,
-                    index=default_machine_idx,
-                    help="Machine where the workflow will run",
-                    key="workflow_machine_selector",
-                )
-                # Store selection in shared state variable for cross-page persistence
-                st.session_state.selected_machine = selected_machine_name
-                config["machine_name"] = selected_machine_name
-
-                # Load the machine object
-                try:
-                    machine = load_machine(
-                        DEFAULT_CONFIG_PATH,
-                        selected_machine_name,
-                        DEFAULT_MACHINES_DIR,
-                        return_object=True,
-                    )
-                    st.session_state.workflow_machine = machine
-
-                    # Show machine info
-                    st.caption(f"Type: {machine.execution}")
-                    if machine.scheduler:
-                        st.caption(f"Scheduler: {machine.scheduler}")
-                except Exception as e:
-                    st.warning(f"Could not load machine: {e}")
-            else:
-                st.warning(
-                    "⚠️ No machines configured. Please configure a machine first in the Machine Configuration page."
-                )
-                st.session_state.selected_machine = None
-                config["machine_name"] = None
-        except ImportError:
-            st.error("❌ Machine configuration modules not available")
-            st.session_state.selected_machine = None
-            config["machine_name"] = None
-
-    with col2:
-        # Code/Version Selection using the proper selector
-        st.write("**Code Version:**")
-        if st.session_state.get("selected_machine"):
-            try:
-                from xespresso.codes.manager import load_codes_config, DEFAULT_CODES_DIR
-
-                codes = load_codes_config(
-                    st.session_state.selected_machine, DEFAULT_CODES_DIR
-                )
-
-                if codes and codes.has_any_codes():
-                    # Check if versions are available
-                    available_versions = codes.list_versions()
-
-                    if codes.versions and available_versions:
-                        # Show version selector (whether single or multiple versions)
-                        if len(available_versions) > 1:
-                            st.info(
-                                f"📦 Multiple QE versions available: {', '.join(available_versions)}"
-                            )
-
-                        # Version selector
-                        default_idx = 0
-                        if (
-                            st.session_state.get("selected_version")
-                            and st.session_state.selected_version
-                            in available_versions
-                        ):
-                            default_idx = available_versions.index(
-                                st.session_state.selected_version
-                            )
-
-                        selected_version = st.selectbox(
-                            "Select QE Version:",
-                            available_versions,
-                            index=default_idx,
-                            key="workflow_version_selector",
-                            help="Choose which Quantum ESPRESSO version to use for this workflow",
-                        )
-
-                        # Store selected version in shared state for cross-page persistence
-                        st.session_state.selected_version = selected_version
-                        config["qe_version"] = selected_version
-
-                        # Get codes for selected version
-                        version_codes = codes.get_all_codes(version=selected_version)
-
-                        # Show version details and ALWAYS retrieve modules if defined
-                        with st.expander("⚙️ Version Details", expanded=False):
-                            st.write(f"**Version:** {selected_version}")
-                            if codes.versions and selected_version in codes.versions:
-                                version_config = codes.versions[selected_version]
-                                if version_config.get("label"):
-                                    st.write(f"**Label:** {version_config['label']}")
-                                if version_config.get("qe_prefix"):
-                                    st.write(
-                                        f"**Prefix:** {version_config['qe_prefix']}"
-                                    )
-                                # ALWAYS show and store modules if they exist in codes JSON
-                                if version_config.get("modules"):
-                                    modules = version_config["modules"]
-                                    st.write(f"**Modules:** {', '.join(modules)}")
-                                    config["modules"] = modules
-                            st.write(
-                                f"**Available codes:** {', '.join(version_codes.keys())}"
-                            )
-
-                    else:
-                        # Single version or no version structure
-                        version_codes = codes.get_all_codes()
-                        selected_version = codes.qe_version
-                        if selected_version:
-                            st.caption(f"QE Version: {selected_version}")
-                            config["qe_version"] = selected_version
-
-                    # Show available codes and allow selection
-                    code_names = list(version_codes.keys())
-                    if code_names:
-                        st.caption(
-                            f"✓ {len(code_names)} codes configured: {', '.join(code_names[:3])}{' ...' if len(code_names) > 3 else ''}"
-                        )
-
-                        # Individual code selection
-                        st.markdown("**Select Code:**")
-                        default_code_idx = 0
-                        # Try to select 'pw' by default if available
-                        if "pw" in code_names:
-                            default_code_idx = code_names.index("pw")
-                        elif (
-                            st.session_state.get("selected_code")
-                            and st.session_state.selected_code in code_names
-                        ):
-                            default_code_idx = code_names.index(
-                                st.session_state.selected_code
-                            )
-
-                        selected_code = st.selectbox(
-                            "Choose code executable:",
-                            code_names,
-                            index=default_code_idx,
-                            key="workflow_code_selector",
-                            help="Select which Quantum ESPRESSO executable to use (e.g., pw for scf/relax, ph for phonons, bands for band structure)",
-                        )
-
-                        # Store selected code in shared state for cross-page persistence
-                        st.session_state.selected_code = selected_code
-                        config["selected_code"] = selected_code
-
-                        # Show code details
-                        selected_code_obj = version_codes[selected_code]
-                        st.caption(f"📍 Path: {selected_code_obj.path}")
-                        if (
-                            hasattr(selected_code_obj, "version")
-                            and selected_code_obj.version
-                        ):
-                            st.caption(f"📦 Version: {selected_code_obj.version}")
-
-                else:
-                    st.warning(
-                        f"⚠️ No codes configured for machine '{st.session_state.selected_machine}'. Please configure codes in the Codes Configuration page."
-                    )
-                    config["qe_version"] = None
-                    config["selected_code"] = None
-            except Exception as e:
-                st.warning(f"Could not load codes: {e}")
-                config["qe_version"] = None
-                config["selected_code"] = None
-        else:
-            st.info("Select a machine first")
-            config["qe_version"] = None
-            config["selected_code"] = None
 
     st.markdown("---")
 
