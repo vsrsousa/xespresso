@@ -56,24 +56,18 @@ def render_magnetic_selector(
         for element in sorted(elements):
             with st.expander(f"**{element}** Magnetization", expanded=False):
                 # Get current config for this element
-                current_config = config_dict["magnetic_config"].get(element, {})
+                current_config = config_dict["magnetic_config"].get(element, [0])
                 
-                # Determine if using simple or advanced config
+                # Extract magnetic moments (handle both simple list and old dict format)
                 if isinstance(current_config, dict) and 'mag' in current_config:
-                    # Advanced config with Hubbard
+                    # Old format with Hubbard - extract just magnetic moments
                     mag_moments = current_config.get('mag', [0])
+                elif isinstance(current_config, list):
+                    # Simple list format
+                    mag_moments = current_config
                 else:
-                    # Simple config - just list of moments
-                    mag_moments = current_config if isinstance(current_config, list) else [0]
-                
-                # Input format selector
-                config_type = st.radio(
-                    "Configuration Type:",
-                    ["Simple (magnetic moments only)", "Advanced (with Hubbard U)"],
-                    index=1 if isinstance(current_config, dict) and 'mag' in current_config else 0,
-                    key=f"{key_prefix}_mag_type_{element}",
-                    help="Simple: Just specify magnetic moments. Advanced: Include Hubbard U parameters."
-                )
+                    # Default
+                    mag_moments = [0]
                 
                 # Magnetic moments input
                 st.markdown("**Magnetic Moments:**")
@@ -93,49 +87,8 @@ def render_magnetic_selector(
                     st.error(f"Invalid input for {element}. Use numbers separated by commas.")
                     moments = [0]
                 
-                if config_type == "Simple (magnetic moments only)":
-                    # Store as simple list
-                    config_dict["magnetic_config"][element] = moments
-                else:
-                    # Advanced configuration with Hubbard
-                    st.markdown("**Hubbard U Parameters:**")
-                    
-                    # Single U value or per-species
-                    u_type = st.radio(
-                        "U parameter type:",
-                        ["Same U for all", "Different U per species"],
-                        key=f"{key_prefix}_u_type_{element}"
-                    )
-                    
-                    if u_type == "Same U for all":
-                        u_value = st.number_input(
-                            f"Hubbard U (eV) for {element}:",
-                            value=float(current_config.get('U', 0.0)) if isinstance(current_config, dict) else 0.0,
-                            min_value=0.0,
-                            max_value=20.0,
-                            step=0.1,
-                            key=f"{key_prefix}_u_value_{element}"
-                        )
-                        u_param = u_value if u_value > 0 else None
-                    else:
-                        # Different U for each species
-                        u_values_str = st.text_input(
-                            f"Hubbard U values for {element} (comma-separated, one per moment):",
-                            value=", ".join(map(str, current_config.get('U', [0] * len(moments)))) if isinstance(current_config.get('U'), list) else "",
-                            key=f"{key_prefix}_u_values_{element}"
-                        )
-                        try:
-                            u_values = [float(u.strip()) for u in u_values_str.split(',') if u.strip()]
-                            u_param = u_values if u_values and any(u > 0 for u in u_values) else None
-                        except ValueError:
-                            st.error("Invalid U values. Use numbers separated by commas.")
-                            u_param = None
-                    
-                    # Store advanced config
-                    adv_config = {'mag': moments}
-                    if u_param is not None:
-                        adv_config['U'] = u_param
-                    config_dict["magnetic_config"][element] = adv_config
+                # Store as simple list (magnetic configuration only)
+                config_dict["magnetic_config"][element] = moments
                 
                 # Show what will be created
                 num_species = len(moments)
@@ -161,14 +114,45 @@ def render_magnetic_selector(
         
         with col2:
             # QE version for format selection
-            qe_version = st.selectbox(
-                "QE Version:",
+            # Get the current qe_version and determine display value
+            current_qe_version = config_dict.get("qe_version", "auto")
+            
+            # Determine which category it falls into for display
+            if current_qe_version is None or current_qe_version == "auto":
+                display_value = "auto"
+            elif isinstance(current_qe_version, str):
+                # Try to parse version to determine major version
+                try:
+                    major_version = int(current_qe_version.split('.')[0])
+                    if major_version >= 7:
+                        display_value = "7.x"
+                    else:
+                        display_value = "6.x"
+                except (ValueError, IndexError):
+                    # If parsing fails, default to auto
+                    display_value = "auto"
+            else:
+                display_value = "auto"
+            
+            qe_version_display = st.selectbox(
+                "QE Version Format:",
                 ["auto", "6.x", "7.x"],
-                index=["auto", "6.x", "7.x"].index(config_dict.get("qe_version", "auto")),
-                help="Quantum ESPRESSO version (affects Hubbard format)",
+                index=["auto", "6.x", "7.x"].index(display_value),
+                help="Select QE version format for compatibility (affects input file format)",
                 key=f"{key_prefix}_qe_version"
             )
-            config_dict["qe_version"] = qe_version if qe_version != "auto" else None
+            
+            # Store the version appropriately
+            # If "auto" is selected, set to None to let xespresso auto-detect
+            # Otherwise, preserve the actual version from config or use the category
+            if qe_version_display == "auto":
+                config_dict["qe_version"] = None
+            elif current_qe_version and current_qe_version not in ["auto", "6.x", "7.x"]:
+                # Preserve actual version string if it exists (e.g., "7.4")
+                config_dict["qe_version"] = current_qe_version
+            else:
+                # Use the category selection
+                config_dict["qe_version"] = qe_version_display
         
         # Show summary
         with st.expander("📋 Configuration Summary", expanded=False):

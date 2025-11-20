@@ -9,6 +9,48 @@ import streamlit as st
 from typing import Dict, Set, Optional
 
 
+# Element-to-orbital mapping for common elements requiring Hubbard U
+ELEMENT_ORBITAL_MAP = {
+    # 3d transition metals (first row)
+    'Sc': ['3d'], 'Ti': ['3d'], 'V': ['3d'], 'Cr': ['3d'], 'Mn': ['3d'],
+    'Fe': ['3d'], 'Co': ['3d'], 'Ni': ['3d'], 'Cu': ['3d'], 'Zn': ['3d'],
+    
+    # 4d transition metals (second row)
+    'Y': ['4d'], 'Zr': ['4d'], 'Nb': ['4d'], 'Mo': ['4d'], 'Tc': ['4d'],
+    'Ru': ['4d'], 'Rh': ['4d'], 'Pd': ['4d'], 'Ag': ['4d'], 'Cd': ['4d'],
+    
+    # 5d transition metals (third row)
+    'La': ['5d'], 'Hf': ['5d'], 'Ta': ['5d'], 'W': ['5d'], 'Re': ['5d'],
+    'Os': ['5d'], 'Ir': ['5d'], 'Pt': ['5d'], 'Au': ['5d'], 'Hg': ['5d'],
+    
+    # Lanthanides (4f)
+    'Ce': ['4f'], 'Pr': ['4f'], 'Nd': ['4f'], 'Pm': ['4f'], 'Sm': ['4f'],
+    'Eu': ['4f'], 'Gd': ['4f'], 'Tb': ['4f'], 'Dy': ['4f'], 'Ho': ['4f'],
+    'Er': ['4f'], 'Tm': ['4f'], 'Yb': ['4f'], 'Lu': ['4f'],
+    
+    # Actinides (5f)
+    'Th': ['5f'], 'Pa': ['5f'], 'U': ['5f'], 'Np': ['5f'], 'Pu': ['5f'],
+    'Am': ['5f'], 'Cm': ['5f'], 'Bk': ['5f'], 'Cf': ['5f'],
+    
+    # p-block elements (sometimes need U)
+    'O': ['2p'], 'N': ['2p'], 'C': ['2p'],
+    'S': ['3p'], 'P': ['3p'], 'Si': ['3p'],
+}
+
+
+def get_suggested_orbitals(element: str) -> list:
+    """
+    Get suggested orbital types for a given element.
+    
+    Args:
+        element: Element symbol (e.g., 'Fe', 'O')
+        
+    Returns:
+        List of suggested orbital strings
+    """
+    return ELEMENT_ORBITAL_MAP.get(element, ['3d'])  # Default to 3d if unknown
+
+
 def render_hubbard_selector(
     elements: Set[str],
     config_dict: dict,
@@ -72,13 +114,47 @@ def render_hubbard_selector(
                     # New format with orbital specification
                     st.markdown("**Orbital-Specific U:**")
                     
-                    # Get orbital type
-                    orbital = st.text_input(
-                        f"Orbital for {element}:",
-                        value=config_dict.get(f"hubbard_orbital_{element}", "3d"),
-                        help="Examples: '3d', '4f', '2p'",
-                        key=f"{key_prefix}_hubbard_orbital_{element}"
+                    # Get suggested orbitals for this element
+                    suggested_orbitals = get_suggested_orbitals(element)
+                    default_orbital = suggested_orbitals[0]
+                    
+                    # Show info about suggested orbitals
+                    if len(suggested_orbitals) > 1:
+                        st.info(f"💡 Common orbitals for {element}: {', '.join(suggested_orbitals)}")
+                    else:
+                        st.info(f"💡 Common orbital for {element}: {default_orbital}")
+                    
+                    # Get orbital type (use selectbox for common orbitals, allow custom)
+                    current_orbital = config_dict.get(f"hubbard_orbital_{element}", default_orbital)
+                    
+                    # Provide selectbox with suggested orbitals plus "Custom" option
+                    orbital_options = suggested_orbitals + ["Custom..."]
+                    
+                    # Determine which option to select
+                    if current_orbital in suggested_orbitals:
+                        orbital_select_idx = suggested_orbitals.index(current_orbital)
+                    else:
+                        orbital_select_idx = len(suggested_orbitals)  # "Custom..." option
+                    
+                    orbital_selection = st.selectbox(
+                        f"Select orbital for {element}:",
+                        options=orbital_options,
+                        index=orbital_select_idx,
+                        help=f"Choose orbital for Hubbard U. Common choices for {element}: {', '.join(suggested_orbitals)}",
+                        key=f"{key_prefix}_hubbard_orbital_select_{element}"
                     )
+                    
+                    # If "Custom..." is selected, show text input
+                    if orbital_selection == "Custom...":
+                        orbital = st.text_input(
+                            f"Custom orbital for {element}:",
+                            value=current_orbital if current_orbital not in suggested_orbitals else "",
+                            help="Examples: '3d', '4f', '2p'",
+                            key=f"{key_prefix}_hubbard_orbital_custom_{element}"
+                        )
+                    else:
+                        orbital = orbital_selection
+                    
                     config_dict[f"hubbard_orbital_{element}"] = orbital
                     
                     u_value = st.number_input(
