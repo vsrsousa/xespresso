@@ -53,7 +53,10 @@ class RemoteExecutionMixin:
             self._remote_sessions[key] = remote
         self.remote = self._remote_sessions[key]
 
-        current_path = os.path.join(self.queue["remote_dir"], self.calc.directory)
+        # Use only the basename of calc.directory to avoid issues with absolute paths
+        # This ensures the remote path is always under remote_dir, not using local absolute paths
+        dir_basename = os.path.basename(self.calc.directory.rstrip(os.sep))
+        current_path = os.path.join(self.queue["remote_dir"], dir_basename)
         if current_path != self._last_remote_path:
             self.remote_path = current_path
             self._last_remote_path = current_path
