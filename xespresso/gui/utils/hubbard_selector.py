@@ -135,15 +135,41 @@ def render_hubbard_selector(
         """
         )
 
-        # Format selection
+        # Format selection - default to NEW format (QE >= 7.0)
         format_type = st.radio(
             "Hubbard Format:",
-            ["Old Format (QE < 7.0)", "New Format (QE >= 7.0)"],
-            index=0 if config_dict.get("hubbard_format", "old") == "old" else 1,
-            help="New format (QE 7.0+) allows orbital-specific U parameters",
+            ["New Format (QE >= 7.0) - Recommended", "Old Format (QE < 7.0)"],
+            index=0 if config_dict.get("hubbard_format", "new") == "new" else 1,
+            help="New format (QE 7.0+) is recommended and allows orbital-specific U parameters with different correction schemes",
             key=f"{key_prefix}_hubbard_format",
         )
-        config_dict["hubbard_format"] = "old" if "Old" in format_type else "new"
+        config_dict["hubbard_format"] = "new" if "New" in format_type else "old"
+
+        # Hubbard Flavor Selection (U, U+J, U+V, etc.)
+        st.markdown("---")
+        st.markdown("**Hubbard Correction Flavor:**")
+        st.info(
+            """
+        💡 **Different Hubbard correction schemes:**
+        - **U only**: Simple on-site correction (most common)
+        - **U+J**: On-site U with Hund's exchange J (for more accurate treatment)
+        - **U+V**: On-site U with inter-site V interactions (for extended systems)
+        - **U+J+V**: Complete correction with all parameters
+        """
+        )
+        
+        hubbard_flavor = st.selectbox(
+            "Select correction type:",
+            ["U only", "U+J", "U+V", "U+J+V"],
+            index=["U only", "U+J", "U+V", "U+J+V"].index(
+                config_dict.get("hubbard_flavor", "U only")
+            ),
+            help="Choose which Hubbard parameters to use. U only is most common, U+J for better accuracy, U+V for inter-site interactions.",
+            key=f"{key_prefix}_hubbard_flavor",
+        )
+        config_dict["hubbard_flavor"] = hubbard_flavor
+        
+        st.markdown("---")
 
         # Configure U for each element
         for element in sorted(elements):
@@ -234,18 +260,139 @@ def render_hubbard_selector(
                     config_dict["hubbard_u"][element] = u_value
                 elif element in config_dict["hubbard_u"]:
                     del config_dict["hubbard_u"][element]
+                
+                # Add J parameter if flavor includes J
+                if "J" in config_dict.get("hubbard_flavor", "U only"):
+                    st.markdown("---")
+                    st.markdown("**J Parameter (Hund's Exchange):**")
+                    
+                    # Initialize J dict if not present
+                    if "hubbard_j" not in config_dict:
+                        config_dict["hubbard_j"] = {}
+                    
+                    current_j = config_dict["hubbard_j"].get(element, 0.0)
+                    
+                    j_value = st.number_input(
+                        f"J value (eV) for {element}:",
+                        value=float(current_j),
+                        min_value=0.0,
+                        max_value=5.0,
+                        step=0.1,
+                        help="Hund's exchange J parameter in eV (typically 0.5-1.0 eV)",
+                        key=f"{key_prefix}_hubbard_j_{element}",
+                    )
+                    
+                    # Store J value
+                    if j_value > 0:
+                        config_dict["hubbard_j"][element] = j_value
+                    elif element in config_dict.get("hubbard_j", {}):
+                        del config_dict["hubbard_j"][element]
+        
+        # Add V parameters if flavor includes V (inter-site interactions)
+        if "V" in config_dict.get("hubbard_flavor", "U only"):
+            st.markdown("---")
+            st.markdown("**V Parameters (Inter-site Interactions):**")
+            st.info(
+                """
+            💡 **Inter-site Hubbard V:**
+            - V describes interactions between orbitals on different sites
+            - Useful for extended systems or when nearest-neighbor interactions are important
+            - Requires specifying pairs of species and orbitals
+            """
+            )
+            
+            # Initialize V list if not present
+            if "hubbard_v" not in config_dict:
+                config_dict["hubbard_v"] = []
+            
+            # Show existing V parameters
+            if config_dict["hubbard_v"]:
+                st.markdown("**Current V Parameters:**")
+                for idx, v_param in enumerate(config_dict["hubbard_v"]):
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.caption(
+                            f"{idx+1}. {v_param.get('species1', '?')}-{v_param.get('orbital1', '?')} ↔ "
+                            f"{v_param.get('species2', '?')}-{v_param.get('orbital2', '?')}: {v_param.get('value', 0)} eV"
+                        )
+                    with col2:
+                        if st.button("🗑️", key=f"{key_prefix}_remove_v_{idx}", help="Remove this V parameter"):
+                            config_dict["hubbard_v"].pop(idx)
+                            st.rerun()
+            
+            # Add new V parameter
+            with st.expander("➕ Add V Parameter", expanded=False):
+                elements_list = sorted(list(elements))
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    v_species1 = st.selectbox(
+                        "Species 1:",
+                        elements_list,
+                        key=f"{key_prefix}_v_species1",
+                    )
+                    v_orbital1 = st.text_input(
+                        "Orbital 1:",
+                        value="3d",
+                        key=f"{key_prefix}_v_orbital1",
+                        help="e.g., 3d, 4f, 2p",
+                    )
+                
+                with col2:
+                    v_species2 = st.selectbox(
+                        "Species 2:",
+                        elements_list,
+                        key=f"{key_prefix}_v_species2",
+                    )
+                    v_orbital2 = st.text_input(
+                        "Orbital 2:",
+                        value="2p",
+                        key=f"{key_prefix}_v_orbital2",
+                        help="e.g., 3d, 4f, 2p",
+                    )
+                
+                v_value = st.number_input(
+                    "V value (eV):",
+                    value=1.0,
+                    min_value=0.0,
+                    max_value=10.0,
+                    step=0.1,
+                    key=f"{key_prefix}_v_value",
+                    help="Inter-site V parameter in eV",
+                )
+                
+                if st.button("Add V Parameter", key=f"{key_prefix}_add_v"):
+                    config_dict["hubbard_v"].append({
+                        "species1": v_species1,
+                        "orbital1": v_orbital1,
+                        "species2": v_species2,
+                        "orbital2": v_orbital2,
+                        "value": v_value,
+                        "i": 1,
+                        "j": 1,
+                    })
+                    st.success(f"Added V: {v_species1}-{v_orbital1} ↔ {v_species2}-{v_orbital2}")
+                    st.rerun()
 
-        # Additional Hubbard options
+        # Additional Hubbard options - Different flavors/projectors for new format
         if config_dict["hubbard_format"] == "new":
             st.markdown("---")
-            st.markdown("**Projector Type:**")
+            st.markdown("**Projector Type (Flavor):**")
+            st.info(
+                "💡 **Different projector flavors** affect how Hubbard corrections are applied:\n"
+                "- **ortho-atomic**: Orthogonalized atomic orbitals (recommended by QE)\n"
+                "- **atomic**: Raw atomic orbitals\n"
+                "- **norm-atomic**: Normalized atomic orbitals\n"
+                "- **wf**: Wannier functions\n"
+                "- **pseudo**: Pseudopotential projectors"
+            )
             projector = st.selectbox(
                 "Projector:",
-                ["atomic", "ortho-atomic", "norm-atomic", "wf", "pseudo"],
-                index=["atomic", "ortho-atomic", "norm-atomic", "wf", "pseudo"].index(
+                ["ortho-atomic", "atomic", "norm-atomic", "wf", "pseudo"],
+                index=["ortho-atomic", "atomic", "norm-atomic", "wf", "pseudo"].index(
                     config_dict.get("hubbard_projector", "ortho-atomic")
                 ),
-                help="Projector type for Hubbard calculations (new format only)",
+                help="Choose the projector flavor for Hubbard calculations. Each flavor has different convergence and accuracy characteristics.",
                 key=f"{key_prefix}_hubbard_projector",
             )
             config_dict["hubbard_projector"] = projector
